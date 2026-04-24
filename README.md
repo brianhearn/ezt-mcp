@@ -22,7 +22,7 @@ Output is a GeoJSON-profiled territory solution consumable by any MCP-compatible
 | Phase | Status |
 |-------|--------|
 | Vision | ✅ Complete |
-| Constitution | 🔲 Not started |
+| Constitution | ✅ Complete |
 | Functional Spec | 🔲 Not started |
 | Technical Spec | 🔲 Not started |
 | Implementation | 🔲 Not started |
