@@ -2,20 +2,28 @@
 
 > Server-side territory operations for AI agents, backed by EasyTerritory domain expertise.
 
-**Status:** Pre-implementation — Vision phase complete. See [VISION.md](VISION.md) for product intent.
+**Status:** Pre-implementation — Vision and Constitution complete. See [VISION.md](VISION.md) for product intent.
 
 ---
 
 ## What It Does
 
-EZT MCP is an MCP server that gives AI agents the ability to build, balance, and export territory solutions — the same operations that previously required a trained user inside EZT Designer.
+EZT MCP is an MCP server that gives AI agents the ability to build, balance, and analyze territory solutions — the same operations that previously required a trained user inside EZT Designer.
 
-**Founding capabilities:**
-- **Direct Build** — alignment file (ZIP → territory name) → territory solution
-- **Auto Build** — account data + metric + target count → balanced territory solution
-- **Geocoder** — address strings → coordinates via Azure Maps
+**MVP tools:**
+- **Geocode Address** — address strings → GeoJSON point features, with shared PostgreSQL cache
+- **Direct Build** — alignment file (ZIP code → territory name mapping) + part layer → territory solution
+- **Auto Build** — account data + metric + target territory count → balanced territory solution
+- **Analyze Territory Solution** — territory solution + accounts + metrics → per-territory analysis
 
-Output is a GeoJSON-profiled territory solution consumable by any MCP-compatible agent and importable into EZT Designer.
+Output is a GeoJSON territory solution — self-contained, with dissolved territory polygons and part composition metadata. Consumable by any GeoJSON-aware tool.
+
+## Architecture
+
+- **Hosted by EasyTerritory** — not self-hosted by customers
+- **Stateless MCP server** — no customer data persisted; customer's agent owns territory solution storage
+- **Shared PostgreSQL (PostGIS)** — part layers (US ZIPs, counties, states, Canadian FSAs) + geocode cache
+- **ExpertPack knowledge layer** — domain expertise for territory design, EZT product knowledge, workflow guidance
 
 ## Lifecycle
 

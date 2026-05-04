@@ -1,12 +1,6 @@
-# VISION.md — EZT MCP: Agentic Territory Intelligence
-
-**Version:** 0.1.0
-**Date:** 2026-04-24
-**Status:** Draft
-
----
-
-## What This Is
+Version: 0.2.0
+Date: 2026-05-04
+Status: Draft
 
 EZT MCP is a server-side territory intelligence service that exposes EasyTerritory's core territory operations as MCP-native capabilities. It gives AI agents the ability to perform territory work that previously required a human expert inside EZT Designer.
 
@@ -14,110 +8,159 @@ Agents connect to EZT MCP to build, balance, analyze, and export territory solut
 
 ---
 
-## The Problem It Solves
+## The Problem
 
-Territory planning today requires a trained user, EZT Designer, and significant manual iteration. The knowledge of *what makes a good territory* — contiguity, balance, workload equity, alignment to geographic units — lives in people's heads and in a client-side application.
+Territory planning today requires a trained user, EZT Designer, and significant manual iteration. The knowledge of what makes a good territory — contiguity, balance, workload equity, alignment to geographic units — lives in people's heads and in a client-side application.
 
 Three problems follow from this:
 
-1. **Access barrier.** Territory design is expert work. Customers need trained users. Managers who know what they want cannot act on it without a specialist.
-2. **Integration friction.** Customers with existing alignment files, CRM exports, or external systems cannot easily bring that data into EZT without manual transformation.
-3. **No headless path.** There is no way to programmatically create or optimize territory solutions outside the Designer UI — no API, no batch pipeline, no agent interface.
+- **Access barrier.** Territory design is expert work. Customers need trained users. Managers who know what they want cannot act on it without a specialist.
+
+- **Integration friction.** Customers with existing alignment files, CRM exports, or external systems cannot easily bring that data into EZT without manual transformation.
+
+- **No headless path.** There is no way to programmatically create or optimize territory solutions outside the Designer UI — no API, no batch pipeline, no agent interface.
 
 EZT MCP eliminates all three.
 
 ---
 
-## The Vision
+## What Agents Can Do
 
 A customer's AI agent — running OpenClaw, Claude Desktop, or any MCP-compatible host — connects to EZT MCP and can:
 
-- **Describe a territory problem in natural language** and receive a balanced, geographically valid territory solution as structured output
-- **Import an existing alignment file** (ZIP-to-territory CSV/Excel) and produce a ready-to-consume territory solution without opening Designer
-- **Build from account data** — provide a list of accounts with locations and a business metric, specify a target territory count, and receive an auto-balanced solution
-- **Geocode addresses** as a first-class operation, not a preprocessing step buried in another tool
-- **Understand the domain** via an ExpertPack knowledge layer that encodes territory design expertise, EZT product knowledge, and guided workflows
+- Import an existing alignment file (ZIP-to-territory CSV/Excel mapping ZIP codes to territory names) and receive a ready-to-consume territory solution as GeoJSON
+- Build from account data — provide a list of accounts with locations and a business metric, specify a target territory count, and receive an auto-balanced solution as GeoJSON
+- Geocode addresses as a first-class operation
+- Analyze a territory solution against a set of accounts and business metrics, receiving per-territory comparisons (e.g., total revenue, account count, balance score)
+- Understand the domain via an ExpertPack knowledge layer that encodes territory design expertise, EZT product knowledge, and guided workflows
 
 The agent is not a thin API proxy. It is an expert system with hands.
 
 ---
 
-## Who Uses This
+## Who It Serves
 
-**EasyTerritory customers** who run their own agents. EZT MCP is deployed by the customer or EasyTerritory as a self-hosted service — not a SaaS offering. Customers bring their MCP-compatible agent; EZT MCP provides the territory intelligence layer.
+EasyTerritory customers who run their own agents. EZT MCP is hosted by EasyTerritory and accessed by customers as a service — not a self-hosted product. Customers bring their MCP-compatible agent host; EZT MCP provides the territory intelligence layer.
 
-**Two primary interaction modes:**
+Two primary interaction modes:
 
-- **Assisted** (designer present): Agent works alongside a territory designer — handling geocoding, data ingestion, balance analysis, and project creation while the human makes strategic decisions
-- **Conversational** (manager-directed): A sales manager or ops lead instructs the agent in natural language. The agent translates intent into geography and produces a territory solution without requiring a territory design specialist
-
----
-
-## Founding Capabilities
-
-### 1. Direct Build — Alignment File → Territory Solution
-**Input:** A ZIP-to-territory alignment file (CSV or Excel) mapping geographic parts to territory names
-**Output:** A territory solution in EZT MCP canonical format (GeoJSON profile, defined in Functional Spec)
-**Value:** Covers the most common onboarding scenario — customers migrating from spreadsheets, other tools, or manual systems
-
-### 2. Auto Build — Accounts + Metrics → Territory Solution
-**Input:** Account list (locations + business metric), geographic part layer (ZIPs, counties, etc.), target territory count, optional constraints
-**Processing:** Three-stage pipeline:
-  - **Partition** — cluster accounts into N groups using a configurable metric (revenue, account count, workload hours)
-  - **Zone** — assign geographic parts to the nearest partition centroid using expanding spatial contours
-  - **Realign** — iteratively swap border parts between adjacent territories to minimize metric deviation while preserving contiguity
-**Output:** Balanced territory solution in canonical format
-**Note:** This pipeline is informed by the existing EZT Designer auto-builder algorithm. We will port and improve it, investigating better approaches (e.g., PostGIS-native spatial operations, improved clustering strategies) while using the current algorithm as a validated baseline.
-
-### 3. Geocoder — Address → Coordinates
-**Input:** One or more address strings
-**Output:** Lat/lon coordinates via Azure Maps
-**Value:** First-class operation; required by Auto Build when account locations are provided as addresses rather than coordinates
+- **Assisted (designer present):** Agent works alongside a territory designer — handling geocoding, data ingestion, balance analysis, and solution creation while the human makes strategic decisions
+- **Conversational (manager-directed):** A sales manager or ops lead instructs the agent in natural language. The agent translates intent into geography and produces a territory solution without requiring a territory design specialist
 
 ---
 
-## The Knowledge Layer
+## MVP Tool Set
 
-EZT MCP is backed by an ExpertPack — a structured knowledge file set that encodes:
+### 1. Geocode Address
+Input: one or more address strings
+Output: a GeoJSON `FeatureCollection` of `Point` features, each with the original address in `properties`
+Provider hierarchy: Nominatim (where ToS permits) → TomTom → Azure Maps fallback
+Geocode results are cached in a shared PostgreSQL table (address → lat/lon). Cache is non-customer-specific.
+
+### 2. Direct Build — Alignment File → Territory Solution
+Input: a CSV or Excel file mapping ZIP codes to territory names; a named part layer (e.g., `us_zips`)
+Output: a territory solution `FeatureCollection` (see Canonical Format below)
+Value: covers the most common onboarding scenario — customers migrating from spreadsheets, other tools, or manual systems
+
+### 3. Auto Build — Accounts + Metrics → Territory Solution
+Input: account list (locations + business metric), named part layer, target territory count, optional constraints
+Processing: three-stage pipeline:
+- **Partition** — cluster accounts into N groups using a configurable metric (revenue, account count, workload hours)
+- **Zone** — assign geographic parts to the nearest partition centroid using expanding spatial contours
+- **Realign** — iteratively swap border parts between adjacent territories to minimize metric deviation while preserving contiguity
+
+Output: a territory solution `FeatureCollection`
+Note: pipeline is informed by the existing EZT Designer auto-builder algorithm; PostGIS-native spatial operations will be investigated for improvements.
+
+### 4. Analyze Territory Solution
+Input: a territory solution `FeatureCollection`; an account set with business metrics; desired metrics to compute
+Output: structured JSON analysis — per-territory metric totals, comparisons, balance scores
+Note: this is the one tool whose output is not GeoJSON, since analysis results carry no geometry.
+
+---
+
+## Canonical Format — Territory Solution
+
+Territory solutions are expressed as a GeoJSON `FeatureCollection`. Each `Feature` represents one territory (T) — the dissolved union of its assigned geographic parts (Ps).
+
+```json
+{
+  "type": "FeatureCollection",
+  "properties": {
+    "build_date": "2026-05-04",
+    "metric": "revenue",
+    "part_layer": "us_zips",
+    "solution_name": "East Region 2026"
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "MultiPolygon", "coordinates": ["...dissolved geometry..."] },
+      "properties": {
+        "name": "Territory North",
+        "group": "East Region",
+        "metric_value": 142500.00,
+        "metric_label": "revenue",
+        "part_ids": ["12345", "12346", "12347"]
+      }
+    }
+  ]
+}
+```
+
+Key rules:
+- Each territory feature carries **dissolved polygon geometry** — the union of all its constituent parts. The territory solution is self-contained; no separate part layer is needed to render or consume it.
+- `part_ids` records which geographic parts (e.g., ZIP codes) were fused into each territory.
+- GeoJSON is the only wire format for geometry-bearing inputs and outputs. All tools that produce or consume territory data speak GeoJSON.
+
+---
+
+## Part Layers
+
+EZT MCP is backed by EasyTerritory's own curated geographic part layer dataset — the result of years of curation and refinement. Part layers are stored in PostgreSQL (PostGIS) and hosted by EasyTerritory.
+
+Available layers in v1: US ZIP codes, US counties, US states, Canadian FSAs. Additional layers are an operational concern.
+
+Callers reference part layers by name (e.g., `"us_zips"`). EZT MCP resolves geometries internally.
+
+---
+
+## Infrastructure Model
+
+EasyTerritory hosts all infrastructure. Customers are not responsible for deployment.
+
+- **EZT MCP server** — stateless; hosted by EasyTerritory
+- **PostgreSQL (PostGIS)** — hosted by EasyTerritory in Azure; contains part layers and geocode cache only; no customer-specific territory data
+- **Customer's agent** — holds all customer-specific data: territory solutions, account lists, alignment files
+- **Auth** — API key per customer; Bearer token on every request
+
+EZT MCP is stateless per-request beyond the shared part layer and geocode cache. Customer territory solutions are returned to the agent and are the agent's responsibility to store.
+
+---
+
+## ExpertPack Knowledge Layer
+
+EZT MCP is backed by an ExpertPack — a structured knowledge file set encoding:
 
 - Territory design principles (contiguity, balance, workload equity, geographic unit selection)
 - EZT product knowledge (Designer concepts, project structure, terminology)
 - Workflow guidance (how to approach common territory problems, what questions to ask, what constraints matter)
 - EZT MCP tooling knowledge (when to use which tool, how to chain operations, how to interpret results)
 
-This ExpertPack will be a new or significantly augmented pack — not a direct copy of the existing `ezt-designer` pack. It will emphasize operational knowledge (how to do things) alongside product knowledge (what things are), with less focus on internal Designer implementation details and more focus on territory planning patterns that customers care about.
+This ExpertPack is new — not a copy of the existing `ezt-designer` pack. It emphasizes operational and workflow knowledge alongside product knowledge, with a customer-facing lens rather than an internal implementation lens.
 
-The retrieval layer (EP MCP) provides the same hybrid search pipeline (BM25 + vector, intent-aware routing, `requires:` expansion) already proven at 97.6% retrieval accuracy in production.
-
----
-
-## The Canonical Format
-
-Territory solutions produced by EZT MCP are expressed as a **GeoJSON profile** — standard GeoJSON extended with required EZT MCP properties. Each territory is a `Feature` with:
-
-- Dissolved polygon geometry (the union of its constituent geographic parts)
-- Required properties: `name`, `group`, `metric_value`, `metric_label`, `part_ids` (array of constituent part identifiers)
-- Optional properties: `locked`, `symbology`, `source_layer`
-
-A complete territory solution is a `FeatureCollection` of territory features plus a solution-level `properties` block (metadata: build date, metric used, part layer reference, etc.).
-
-This format is:
-- Consumable directly by any GeoJSON-aware tool
-- Rich enough to reconstruct the full territory assignment
-- The target import format for EZT Designer v1 (via new import capability) and v2 (native)
-
-Formal schema is defined in the Functional Spec.
+The retrieval layer uses the same hybrid search pipeline (BM25 + vector, intent-aware routing, `requires:` expansion) proven at 97.6% retrieval accuracy in production on EP MCP.
 
 ---
 
-## What This Is Not (Yet)
+## What This Is Not
 
-- **Not a SaaS product.** Self-hosted by customer or EasyTerritory.
-- **Not a replacement for EZT Designer.** It produces territory solutions; the Designer remains the visual editing surface.
-- **No real-time map rendering.** Output is data, not maps.
-- **No EZT Designer v2 export format defined yet.** Benton's v2 format is TBD; export will be added when the spec exists.
-- **No realignment of existing Designer projects** in v1. The MCP builds new solutions; in-place mutation of live Designer projects is a future capability.
-- **No multi-tenant auth** in v1. Single-tenant deployment; multi-tenancy is a future concern.
+- Not a SaaS product with a UI — it is an MCP server for agent access
+- Not a replacement for EZT Designer — it produces territory solutions; the Designer remains the visual editing surface
+- Not multi-tenant in the database sense — Postgres holds only shared reference data; no per-customer rows
+- No real-time map rendering — output is data, not maps
+- No EZT Designer v2 export format in v1 — format TBD; will be added when spec exists
+- No in-place mutation of existing Designer projects in v1 — EZT MCP builds new solutions
 
 ---
 
@@ -125,22 +168,14 @@ Formal schema is defined in the Functional Spec.
 
 This project follows a waterfall lifecycle:
 
-1. **Vision** ← *you are here*
-2. **Constitution** — non-negotiables: architecture, stack, security, coding conventions, testing, database rules, deployment model, forbidden libraries
-3. **Functional Spec** — behavior definition: tools, resources, prompts, canonical format schema, error handling
-4. **Technical Spec** — architecture and design: module breakdown, data flow, retrieval pipeline, API surface
-5. **Implementation** — execution
-6. **Verification** — QA, test vectors, eval sets
+- Vision ← you are here
+- Constitution — non-negotiables: architecture, stack, security, coding conventions, deployment model
+- Functional Spec — behavior definition: tools, resources, prompts, canonical format schema, error handling
+- Technical Spec — architecture and design: module breakdown, data flow, retrieval pipeline, API surface
+- Implementation — execution
+- Verification — QA, test vectors, eval sets
 
----
-
-## Relationship to EP MCP
-
-EZT MCP forks from `brianhearn/ep-mcp`. The EP MCP retrieval engine is retained and serves as the knowledge layer backbone. The EZT-specific tool layer (build, geocode, export) is added on top. EP-specific retrieval tools (`ep_search`, `ep_list_topics`, `ep_graph_traverse`) are either repurposed or supplemented — the ExpertPack backing EZT MCP is queried using the same proven pipeline.
-
-The fork preserves: transport layer (Starlette/Uvicorn), auth scaffolding (API key), config.yaml pattern, CLI entry point, SQLite indexing, and the full retrieval pipeline.
-
-The fork replaces: the pack-as-knowledge-source assumption is extended — the ExpertPack remains the domain knowledge source, but EZT MCP also has live data sources (the EZT REST API, Azure Maps, and the customer's account/geographic data).
+EZT MCP forks from `brianhearn/ep-mcp`. The EP MCP retrieval engine is retained as the knowledge layer backbone. EZT-specific tools (build, geocode, analyze) are added on top.
 
 ---
 
