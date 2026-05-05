@@ -1,4 +1,4 @@
-Version: 0.4.0
+Version: 0.5.0
 Date: 2026-05-05
 Status: Draft
 
@@ -28,14 +28,16 @@ EZT MCP eliminates all three.
 
 A customer's AI agent — running OpenClaw, Claude Desktop, or any MCP-compatible host — connects to EZT MCP and can:
 
-- Import an existing alignment file (ZIP-to-territory CSV/Excel mapping ZIP codes to territory names) and receive a ready-to-consume territory solution as GeoJSON
-- Build from account data — provide a list of accounts with locations and a business metric, specify a target territory count, and receive an auto-balanced solution as GeoJSON
-- Geocode addresses as a first-class operation
-- Analyze a territory solution — point layers and their metric attributes are embedded in the TS itself, so no separate account input is needed
-- Select geographic parts visually using an embedded map widget (click, lasso, box selection) and direct the agent to realign them
+- Pull account data from the customer's CRM or data system, geocode it, and pass it to EZT MCP as a point layer
+- Import an existing alignment file and receive a ready-to-consume Territory Solution
+- Build territories from scratch — from account groupings or from a target count with metric balancing
+- Realign an existing Territory Solution — directed by the user or by map widget selections
+- Analyze a Territory Solution — all account data and metrics are embedded in the TS, so no separate inputs are needed
+- Persist Territory Solutions in the customer's own storage — EZT MCP returns results; the agent is responsible for saving and retrieving them
+- Select geographic parts visually using an embedded Map Widget (click, lasso, box) and direct the agent to realign them
 - Understand the domain via an ExpertPack knowledge layer that encodes territory design expertise, EZT product knowledge, and guided workflows
 
-The agent is not a thin API proxy. It is an expert system with hands.
+The agent is not a thin API proxy. It is an expert system with hands. EZT MCP is a compute and knowledge service — it never holds customer data between requests.
 
 ---
 
@@ -108,7 +110,9 @@ Hole-filling and contiguity repair applied internally after Direct Build, Accoun
 
 A Territory Solution (TS) is the primary working artifact of EZT MCP. It is self-contained: it carries territory polygons, all associated point layers, and enough metadata to support analysis without any external inputs.
 
-The TS uses a top-level envelope (not a bare GeoJSON FeatureCollection) to accommodate named layers:
+**The TS is valid GeoJSON.** Specifically, it is a GeoJSON `FeatureCollection` with a conventions layer on top. No proprietary format, no custom binary, no EZT-specific file type. Any GeoJSON-aware tool can open and inspect a TS. The EZT MCP conventions (layer naming, `metric_fields`, `part_ids`, solution metadata) live in standard GeoJSON `properties` fields — they extend GeoJSON without breaking it.
+
+The TS uses a top-level `FeatureCollection` with a `properties` envelope to carry solution metadata and named layers:
 
 ```json
 {
@@ -152,11 +156,12 @@ The TS uses a top-level envelope (not a bare GeoJSON FeatureCollection) to accom
 ```
 
 Key rules:
+- **Valid GeoJSON throughout.** A TS is a GeoJSON `FeatureCollection`. All geometry follows the GeoJSON spec (RFC 7946). Any standard GeoJSON library can parse it.
 - `territories` is always present. Each territory feature carries **dissolved polygon geometry** — the union of all its constituent parts. `part_ids` records composition.
 - `layers` is an ordered array of named point layers. N ≥ 0. An empty array is valid (e.g., a speculative build before account data is available).
 - Each layer declares `metric_fields` — the attribute names that Analyze should aggregate. Non-metric attributes are carried through but not analyzed.
-- The TS is the single artifact that flows through the pipeline: build → add layers → realign → analyze → realign. All tools that accept or produce territory data accept or produce a TS.
-- GeoJSON geometry rules apply within `territories.features` and within each layer's `features`.
+- The TS is the single artifact that flows through the pipeline: build → add layers → realign → analyze → realign. All tools accept and produce a TS.
+- **The customer's agent owns TS storage.** EZT MCP does not persist TS files. Every tool call is stateless — the agent passes the current TS in, receives an updated TS back, and is responsible for saving it. The agent is also responsible for pulling account data from the customer's source systems and embedding it as a point layer.
 
 ---
 
@@ -176,10 +181,10 @@ EasyTerritory hosts all infrastructure. Customers are not responsible for deploy
 
 - **EZT MCP server** — stateless; hosted by EasyTerritory
 - **PostgreSQL (PostGIS)** — hosted by EasyTerritory in Azure; contains part layers and geocode cache only; no customer-specific territory data
-- **Customer's agent** — holds all customer-specific data: territory solutions, account lists, alignment files
+- **Customer's agent** — owns all customer-specific data: Territory Solutions, account lists, alignment files. Pulls account data from source systems (CRM, spreadsheets, databases). Persists TS files between sessions. Passes TS into EZT MCP on each call; receives the updated TS back.
 - **Auth** — API key per customer; Bearer token on every request
 
-EZT MCP is stateless per-request beyond the shared part layer and geocode cache. Customer territory solutions are returned to the agent and are the agent's responsibility to store.
+EZT MCP is stateless per-request beyond the shared part layer and geocode cache. It never writes customer data to any persistent store. The agent is the custodian of all customer artifacts.
 
 ---
 
@@ -202,10 +207,11 @@ The retrieval layer uses the same hybrid search pipeline (BM25 + vector, intent-
 
 - Not a SaaS product with a UI — it is an MCP server for agent access
 - Not a replacement for EZT Designer — it produces and modifies territory solutions; the Designer remains the visual editing surface
+- Not a data store — EZT MCP does not hold, retrieve, or manage customer Territory Solutions, account data, or alignment files. The customer's agent owns all of that.
+- Not a proprietary format — the TS is standard GeoJSON; no EZT-specific file type or SDK is required to read it
 - Not multi-tenant in the database sense — Postgres holds only shared reference data; no per-customer rows
 - No standalone map application — the map widget is an embedded component within the agent host (see MAP_COMPONENT.md)
-- No EZT Designer v2 export format in v1 — format TBD; will be added when spec exists
-- No in-place mutation of existing Designer projects in v1 — EZT MCP builds new solutions
+- No in-place mutation of existing Designer projects in v1 — EZT MCP builds and returns new solutions
 
 ---
 

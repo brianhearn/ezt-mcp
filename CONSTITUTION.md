@@ -1,6 +1,6 @@
 # CONSTITUTION.md — EZT MCP Non-Negotiables
 
-**Version:** 0.4.0
+**Version:** 0.5.0
 **Date:** 2026-05-05
 **Status:** Draft
 
@@ -31,7 +31,9 @@ These are the architectural, security, stack, and convention decisions that are 
 The EZT MCP application container is **fully stateless**. It holds no customer data, no territory solutions, no mutable per-request state. Postgres holds only shared reference data (part layers, geocode cache). Container restarts and horizontal scaling are transparent to clients.
 
 ### 2.2 No Per-Customer State in EZT MCP
-EZT MCP does not store territory solutions, account data, or any customer-specific data. Customers provide inputs on each request; EZT MCP computes and returns results. The customer's agent is responsible for persisting outputs. This is a deliberate design choice — it eliminates data isolation complexity, reduces GDPR surface area, and keeps the Postgres footprint minimal.
+EZT MCP does not store territory solutions, account data, or any customer-specific data. Every tool call is fully stateless from the customer's perspective: the agent passes the current TS in, EZT MCP computes, the updated TS comes back out. The agent is responsible for persisting outputs and for retrieving account data from the customer's source systems (CRM, spreadsheets, databases) before embedding it as a point layer.
+
+This is a deliberate design choice — it eliminates data isolation complexity, removes GDPR surface area, keeps the Postgres footprint minimal, and makes EZT MCP trivially horizontally scalable.
 
 ### 2.3 Shared PostgreSQL — Reference Data Only
 A single EasyTerritory-hosted PostgreSQL instance (PostGIS) serves all customers. It contains:
@@ -46,9 +48,11 @@ Geocoding is handled directly by EZT MCP (no separate geocoder microservice). Pr
 Provider hierarchy: Nominatim (where ToS permits) → TomTom → Azure Maps fallback.
 
 ### 2.5 GeoJSON as the Universal Wire Format
-All geometry-bearing inputs and outputs use the Territory Solution (TS) envelope format (see VISION.md). The TS is not a bare GeoJSON FeatureCollection — it is a top-level object carrying a `territories` FeatureCollection and a `layers` array of named point layer FeatureCcollections. GeoJSON geometry rules apply within features. No other geometry format is accepted or produced.
+The Territory Solution (TS) is standard GeoJSON — a `FeatureCollection` with EZT MCP conventions expressed in standard `properties` fields. It is not a proprietary format, a custom binary, or an EZT-specific file type. Any GeoJSON-aware tool or library can parse a TS without an EZT SDK.
 
-The one exception: the Analyze Territory Solution tool returns structured JSON (no geometry in analysis output).
+All geometry-bearing inputs and outputs are TSes (or, for Geocode Address, a plain GeoJSON FeatureCollection of Points). No other geometry format is accepted or produced. GeoJSON geometry follows RFC 7946.
+
+The one exception: the Analyze Territory Solution tool returns structured JSON with no geometry, since analysis results are tabular.
 
 ### 2.6 Dissolve and Repair Are Internal Operations
 Territory dissolution (union of geographic parts into a territory polygon) and Repair (hole-filling, contiguity restoration) are internal computation steps, not exposed MCP tools. They are implemented as shared library functions used by the build tools (Direct Build, Account Build, Auto Build) and Realign. The territory solution output always includes pre-dissolved geometry — the canonical format is self-contained and requires no separate part layer to render.

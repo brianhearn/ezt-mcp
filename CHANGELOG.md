@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-05) — v0.5.0
+- `VISION.md` v0.5.0 — strengthened agent-owns-storage posture throughout: "What Agents Can Do" now explicitly calls out agent responsibility for pulling account data from source systems and persisting TS files; TS canonical format key rules now state agent ownership explicitly; Infrastructure Model updated to describe agent custodian role; "What This Is Not" adds two new bullets: not a data store, not a proprietary format
+- `VISION.md` v0.5.0 — TS is now explicitly described as valid GeoJSON (RFC 7946 FeatureCollection); EZT MCP conventions live in standard `properties` fields; no SDK required to read a TS
+- `CONSTITUTION.md` v0.5.0 — §2.2 expanded: per-request statelessness described from agent perspective (TS in → compute → TS out); agent responsibility for source system data pull made explicit; §2.5 rewritten to lead with "TS is standard GeoJSON" and cite RFC 7946
+
 ### Changed (2026-05-05) — v0.4.0
 - `VISION.md` v0.4.0 — redesigned canonical TS format to use a top-level envelope with `territories` + `layers[]` (N ≥ 0 point layers, first-class); `metric_fields` declared per layer; Analyze now takes only a TS (no separate account input); updated "What Agents Can Do" and "What This Is Not" to reflect map widget; updated Lifecycle section to reference MAP_COMPONENT.md
 - `MAP_COMPONENT.md` v0.1.0 — new stub document: role (spatial I/O device), interaction model (TS in → part_ids[] out), selection UX primitives, embedding targets (OpenClaw Canvas primary, Teams meeting app v2), technology candidates (MapLibre + PMTiles), open questions
