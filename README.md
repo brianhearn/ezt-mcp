@@ -13,7 +13,9 @@ EZT MCP is an MCP server that gives AI agents the ability to build, balance, and
 **MVP tools:**
 - **Geocode Address** — address strings → GeoJSON point features, with shared PostgreSQL cache
 - **Direct Build** — alignment file (ZIP code → territory name mapping) + part layer → territory solution
+- **Account Build** — accounts with a grouping attribute (e.g., sales manager) → inferred territory solution with hole-filling and contiguity repair
 - **Auto Build** — account data + metric + target territory count → balanced territory solution
+- **Realign** — move parts between territories (or into a new territory) in an existing solution
 - **Analyze Territory Solution** — territory solution + accounts + metrics → per-territory analysis
 
 Output is a GeoJSON territory solution — self-contained, with dissolved territory polygons and part composition metadata. Consumable by any GeoJSON-aware tool.

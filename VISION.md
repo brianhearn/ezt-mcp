@@ -1,5 +1,5 @@
-Version: 0.2.0
-Date: 2026-05-04
+Version: 0.3.0
+Date: 2026-05-05
 Status: Draft
 
 EZT MCP is a server-side territory intelligence service that exposes EasyTerritory's core territory operations as MCP-native capabilities. It gives AI agents the ability to perform territory work that previously required a human expert inside EZT Designer.
@@ -61,8 +61,18 @@ Geocode results are cached in a shared PostgreSQL table (address → lat/lon). C
 Input: a CSV or Excel file mapping ZIP codes to territory names; a named part layer (e.g., `us_zips`)
 Output: a territory solution `FeatureCollection` (see Canonical Format below)
 Value: covers the most common onboarding scenario — customers migrating from spreadsheets, other tools, or manual systems
+Note: Repair (hole-filling, contiguity) is applied internally when input data produces gaps.
 
-### 3. Auto Build — Accounts + Metrics → Territory Solution
+### 3. Account Build — Accounts with Grouping Attribute → Territory Solution
+Input: account list with a grouping attribute (e.g., sales manager name, territory name) and account locations; a named part layer
+Processing: two-stage pipeline:
+- **Infer** — determine which parts each account resides in; group parts by the account's grouping attribute. When the grouping attribute is a part identifier (e.g., ZIP code on the account address), spatial inference is skipped and the mapping is direct — making Account Build functionally equivalent to Direct Build in that case.
+- **Repair** — fill holes and restore contiguity in the resulting part assignments (swiss-cheese artifacts are common when accounts do not uniformly cover their intended geography)
+
+Output: a territory solution `FeatureCollection`
+Note: Repair is always applied internally; the output is always a topologically clean solution.
+
+### 4. Auto Build — Accounts + Metric → Territory Solution
 Input: account list (locations + business metric), named part layer, target territory count, optional constraints
 Processing: three-stage pipeline:
 - **Partition** — cluster accounts into N groups using a configurable metric (revenue, account count, workload hours)
@@ -72,10 +82,24 @@ Processing: three-stage pipeline:
 Output: a territory solution `FeatureCollection`
 Note: pipeline is informed by the existing EZT Designer auto-builder algorithm; PostGIS-native spatial operations will be investigated for improvements.
 
-### 4. Analyze Territory Solution
+### 5. Realign — Modify an Existing Territory Solution
+Input: an existing territory solution `FeatureCollection`; a set of realignment instructions (move these parts from territory A to territory B, or move these parts into a new territory)
+Processing: reassign specified parts, re-dissolve affected territories, apply Repair to restore contiguity where needed
+Output: updated territory solution `FeatureCollection`
+Value: the most common ongoing operation — territory solutions drift as the business changes (new hires, lost accounts, growth in one region). Realign handles directed, explicit changes: splitting an oversized territory, absorbing a departed rep's territory, or moving a cluster of parts across a boundary.
+Note: Realign handles *directed* changes (agent or user specifies what moves where). Auto Build's internal realign step handles *metric-driven* convergence during initial construction — these are distinct operations.
+
+### 6. Analyze Territory Solution
 Input: a territory solution `FeatureCollection`; an account set with business metrics; desired metrics to compute
 Output: structured JSON analysis — per-territory metric totals, comparisons, balance scores
 Note: this is the one tool whose output is not GeoJSON, since analysis results carry no geometry.
+
+---
+
+## Internal Operations
+
+### Repair
+Hole-filling and contiguity repair applied internally after Direct Build, Account Build, and Realign when part assignments produce gaps or disconnected geometry. Not exposed as a public MCP tool — it is a shared pipeline step. A future version may expose Repair as a public tool for customers who bring in territory solutions from external sources.
 
 ---
 
@@ -156,7 +180,7 @@ The retrieval layer uses the same hybrid search pipeline (BM25 + vector, intent-
 ## What This Is Not
 
 - Not a SaaS product with a UI — it is an MCP server for agent access
-- Not a replacement for EZT Designer — it produces territory solutions; the Designer remains the visual editing surface
+- Not a replacement for EZT Designer — it produces and modifies territory solutions; the Designer remains the visual editing surface
 - Not multi-tenant in the database sense — Postgres holds only shared reference data; no per-customer rows
 - No real-time map rendering — output is data, not maps
 - No EZT Designer v2 export format in v1 — format TBD; will be added when spec exists

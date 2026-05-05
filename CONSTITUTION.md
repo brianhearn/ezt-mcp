@@ -1,7 +1,7 @@
 # CONSTITUTION.md — EZT MCP Non-Negotiables
 
-**Version:** 0.2.0
-**Date:** 2026-05-04
+**Version:** 0.3.0
+**Date:** 2026-05-05
 **Status:** Draft
 
 These are the architectural, security, stack, and convention decisions that are locked for the life of the project. Deviations require explicit revision of this document with justification. All downstream specs and implementation must conform.
@@ -50,8 +50,8 @@ All geometry-bearing inputs and outputs use GeoJSON. No other geometry format is
 
 The one exception: the Analyze Territory Solution tool returns structured JSON (no geometry in analysis output).
 
-### 2.6 Dissolve Is an Internal Operation
-Territory dissolution (union of geographic parts into a territory polygon) is an internal computation step, not an exposed MCP tool. It is implemented as a shared library function used by the Direct Build and Auto Build tools. The territory solution output always includes pre-dissolved geometry — the canonical format is self-contained and requires no separate part layer to render.
+### 2.6 Dissolve and Repair Are Internal Operations
+Territory dissolution (union of geographic parts into a territory polygon) and Repair (hole-filling, contiguity restoration) are internal computation steps, not exposed MCP tools. They are implemented as shared library functions used by the build tools (Direct Build, Account Build, Auto Build) and Realign. The territory solution output always includes pre-dissolved geometry — the canonical format is self-contained and requires no separate part layer to render.
 
 ### 2.7 ExpertPack — Shared Knowledge Layer
 A single shared ExpertPack backs the domain knowledge layer for all customers. All customers query the same pack. Per-customer pack overlays are not in scope for v1.
@@ -98,6 +98,8 @@ EZT MCP never writes customer territory solutions, account data, or alignment fi
 | **Territory Solution (TS)** | A complete territory alignment — a GeoJSON FeatureCollection of Ts plus solution-level metadata. The canonical output of Direct Build and Auto Build. |
 | **Part Layer** | A named collection of part polygons stored in `shared_geo` (e.g., `us_zips`, `us_counties`, `ca_fsa`). |
 | **Alignment File** | A customer-supplied CSV or Excel file mapping part identifiers (e.g., ZIP codes) to territory names. Input to Direct Build. |
+| **Grouping Attribute** | A non-spatial attribute on an account record (e.g., sales manager name, territory name) used by Account Build to infer territory assignments. |
+| **Realignment Instructions** | A set of directed part-move operations supplied to the Realign tool: move part P from territory A to territory B, or into a new territory. |
 
 Use these terms consistently in all tool names, resource names, API surface, documentation, and the ExpertPack.
 
@@ -128,7 +130,7 @@ ezt_mcp/
   resources/         — MCP resource implementations
   prompts/           — MCP prompt implementations
   retrieval/         — ExpertPack retrieval engine
-  territory/         — Territory computation pipeline (partition, zone, realign, dissolve)
+  territory/         — Territory computation pipeline (partition, zone, realign, dissolve, repair)
   geocoder/          — Geocoding (provider routing, cache read/write)
   db/                — Database access layer (connection pool, migrations)
   auth/              — API key validation, customer resolution
