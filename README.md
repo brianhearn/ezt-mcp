@@ -18,7 +18,7 @@ EZT MCP is an MCP server that gives AI agents the ability to build, balance, and
 - **Realign** — move parts between territories (or into a new territory) in an existing solution
 - **Analyze Territory Solution** — territory solution + accounts + metrics → per-territory analysis
 
-Output is a GeoJSON territory solution — self-contained, with dissolved territory polygons and part composition metadata. Consumable by any GeoJSON-aware tool.
+Output is a **Territory Solution (TS)** — a structured envelope carrying dissolved territory polygons, N ≥ 0 named point layers (accounts, stores, etc.), and metric field declarations. Self-contained: all tools that consume territory data accept a TS directly; no separate account inputs required.
 
 ## Architecture
 
@@ -37,6 +37,12 @@ Output is a GeoJSON territory solution — self-contained, with dissolved territ
 | Technical Spec | 🔲 Not started |
 | Implementation | 🔲 Not started |
 | Verification | 🔲 Not started |
+
+## Map Widget
+
+EZT MCP is accompanied by an embedded **Map Widget** — a spatial I/O component that renders a Territory Solution and emits part selections (click, lasso, box) back to the agent. Monica selects parts visually; the agent calls Realign with the selection. The widget is stateless — the agent owns the TS between interactions.
+
+Primary embedding target: OpenClaw Canvas (agent chat interface). Secondary: Microsoft Teams meeting app. Technology candidates: MapLibre GL JS + PMTiles. See [MAP_COMPONENT.md](MAP_COMPONENT.md) for the full concept stub.
 
 ## Lineage
 

@@ -1,6 +1,6 @@
 # CONSTITUTION.md — EZT MCP Non-Negotiables
 
-**Version:** 0.3.0
+**Version:** 0.4.0
 **Date:** 2026-05-05
 **Status:** Draft
 
@@ -46,7 +46,7 @@ Geocoding is handled directly by EZT MCP (no separate geocoder microservice). Pr
 Provider hierarchy: Nominatim (where ToS permits) → TomTom → Azure Maps fallback.
 
 ### 2.5 GeoJSON as the Universal Wire Format
-All geometry-bearing inputs and outputs use GeoJSON. No other geometry format is accepted or produced. The canonical territory solution format is a GeoJSON `FeatureCollection` (see VISION.md). Tools that produce or consume territory data speak only GeoJSON.
+All geometry-bearing inputs and outputs use the Territory Solution (TS) envelope format (see VISION.md). The TS is not a bare GeoJSON FeatureCollection — it is a top-level object carrying a `territories` FeatureCollection and a `layers` array of named point layer FeatureCcollections. GeoJSON geometry rules apply within features. No other geometry format is accepted or produced.
 
 The one exception: the Analyze Territory Solution tool returns structured JSON (no geometry in analysis output).
 
@@ -100,6 +100,8 @@ EZT MCP never writes customer territory solutions, account data, or alignment fi
 | **Alignment File** | A customer-supplied CSV or Excel file mapping part identifiers (e.g., ZIP codes) to territory names. Input to Direct Build. |
 | **Grouping Attribute** | A non-spatial attribute on an account record (e.g., sales manager name, territory name) used by Account Build to infer territory assignments. |
 | **Realignment Instructions** | A set of directed part-move operations supplied to the Realign tool: move part P from territory A to territory B, or into a new territory. |
+| **Point Layer** | A named collection of point features embedded in a TS (e.g., accounts, stores, service locations). N ≥ 0 layers per TS. Each layer declares `metric_fields` — the attributes Analyze should aggregate. |
+| **Metric Fields** | Attribute names on a point layer that carry quantitative values for analysis (e.g., `annual_revenue`, `account_count`). Declared at the layer level in the TS. |
 
 Use these terms consistently in all tool names, resource names, API surface, documentation, and the ExpertPack.
 

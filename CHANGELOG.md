@@ -7,7 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-### Changed (2026-05-05)
+### Changed (2026-05-05) — v0.4.0
+- `VISION.md` v0.4.0 — redesigned canonical TS format to use a top-level envelope with `territories` + `layers[]` (N ≥ 0 point layers, first-class); `metric_fields` declared per layer; Analyze now takes only a TS (no separate account input); updated "What Agents Can Do" and "What This Is Not" to reflect map widget; updated Lifecycle section to reference MAP_COMPONENT.md
+- `MAP_COMPONENT.md` v0.1.0 — new stub document: role (spatial I/O device), interaction model (TS in → part_ids[] out), selection UX primitives, embedding targets (OpenClaw Canvas primary, Teams meeting app v2), technology candidates (MapLibre + PMTiles), open questions
+
+### Changed (2026-05-05) — v0.3.0
 - `VISION.md` v0.3.0 — expanded MVP tool set: added Account Build (accounts with grouping attribute → territory solution, with internal Repair); added Realign (directed part moves on an existing territory solution); added Internal Operations section documenting Repair as a shared private pipeline step; clarified Direct Build includes internal Repair; updated "What This Is Not" to reflect modify capability
 - `CONSTITUTION.md` v0.3.0 — renamed §2.6 to "Dissolve and Repair Are Internal Operations"; added Repair to territory/ module; added `Grouping Attribute` and `Realignment Instructions` to terminology table; added `repair` to territory pipeline module comment
 - `README.md` — updated MVP tool list to include Account Build and Realign

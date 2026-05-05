@@ -1,4 +1,4 @@
-Version: 0.3.0
+Version: 0.4.0
 Date: 2026-05-05
 Status: Draft
 
@@ -31,7 +31,8 @@ A customer's AI agent — running OpenClaw, Claude Desktop, or any MCP-compatibl
 - Import an existing alignment file (ZIP-to-territory CSV/Excel mapping ZIP codes to territory names) and receive a ready-to-consume territory solution as GeoJSON
 - Build from account data — provide a list of accounts with locations and a business metric, specify a target territory count, and receive an auto-balanced solution as GeoJSON
 - Geocode addresses as a first-class operation
-- Analyze a territory solution against a set of accounts and business metrics, receiving per-territory comparisons (e.g., total revenue, account count, balance score)
+- Analyze a territory solution — point layers and their metric attributes are embedded in the TS itself, so no separate account input is needed
+- Select geographic parts visually using an embedded map widget (click, lasso, box selection) and direct the agent to realign them
 - Understand the domain via an ExpertPack knowledge layer that encodes territory design expertise, EZT product knowledge, and guided workflows
 
 The agent is not a thin API proxy. It is an expert system with hands.
@@ -44,8 +45,8 @@ EasyTerritory customers who run their own agents. EZT MCP is hosted by EasyTerri
 
 Two primary interaction modes:
 
-- **Assisted (designer present):** Agent works alongside a territory designer — handling geocoding, data ingestion, balance analysis, and solution creation while the human makes strategic decisions
-- **Conversational (manager-directed):** A sales manager or ops lead instructs the agent in natural language. The agent translates intent into geography and produces a territory solution without requiring a territory design specialist
+- **Assisted (designer present):** Agent works alongside a territory designer — handling geocoding, data ingestion, balance analysis, and solution creation while the human makes strategic decisions. Monica (a territory designer) uses the embedded map widget to select parts visually and instructs the agent to move them.
+- **Conversational (manager-directed):** A sales manager or ops lead instructs the agent in natural language. The agent translates intent into geography and produces a territory solution without requiring a territory design specialist.
 
 ---
 
@@ -90,9 +91,9 @@ Value: the most common ongoing operation — territory solutions drift as the bu
 Note: Realign handles *directed* changes (agent or user specifies what moves where). Auto Build's internal realign step handles *metric-driven* convergence during initial construction — these are distinct operations.
 
 ### 6. Analyze Territory Solution
-Input: a territory solution `FeatureCollection`; an account set with business metrics; desired metrics to compute
-Output: structured JSON analysis — per-territory metric totals, comparisons, balance scores
-Note: this is the one tool whose output is not GeoJSON, since analysis results carry no geometry.
+Input: a territory solution (TS) — point layers and their metric attributes are embedded in the TS itself; no separate account input required
+Output: structured JSON analysis — per-territory aggregates across all metric fields on all point layers, including comparisons and balance scores. The consumer decides which metrics to surface.
+Note: this is the one tool whose output is not GeoJSON, since analysis results carry no geometry. Analysis against polygon area/perimeter is available when N=0 (no point layers), but metric analysis requires at least one point layer with flagged metric fields.
 
 ---
 
@@ -105,37 +106,57 @@ Hole-filling and contiguity repair applied internally after Direct Build, Accoun
 
 ## Canonical Format — Territory Solution
 
-Territory solutions are expressed as a GeoJSON `FeatureCollection`. Each `Feature` represents one territory (T) — the dissolved union of its assigned geographic parts (Ps).
+A Territory Solution (TS) is the primary working artifact of EZT MCP. It is self-contained: it carries territory polygons, all associated point layers, and enough metadata to support analysis without any external inputs.
+
+The TS uses a top-level envelope (not a bare GeoJSON FeatureCollection) to accommodate named layers:
 
 ```json
 {
-  "type": "FeatureCollection",
-  "properties": {
-    "build_date": "2026-05-04",
-    "metric": "revenue",
-    "part_layer": "us_zips",
-    "solution_name": "East Region 2026"
-  },
-  "features": [
-    {
-      "type": "Feature",
-      "geometry": { "type": "MultiPolygon", "coordinates": ["...dissolved geometry..."] },
-      "properties": {
-        "name": "Territory North",
-        "group": "East Region",
-        "metric_value": 142500.00,
-        "metric_label": "revenue",
-        "part_ids": ["12345", "12346", "12347"]
+  "ezt_mcp_version": "1",
+  "solution_name": "East Region 2026",
+  "build_date": "2026-05-05",
+  "part_layer": "us_zips",
+  "territories": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "geometry": { "type": "MultiPolygon", "coordinates": ["..."] },
+        "properties": {
+          "name": "Territory North",
+          "group": "East Region",
+          "part_ids": ["12345", "12346", "12347"]
+        }
       }
+    ]
+  },
+  "layers": [
+    {
+      "name": "accounts",
+      "type": "point",
+      "metric_fields": ["annual_revenue", "account_count"],
+      "features": [
+        {
+          "type": "Feature",
+          "geometry": { "type": "Point", "coordinates": [-81.52, 30.33] },
+          "properties": {
+            "name": "Acme Corp",
+            "annual_revenue": 142500.00,
+            "account_count": 1
+          }
+        }
+      ]
     }
   ]
 }
 ```
 
 Key rules:
-- Each territory feature carries **dissolved polygon geometry** — the union of all its constituent parts. The territory solution is self-contained; no separate part layer is needed to render or consume it.
-- `part_ids` records which geographic parts (e.g., ZIP codes) were fused into each territory.
-- GeoJSON is the only wire format for geometry-bearing inputs and outputs. All tools that produce or consume territory data speak GeoJSON.
+- `territories` is always present. Each territory feature carries **dissolved polygon geometry** — the union of all its constituent parts. `part_ids` records composition.
+- `layers` is an ordered array of named point layers. N ≥ 0. An empty array is valid (e.g., a speculative build before account data is available).
+- Each layer declares `metric_fields` — the attribute names that Analyze should aggregate. Non-metric attributes are carried through but not analyzed.
+- The TS is the single artifact that flows through the pipeline: build → add layers → realign → analyze → realign. All tools that accept or produce territory data accept or produce a TS.
+- GeoJSON geometry rules apply within `territories.features` and within each layer's `features`.
 
 ---
 
@@ -182,7 +203,7 @@ The retrieval layer uses the same hybrid search pipeline (BM25 + vector, intent-
 - Not a SaaS product with a UI — it is an MCP server for agent access
 - Not a replacement for EZT Designer — it produces and modifies territory solutions; the Designer remains the visual editing surface
 - Not multi-tenant in the database sense — Postgres holds only shared reference data; no per-customer rows
-- No real-time map rendering — output is data, not maps
+- No standalone map application — the map widget is an embedded component within the agent host (see MAP_COMPONENT.md)
 - No EZT Designer v2 export format in v1 — format TBD; will be added when spec exists
 - No in-place mutation of existing Designer projects in v1 — EZT MCP builds new solutions
 
@@ -199,7 +220,9 @@ This project follows a waterfall lifecycle:
 - Implementation — execution
 - Verification — QA, test vectors, eval sets
 
-EZT MCP forks from `brianhearn/ep-mcp`. The EP MCP retrieval engine is retained as the knowledge layer backbone. EZT-specific tools (build, geocode, analyze) are added on top.
+EZT MCP forks from `brianhearn/ep-mcp`. The EP MCP retrieval engine is retained as the knowledge layer backbone. EZT-specific tools (build, geocode, realign, analyze) are added on top.
+
+The map widget (see MAP_COMPONENT.md) is a companion component — not part of the MCP server itself. It is an embeddable spatial I/O surface delivered inside the agent host.
 
 ---
 
