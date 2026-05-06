@@ -1,7 +1,7 @@
 # CONSTITUTION.md — EZT MCP Non-Negotiables
 
-**Version:** 0.5.0
-**Date:** 2026-05-05
+**Version:** 0.6.0
+**Date:** 2026-05-06
 **Status:** Draft
 
 These are the architectural, security, stack, and convention decisions that are locked for the life of the project. Deviations require explicit revision of this document with justification. All downstream specs and implementation must conform.
@@ -16,7 +16,7 @@ These are the architectural, security, stack, and convention decisions that are 
 | MCP framework | FastMCP (official MCP SDK) | Inherited from ep-mcp |
 | Web layer | Starlette + Uvicorn | Inherited from ep-mcp |
 | CLI | Click | Inherited from ep-mcp |
-| Database | PostgreSQL + PostGIS | Part layers, geocode cache — shared reference data only |
+| Resource Server | PostgreSQL + PostGIS | Part layers, self-hosted Nominatim + US reference data, geocode cache, spatial compute support — shared resources only |
 | Spatial / geo library | GeoPandas + Shapely | Territory computation pipeline (dissolve, partition, zone, realign) |
 | Containers | Azure Container Apps | Stateless MCP instances |
 | Secrets (production) | Azure Key Vault | No plaintext credentials in config files or env vars in production |
@@ -28,31 +28,33 @@ These are the architectural, security, stack, and convention decisions that are 
 ## 2. Architecture Non-Negotiables
 
 ### 2.1 Stateless MCP Tier
-The EZT MCP application container is **fully stateless**. It holds no customer data, no territory solutions, no mutable per-request state. Postgres holds only shared reference data (part layers, geocode cache). Container restarts and horizontal scaling are transparent to clients.
+The EZT MCP application container is **durably stateless**. It holds no persistent customer data, no durable territory solutions, and no mutable customer state that must survive restart. The Resource Server holds only shared reference data and shared spatial infrastructure (part layers, self-hosted Nominatim + US datasets, geocode cache, spatial indexes/functions). Container restarts and horizontal scaling are transparent to clients except for optional short-lived cache misses.
 
 ### 2.2 No Per-Customer State in EZT MCP
-EZT MCP does not store territory solutions, account data, or any customer-specific data. Every tool call is fully stateless from the customer's perspective: the agent passes the current TS in, EZT MCP computes, the updated TS comes back out. The agent is responsible for persisting outputs and for retrieving account data from the customer's source systems (CRM, spreadsheets, databases) before embedding it as a point layer.
+EZT MCP does not persist territory solutions, account data, or any customer-specific data as a system of record. Every tool call supports the fully stateless path: the agent passes the current TS in, EZT MCP computes, the updated TS comes back out. For efficiency, the agent may use short-lived cache handles instead of repeatedly transmitting the same multi-MB TS. The agent is responsible for persisting outputs and for retrieving account data from the customer's source systems (CRM, spreadsheets, databases) before embedding it as a point layer.
 
-This is a deliberate design choice — it eliminates data isolation complexity, removes GDPR surface area, keeps the Postgres footprint minimal, and makes EZT MCP trivially horizontally scalable.
+This is a deliberate design choice — it minimizes data isolation complexity, reduces GDPR surface area, keeps the Resource Server footprint bounded, and keeps EZT MCP horizontally scalable. Short-lived cache entries are allowed only as a transport optimization and must not become durable customer storage.
 
-### 2.3 Shared PostgreSQL — Reference Data Only
-A single EasyTerritory-hosted PostgreSQL instance (PostGIS) serves all customers. It contains:
+### 2.3 Resource Server — Shared Spatial Infrastructure Only
+A single EasyTerritory-hosted Resource Server, implemented as PostgreSQL/PostGIS, serves all customers. It contains:
 - `shared_geo` schema — part layer polygons (US ZIPs, US counties, US states, Canadian FSAs, etc.). Read-only from the application.
+- `nominatim` schemas/tables — self-hosted Nominatim geocoding data and indexes, including required US address/reference datasets.
 - `geocode_cache` schema — address → lat/lon cache. Shared across all customers; contains no customer-identifying data.
+- Spatial helper functions/indexes used by the territory computation pipeline when work is better performed in PostGIS than in the application container.
 
-There are no per-customer schemas. The application user has read access to `shared_geo` and read/write access to `geocode_cache` only.
+There are no per-customer schemas. The Resource Server is shared infrastructure, not customer storage. The application user has the minimum privileges required to read shared spatial resources, execute approved spatial helper functions, and read/write the geocode cache.
 
 ### 2.4 Geocoding — Internal to MCP
 Geocoding is handled directly by EZT MCP (no separate geocoder microservice). Provider selection, tier routing, fallback, and cache lookup/write are all implemented within the MCP server. Provider credentials (TomTom, Azure Maps) are sourced from Azure Key Vault at startup.
 
-Provider hierarchy: Nominatim (where ToS permits) → TomTom → Azure Maps fallback.
+Provider hierarchy: self-hosted Nominatim on the Resource Server → TomTom → Azure Maps fallback. Public Nominatim is not used for the hosted commercial service.
 
 ### 2.5 GeoJSON as the Universal Wire Format
 The Territory Solution (TS) is standard GeoJSON — a `FeatureCollection` with EZT MCP conventions expressed in standard `properties` fields. It is not a proprietary format, a custom binary, or an EZT-specific file type. Any GeoJSON-aware tool or library can parse a TS without an EZT SDK.
 
-All geometry-bearing inputs and outputs are TSes (or, for Geocode Address, a plain GeoJSON FeatureCollection of Points). No other geometry format is accepted or produced. GeoJSON geometry follows RFC 7946.
+All geometry-bearing inputs and outputs are TSes. Geocode Address returns a TS with point location features and no territory alignment layer. No other geometry format is accepted or produced. GeoJSON geometry follows RFC 7946.
 
-The one exception: the Analyze Territory Solution tool returns structured JSON with no geometry, since analysis results are tabular.
+The one exception: the Analyze Territory Solution tool returns structured JSON with no geometry, since analysis results are tabular. If those results need to travel with geometry, the agent can attach them back into a TS as properties or companion metadata in a later workflow.
 
 ### 2.6 Dissolve and Repair Are Internal Operations
 Territory dissolution (union of geographic parts into a territory polygon) and Repair (hole-filling, contiguity restoration) are internal computation steps, not exposed MCP tools. They are implemented as shared library functions used by the build tools (Direct Build, Account Build, Auto Build) and Realign. The territory solution output always includes pre-dissolved geometry — the canonical format is self-contained and requires no separate part layer to render.
@@ -61,7 +63,32 @@ Territory dissolution (union of geographic parts into a territory polygon) and R
 A single shared ExpertPack backs the domain knowledge layer for all customers. All customers query the same pack. Per-customer pack overlays are not in scope for v1.
 
 ### 2.8 EasyTerritory Hosts Everything
-EZT MCP infrastructure is hosted and operated by EasyTerritory. Customers are not responsible for deployment, Postgres, or part layer data. Customer access is via API key only.
+EZT MCP infrastructure is hosted and operated by EasyTerritory. Customers are not responsible for deployment, the Resource Server, Nominatim, PostGIS, or part layer data. Customer access is via API key only.
+
+### 2.9 Sharing Is Flagship, But Not System of Record
+EZT MCP must support executive sharing workflows as a first-class flagship capability, but it must not become the system of record for customer Territory Solutions. Sharing surfaces are read-only projections of a TS supplied by the customer's agent or storage layer. Supported sharing directions include unified map-component views, Power BI-friendly projections/exports, and narrative executive summaries generated from TS + Analyze output.
+
+Read-only sharing and assisted map selection must use the same underlying map component with capability flags/modes, not two divergent UI implementations.
+
+### 2.10 Analysis Presentation Guidance Is Product Surface
+Analyze Territory Solution returns structured JSON facts. EZT MCP must also provide agent-facing presentation guidance — as MCP resources/prompts and/or versioned markdown such as `ANALYSIS_DESIGN.md` — so calling agents can turn analysis JSON into clear, domain-appropriate operator insight.
+
+This guidance is part of the product surface, not incidental documentation. It must be versioned, tested against example analysis outputs, and kept aligned with the Analysis tool schema.
+
+### 2.11 Short-Lived TS Cache Is Allowed
+TS payloads may be many MBs. EZT MCP may provide cache-check/cache-put/cache-handle behavior so agents can avoid repeatedly transmitting full TS payloads across sequential tool calls. This cache is permitted only as a TTL-bound transport optimization, not as durable storage or a customer system of record.
+
+A cache miss must be safe and expected: the agent can always resend the full TS. Cache handles must be scoped to the customer/API key and must not be guessable.
+
+### 2.12 TS Presentation Metadata and Styling
+The Map Component must support declarative TS presentation metadata for lightweight but useful styling. Styling must travel with the TS as GeoJSON-compatible metadata and/or be resolved from versioned EZT MCP style resources/templates. The component must render the same style spec consistently in read-only `view` and assisted `select` modes.
+
+V1 styling must stay intentionally smaller than EZT Designer: territory colors/boundaries/opacity, labels, point symbol styling, simple classification, legends, and named visualization presets. Full Designer-style symbology editing, complex filtering, clustering, hotspots, and print layouts are not required for v1 unless later specs explicitly add them.
+
+### 2.13 DESIGN.md Product Design System
+The repo must contain a `DESIGN.md` file that captures the EasyTerritory product design language for AI coding agents. `DESIGN.md` should follow the emerging AI-agent design-system pattern: YAML frontmatter for machine-readable tokens and Markdown prose for rationale, constraints, and component guidance.
+
+EZT Designer V2 is the visual source of truth. The Map Component must use `DESIGN.md` for product chrome, controls, legends, panels, empty/loading/error states, and default visual language. TS presentation metadata remains responsible for solution-specific map symbology.
 
 ---
 
@@ -84,10 +111,12 @@ All external traffic is TLS-encrypted. No plain HTTP endpoints in any environmen
 In production, all secrets are sourced from Azure Key Vault. Config files may reference Key Vault secret names but never contain secret values.
 
 ### 3.5 Principle of Least Privilege
-The application database user has read access to `shared_geo` and read/write access to `geocode_cache` only. No other schemas. Geocoder provider credentials are loaded from Key Vault at startup and held in memory only.
+The application Resource Server user has least-privilege access only: read shared spatial resources, execute approved spatial helper functions, and read/write `geocode_cache`. No customer schemas exist. Geocoder provider credentials are loaded from Key Vault at startup and held in memory only.
 
 ### 3.6 No Customer Data Persisted
-EZT MCP never writes customer territory solutions, account data, or alignment files to any persistent store. All customer data is transient — received in the request, used for computation, returned in the response, discarded.
+EZT MCP never writes customer territory solutions, account data, or alignment files to persistent storage as a system of record. Customer data is transient — received in the request, used for computation, optionally held in short-lived cache, returned in the response, and discarded when TTL expires or capacity requires eviction.
+
+Short-lived cache entries are still customer data and must be treated accordingly: customer/API-key scoped, TTL-bound, size-limited, encrypted or memory-resident according to deployment policy, excluded from backups, excluded from logs, and safely evicted.
 
 ---
 
@@ -99,24 +128,65 @@ EZT MCP never writes customer territory solutions, account data, or alignment fi
 |---|---|
 | **Part (P)** | A single geographic unit (e.g., one ZIP code polygon). The atomic unit of territory composition. |
 | **Territory (T)** | The dissolved union of one or more parts assigned to a named territory. A T is a GeoJSON Feature with dissolved MultiPolygon geometry and `part_ids` in properties. |
-| **Territory Solution (TS)** | A complete territory alignment — a GeoJSON FeatureCollection of Ts plus solution-level metadata. The canonical output of Direct Build and Auto Build. |
-| **Part Layer** | A named collection of part polygons stored in `shared_geo` (e.g., `us_zips`, `us_counties`, `ca_fsa`). |
+| **Territory Solution (TS)** | The universal EZT MCP geometry artifact — a GeoJSON FeatureCollection that may contain 0-N point location layers and 0-1 territory alignment layer (TAL), plus solution-level metadata. |
+| **Part Layer** | A named collection of part polygons stored on the Resource Server in `shared_geo` (e.g., `us_zips`, `us_counties`, `ca_fsa`). |
 | **Alignment File** | A customer-supplied CSV or Excel file mapping part identifiers (e.g., ZIP codes) to territory names. Input to Direct Build. |
 | **Grouping Attribute** | A non-spatial attribute on an account record (e.g., sales manager name, territory name) used by Account Build to infer territory assignments. |
 | **Realignment Instructions** | A set of directed part-move operations supplied to the Realign tool: move part P from territory A to territory B, or into a new territory. |
-| **Point Layer** | A named collection of point features embedded in a TS (e.g., accounts, stores, service locations). N ≥ 0 layers per TS. Each layer declares `metric_fields` — the attributes Analyze should aggregate. |
+| **Point Layer** | A named collection of point features embedded in a TS (e.g., accounts, stores, service locations). A TS supports 0-N point layers. Each layer declares `metric_fields` — the attributes Analyze should aggregate. |
 | **Metric Fields** | Attribute names on a point layer that carry quantitative values for analysis (e.g., `annual_revenue`, `account_count`). Declared at the layer level in the TS. |
+| **Territory Alignment Layer (TAL)** | The optional polygon layer inside a TS representing one territory alignment. A TS supports 0-1 TAL. Each territory feature carries dissolved geometry and `part_ids`. |
+| **Resource Server** | EasyTerritory-hosted PostgreSQL/PostGIS instance containing shared part layers, self-hosted Nominatim + US reference datasets, geocode cache, and approved spatial helper functions. It is not customer storage. |
+| **Analysis Presentation Guidance** | Versioned guidance exposed to agents as resources/prompts or markdown, instructing them how to present Analyze output in executive, designer, sales manager, and QA contexts. |
+| **TS Identity** | Metadata carried by a TS: stable `ts_id`, current `revision`, deterministic `content_hash`, and `updated_at` timestamp. |
+| **TS Handle** | Short-lived, customer-scoped, non-guessable cache reference that lets a tool call refer to a cached TS payload instead of retransmitting it. Not durable storage. |
+| **Presentation Metadata** | Declarative styling and visualization metadata carried in a TS or referenced from EZT MCP style templates: visibility, colors, labels, classifications, symbols, legends, and named views. |
+| **DESIGN.md** | Repo-level design-system file for AI coding agents, combining machine-readable design tokens with human-readable guidance derived from EZT Designer V2. |
 
 Use these terms consistently in all tool names, resource names, API surface, documentation, and the ExpertPack.
 
-### 4.2 Territory Geometry Is Always Dissolved
-A Territory feature always carries dissolved polygon geometry — the union of all its constituent parts. A TS is self-contained. `part_ids` records the composition but the geometry is pre-computed and embedded.
+### 4.2 Territory Alignment Layer Is Optional, Singular, and Dissolved
+A TS supports zero or one Territory Alignment Layer (TAL). When a TAL is present, each Territory feature carries dissolved polygon geometry — the union of all its constituent parts. A TS is self-contained. `part_ids` records the composition and `part_layer` identifies the atomic geography used to construct the TAL, but the renderable geometry is pre-computed and embedded.
 
 ### 4.3 Reference Data Is Read-Only
-The application never writes to `shared_geo`. Reference data updates are an operational concern handled outside the application.
+The application never writes to `shared_geo` or Nominatim reference datasets. Reference data updates are an operational concern handled outside the application.
 
 ### 4.4 Geocode Cache Is Non-Customer-Specific
-The geocode cache maps address strings to lat/lon coordinates. It contains no customer identifiers, account data, or territory data. It is safe to share across all customers.
+The geocode cache maps normalized address strings to lat/lon coordinates and provider metadata. It contains no customer identifiers, account data, or territory data. It is safe to share across all customers.
+
+### 4.5 TS Layer Cardinality
+A valid TS may contain:
+- 0-N point location layers
+- 0-1 territory alignment layer (TAL)
+
+Examples:
+- Geocode Address output: one point layer, no TAL
+- Direct Build output: one TAL, zero or more point layers
+- Empty template TS: no point layers, no TAL
+- Full planning TS: one TAL plus one or more point layers
+
+### 4.6 TS In, TS Out
+Geometry-bearing tools should accept a TS and return an updated TS whenever practical. The TS flows through the system and is adorned/augmented over time. For example, Geocode Address adds point layers, Auto Build adds or replaces the TAL while preserving point layers, Realign updates the TAL, and sharing renders the TS without changing it.
+
+Exceptions must be justified in the Functional Spec.
+
+### 4.7 TS Identity and Cache Handles
+Every TS should carry identity metadata: `ts_id`, `revision`, `content_hash`, and `updated_at`. The `content_hash` must be computed over a canonicalized TS representation so agents and EZT MCP can detect whether a cached payload matches the caller's current TS.
+
+Tools may accept either a full TS payload or a valid TS handle where appropriate. Tools that modify a TS must return updated identity metadata and must invalidate or supersede stale cache handles.
+
+### 4.8 Presentation Metadata
+A TS may include presentation metadata for one or more named views. Presentation metadata must be optional: a valid TS can render with default styles when no explicit presentation block is present.
+
+Presentation metadata may define:
+- layer visibility
+- fill, stroke, opacity, and point symbol rules
+- labels and minimum zooms
+- classification method and breaks
+- legend entries
+- active/default view
+
+Presentation metadata must not change analysis semantics. It affects rendering only.
 
 ---
 
@@ -138,7 +208,7 @@ ezt_mcp/
   retrieval/         — ExpertPack retrieval engine
   territory/         — Territory computation pipeline (partition, zone, realign, dissolve, repair)
   geocoder/          — Geocoding (provider routing, cache read/write)
-  db/                — Database access layer (connection pool, migrations)
+  db/                — Resource Server access layer (connection pool, migrations)
   auth/              — API key validation, customer resolution
   audit/             — Audit log writes
   config.py          — Configuration loading (Key Vault in production, config.yaml in dev)

@@ -7,6 +7,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-06) — v0.6.0
+- `VISION.md` v0.6.0 — revised TS model: TS is the only geometry-bearing file format; supports 0-N point location layers and 0-1 optional territory alignment layer (TAL); Geocode Address now returns a TS with point layer and no TAL
+- `VISION.md` v0.6.0 — introduced EZT MCP Resource Server: PostgreSQL/PostGIS for part geometry layers, self-hosted Nominatim + US reference datasets, geocode cache, and spatial compute support
+- `VISION.md` v0.6.0 — clarified Auto Build requires/records a named part layer and preserves incoming TS point layers
+- `VISION.md` v0.6.0 — added upper-management sharing model: read-only map view, Power BI-friendly projections/exports, and narrative executive summaries while preserving agent-owned TS storage
+- `CONSTITUTION.md` v0.6.0 — codified Resource Server, self-hosted Nominatim-first geocoding, TS/TAL layer cardinality, and sharing-without-system-of-record rule
+- `README.md` — updated summary to match v0.6.0 TS, Resource Server, geocoding, Auto Build, Analyze, and sharing model
+- `VISION.md` v0.6.0 — elevated TS sharing to a flagship feature and defined unified map-component modes (`view`, `select`, future `edit`) so read-only sharing and assisted selection use the same component
+- `VISION.md` v0.6.0 — revised Auto Build to take a TS as input and return an augmented TS, preserving the TS-in/TS-out workflow
+- `MAP_COMPONENT.md` v0.2.0 — expanded from Map Widget stub to unified Map Component for read-only sharing and spatial selection
+- `VISION.md` / `CONSTITUTION.md` / `README.md` — added Analysis Presentation Guidance as first-class product surface: Analyze returns JSON facts, while MCP resources/prompts or `ANALYSIS_DESIGN.md` guide agents in producing polished operator insight
+- `VISION.md` / `CONSTITUTION.md` / `README.md` — added TS identity metadata and short-lived TS cache handles; clarified product/security language from “does not store customer data” to “does not persist customer data as system of record”
+- `VISION.md` / `CONSTITUTION.md` / `MAP_COMPONENT.md` / `README.md` — added map styling model: optional TS presentation metadata, EZT MCP style templates, named views, simple classification, legends, and bounded v1 symbology scope
+- Added `DESIGN.md` scaffold and documented it as the repo-level EasyTerritory design-system file for AI coding agents, derived from Benton's EZT Designer V2 visual language
+
 ### Changed (2026-05-05) — v0.5.0
 - `VISION.md` v0.5.0 — strengthened agent-owns-storage posture throughout: "What Agents Can Do" now explicitly calls out agent responsibility for pulling account data from source systems and persisting TS files; TS canonical format key rules now state agent ownership explicitly; Infrastructure Model updated to describe agent custodian role; "What This Is Not" adds two new bullets: not a data store, not a proprietary format
 - `VISION.md` v0.5.0 — TS is now explicitly described as valid GeoJSON (RFC 7946 FeatureCollection); EZT MCP conventions live in standard `properties` fields; no SDK required to read a TS

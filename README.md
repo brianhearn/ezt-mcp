@@ -2,7 +2,7 @@
 
 > Server-side territory operations for AI agents, backed by EasyTerritory domain expertise.
 
-**Status:** Pre-implementation — Vision and Constitution complete. See [VISION.md](VISION.md) for product intent.
+**Status:** Pre-implementation — Vision and Constitution in active revision. See [VISION.md](VISION.md) for product intent.
 
 ---
 
@@ -11,20 +11,20 @@
 EZT MCP is an MCP server that gives AI agents the ability to build, balance, and analyze territory solutions — the same operations that previously required a trained user inside EZT Designer.
 
 **MVP tools:**
-- **Geocode Address** — address strings → GeoJSON point features, with shared PostgreSQL cache
+- **Geocode Address** — address strings → TS with a point layer, using self-hosted Nominatim first and shared geocode cache
 - **Direct Build** — alignment file (ZIP code → territory name mapping) + part layer → territory solution
 - **Account Build** — accounts with a grouping attribute (e.g., sales manager) → inferred territory solution with hole-filling and contiguity repair
-- **Auto Build** — account data + metric + target territory count → balanced territory solution
+- **Auto Build** — TS + metric + part layer + target territory count → augmented TS with balanced TAL
 - **Realign** — move parts between territories (or into a new territory) in an existing solution
-- **Analyze Territory Solution** — territory solution + accounts + metrics → per-territory analysis
+- **Analyze Territory Solution** — TS-embedded point layers + metrics → structured JSON analysis, paired with presentation guidance for agent-generated insight
 
-Output is a **Territory Solution (TS)** — a structured envelope carrying dissolved territory polygons, N ≥ 0 named point layers (accounts, stores, etc.), and metric field declarations. Self-contained: all tools that consume territory data accept a TS directly; no separate account inputs required.
+Output is a **Territory Solution (TS)** — standard GeoJSON and the only geometry-bearing file format used by EZT MCP. A TS supports 0-N point location layers and 0-1 territory alignment layer (TAL). Geocode Address returns a TS with a point layer and no TAL; build tools return a TS with a TAL.
 
 ## Architecture
 
 - **Hosted by EasyTerritory** — not self-hosted by customers
-- **Stateless MCP server** — no customer data persisted; customer's agent owns territory solution storage
-- **Shared PostgreSQL (PostGIS)** — part layers (US ZIPs, counties, states, Canadian FSAs) + geocode cache
+- **Durably stateless MCP server** — no customer data persisted as system of record; customer's agent owns territory solution storage
+- **Resource Server: PostgreSQL/PostGIS** — part layers (US ZIPs, counties, states, Canadian FSAs), self-hosted Nominatim + US reference data, geocode cache, spatial compute support
 - **ExpertPack knowledge layer** — domain expertise for territory design, EZT product knowledge, workflow guidance
 
 ## Lifecycle
@@ -38,9 +38,29 @@ Output is a **Territory Solution (TS)** — a structured envelope carrying disso
 | Implementation | 🔲 Not started |
 | Verification | 🔲 Not started |
 
-## Map Widget
+## TS Identity and Cache Handles
 
-EZT MCP is accompanied by an embedded **Map Widget** — a spatial I/O component that renders a Territory Solution and emits part selections (click, lasso, box) back to the agent. Monica selects parts visually; the agent calls Realign with the selection. The widget is stateless — the agent owns the TS between interactions.
+Every TS should carry `ts_id`, `revision`, `content_hash`, and `updated_at` metadata. Because TS payloads can be many MBs, EZT MCP may support short-lived customer-scoped cache handles so agents can avoid resending the full TS across sequential tool calls. Cache handles are a transport optimization only; the customer's agent/storage remains the system of record.
+
+## DESIGN.md
+
+The repo includes `DESIGN.md`, a scaffold for an AI-agent-readable EasyTerritory design system derived from Benton's EZT Designer V2 work. It should be populated with tokens and guidance for colors, typography, spacing, components, legends, map callouts, and product chrome so the EZT MCP Map Component stays visually consistent with the broader product stack.
+
+## Styling
+
+The lightweight Map Component needs real but bounded styling support. Style should travel with the TS as optional presentation metadata and/or come from EZT MCP style templates. V1 should cover territory colors/boundaries/opacity, labels, point symbols, simple classification, legends, and named visualization presets — enough for sharing and verification without recreating the full Designer symbology surface.
+
+## Analysis Presentation
+
+The Analysis tool returns structured JSON facts. EZT MCP should also expose polished presentation guidance — an MCP resource/prompt or versioned markdown such as `ANALYSIS_DESIGN.md` — so calling agents can turn those facts into useful executive summaries, designer diagnostics, sales-manager action lists, and QA reports.
+
+## Sharing
+
+TS sharing is a flagship feature. EZT MCP should support upper-management consumption without making executives use Designer. The primary sharing surface is the same Map Component used for assisted workflows, running in read-only `view` mode. Additional sharing modes are Power BI-friendly projections/exports and narrative executive summaries generated from TS + Analyze output. The customer's agent/storage remains the system of record.
+
+## Map Component
+
+EZT MCP is accompanied by an embedded **Map Component** — a unified TS viewing and spatial I/O component. In `view` mode it provides read-only sharing/verification. In `select` mode it emits part selections (click, lasso, box) back to the agent. Monica selects parts visually; the agent calls Realign with the selection. The component is stateless — the agent owns the TS between interactions.
 
 Primary embedding target: OpenClaw Canvas (agent chat interface). Secondary: Microsoft Teams meeting app. Technology candidates: MapLibre GL JS + PMTiles. See [MAP_COMPONENT.md](MAP_COMPONENT.md) for the full concept stub.
 
