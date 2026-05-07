@@ -7,6 +7,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-07) — v0.7.0
+- `VISION.md` / `CONSTITUTION.md` v0.7.0 — TAL cardinality changed from **0-1** to **0-N**: a TS now supports multiple Territory Alignment Layers coexisting in the same file
+- Each TAL now carries a stable `tal_id` and a human-readable `label` (e.g., "By Revenue Q1", "By Headcount")
+- Added `active_tal_id` top-level field to TS: identifies which TAL the Map Component renders by default; agent sets/updates this as the user switches between alignments
+- Build tools (Direct Build, Account Build, Auto Build) always **append** a new TAL — never replace or modify existing TALs. The agent removes unwanted TALs after the user decides which alignment to keep.
+- Realign now requires a `tal_id` parameter to identify which TAL to modify; all other TALs in the TS are untouched
+- Analyze now accepts an optional `tal_ids` list; when multiple TALs are supplied, output includes a cross-TAL comparison section (head-to-head balance scores, metric distribution differences, recommendation)
+- Updated TS canonical format example to show two TALs (`tal_revenue`, `tal_headcount`) with `active_tal_id`, per-TAL `label`, and per-TAL presentation metadata
+- Added `VISION.md` **Comparative Territory Analysis** section with a concrete Monica workflow end-to-end
+- Updated TS key rules to document the append-only build contract and the agent's responsibility for TAL removal
+- Updated `CONSTITUTION.md` §4.2 (TAL section), §4.5 (layer cardinality), §4.6 (TS in/out), and terminology table accordingly
+
 ### Changed (2026-05-06) — v0.6.0
 - `VISION.md` v0.6.0 — revised TS model: TS is the only geometry-bearing file format; supports 0-N point location layers and 0-1 optional territory alignment layer (TAL); Geocode Address now returns a TS with point layer and no TAL
 - `VISION.md` v0.6.0 — introduced EZT MCP Resource Server: PostgreSQL/PostGIS for part geometry layers, self-hosted Nominatim + US reference datasets, geocode cache, and spatial compute support

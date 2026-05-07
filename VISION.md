@@ -1,5 +1,5 @@
-Version: 0.6.0
-Date: 2026-05-06
+Version: 0.7.0
+Date: 2026-05-07
 Status: Draft
 
 EZT MCP is a server-side territory intelligence service that exposes EasyTerritory's core territory operations as MCP-native capabilities. It gives AI agents the ability to perform territory work that previously required a human expert inside EZT Designer.
@@ -30,9 +30,10 @@ A customer's AI agent — running OpenClaw, Claude Desktop, or any MCP-compatibl
 
 - Pull account data from the customer's CRM or data system, geocode it, and receive a Territory Solution carrying those records as a point layer
 - Import an existing alignment file and receive a ready-to-consume Territory Solution carrying a territory alignment layer
-- Build territories from scratch — from account groupings or from a target count with metric balancing
+- Build territories from scratch — from account groupings or from a target count with metric balancing; each build appends a new named TAL to the TS, enabling side-by-side comparison of multiple alignment strategies
 - Realign an existing Territory Solution — directed by the user or by map widget selections
-- Analyze a Territory Solution — all account data and metrics are embedded in the TS, so no separate inputs are needed
+- Compare multiple Territory Alignment Layers in the Map Component — switch between TALs built with different metrics or strategies and run comparative analysis across them
+- Analyze a Territory Solution — all account data and metrics are embedded in the TS, so no separate inputs are needed; Analyze can target one TAL or produce a cross-TAL comparison
 - Present analysis clearly using EZT MCP-provided reporting guidance, templates, and presentation rules
 - Persist Territory Solutions in the customer's own storage — EZT MCP returns results; the agent is responsible for saving and retrieving them
 - Use short-lived TS cache handles to avoid repeatedly sending multi-MB territory geometries when calling several tools in sequence
@@ -64,40 +65,40 @@ Provider hierarchy: self-hosted Nominatim on the EZT MCP Resource Server → Tom
 Geocode results are cached in the Resource Server PostgreSQL database (address → lat/lon). Cache is non-customer-specific.
 
 ### 2. Direct Build — Alignment File → Territory Solution
-Input: a CSV or Excel file mapping part identifiers to territory names; a named part layer (e.g., `us_zips`)
-Output: a TS with one territory alignment layer (TAL), 0-N optional point layers
+Input: a CSV or Excel file mapping part identifiers to territory names; a named part layer (e.g., `us_zips`); an optional incoming TS to augment; a required `tal_label` naming the new TAL
+Output: the TS with one new TAL appended; 0-N point layers are preserved from the incoming TS if supplied
 Value: covers the most common onboarding scenario — customers migrating from spreadsheets, other tools, or manual systems
-Note: Repair (hole-filling, contiguity) is applied internally when input data produces gaps.
+Note: Repair (hole-filling, contiguity) is applied internally when input data produces gaps. Direct Build always appends — it never replaces an existing TAL.
 
 ### 3. Account Build — Accounts with Grouping Attribute → Territory Solution
-Input: account list with a grouping attribute (e.g., sales manager name, territory name) and account locations; a named part layer
+Input: account list with a grouping attribute (e.g., sales manager name, territory name) and account locations; a named part layer; an optional incoming TS to augment; a required `tal_label` naming the new TAL
 Processing: two-stage pipeline:
 - **Infer** — determine which parts each account resides in; group parts by the account's grouping attribute. When the grouping attribute is a part identifier (e.g., ZIP code on the account address), spatial inference is skipped and the mapping is direct — making Account Build functionally equivalent to Direct Build in that case.
 - **Repair** — fill holes and restore contiguity in the resulting part assignments (swiss-cheese artifacts are common when accounts do not uniformly cover their intended geography)
 
-Output: a TS with one territory alignment layer (TAL) and any point layers supplied by the caller
-Note: Repair is always applied internally; the output is always a topologically clean solution.
+Output: the TS with one new TAL appended; any point layers supplied by the caller or present in the incoming TS are preserved
+Note: Repair is always applied internally; the output is always a topologically clean solution. Account Build always appends — it never replaces an existing TAL.
 
 ### 4. Auto Build — TS + Metric → Territory Solution
-Input: a TS containing one or more point location layers with business metric fields, a named part layer, target territory count, optional constraints
+Input: a TS containing one or more point location layers with business metric fields, a named part layer, target territory count, optional constraints; a required `tal_label` naming the new TAL
 Processing: three-stage pipeline:
 - **Partition** — cluster accounts into N groups using a configurable metric (revenue, account count, workload hours)
 - **Zone** — assign geographic parts to the nearest partition centroid using expanding spatial contours
 - **Realign** — iteratively swap border parts between adjacent territories to minimize metric deviation while preserving contiguity
 
-Output: an augmented TS with one territory alignment layer (TAL) over the requested part layer; all incoming point layers are preserved
-Note: the TS flows into and out of Auto Build. Auto Build adorns/augments the incoming TS rather than replacing it. The pipeline is informed by the existing EZT Designer auto-builder algorithm; PostGIS-native spatial operations on the Resource Server will be used where they materially improve performance or correctness.
+Output: an augmented TS with one new TAL appended over the requested part layer; all incoming point layers and any existing TALs are preserved
+Note: the TS flows into and out of Auto Build. Auto Build always appends a new TAL — it never replaces an existing one. This makes it natural to run Auto Build multiple times against the same account data using different metrics or target counts and compare the resulting alignments side by side. The pipeline is informed by the existing EZT Designer auto-builder algorithm; PostGIS-native spatial operations on the Resource Server will be used where they materially improve performance or correctness.
 
 ### 5. Realign — Modify an Existing Territory Solution
-Input: an existing TS with a territory alignment layer; a set of realignment instructions (move these parts from territory A to territory B, or move these parts into a new territory)
+Input: an existing TS; a `tal_id` identifying which TAL to modify; a set of realignment instructions (move these parts from territory A to territory B, or move these parts into a new territory)
 Processing: reassign specified parts, re-dissolve affected territories, apply Repair to restore contiguity where needed
-Output: updated TS
+Output: updated TS with the specified TAL modified in place; all other TALs and point layers are preserved
 Value: the most common ongoing operation — territory solutions drift as the business changes (new hires, lost accounts, growth in one region). Realign handles directed, explicit changes: splitting an oversized territory, absorbing a departed rep's territory, or moving a cluster of parts across a boundary.
-Note: Realign handles *directed* changes (agent or user specifies what moves where). Auto Build's internal realign step handles *metric-driven* convergence during initial construction — these are distinct operations.
+Note: Realign handles *directed* changes (agent or user specifies what moves where). Auto Build's internal realign step handles *metric-driven* convergence during initial construction — these are distinct operations. When a TS carries multiple TALs, Realign always targets a specific TAL identified by `tal_id` — it never modifies all TALs at once.
 
 ### 6. Analyze Territory Solution
-Input: a TS — point layers and their metric attributes are embedded in the TS itself; no separate account input required
-Output: structured JSON analysis — per-territory aggregates across all metric fields on all point layers, including comparisons, balance scores, outliers, exceptions, and suggested focus areas. The JSON should contain everything a calling agent needs to reason accurately about the solution.
+Input: a TS — point layers and their metric attributes are embedded in the TS itself; no separate account input required. Optional `tal_ids` parameter: a list of TAL ids to analyze. When omitted, all TALs in the TS are analyzed.
+Output: structured JSON analysis — per-territory aggregates across all metric fields on all point layers, including comparisons, balance scores, outliers, exceptions, and suggested focus areas. When multiple TALs are analyzed, the output includes a cross-TAL comparison section: head-to-head balance scores, metric distribution differences, and recommended alignment given stated objectives. The JSON should contain everything a calling agent needs to reason accurately about the solution — or to help Monica decide which of two competing territory designs to commit to.
 Note: this is the one tool whose output is not GeoJSON, since analysis results carry no geometry. Analysis against polygon area/perimeter is available when N=0 (no point layers), but metric analysis requires at least one point layer with flagged metric fields. Presentation guidance lives separately as an EZT MCP resource/prompt, not inside the tool output.
 
 ---
@@ -115,7 +116,7 @@ A Territory Solution (TS) is the primary working artifact of EZT MCP. It is self
 
 **The TS is valid GeoJSON.** Specifically, it is a GeoJSON `FeatureCollection` with a conventions layer on top. No proprietary format, no custom binary, no EZT-specific file type. Any GeoJSON-aware tool can open and inspect a TS. The EZT MCP conventions (layer naming, `metric_fields`, `part_ids`, solution metadata) live in standard GeoJSON `properties` fields — they extend GeoJSON without breaking it.
 
-The TS is always a GeoJSON `FeatureCollection`. A TS may contain point features, territory polygon features, both, or neither. Layer membership is declared in standard feature `properties` and summarized in the top-level metadata envelope. The TAL is optional because not every workflow has territories yet — for example, Geocode Address returns a TS with point features but no TAL.
+The TS is always a GeoJSON `FeatureCollection`. A TS may contain point features, territory polygon features, both, or neither. Layer membership is declared in standard feature `properties` and summarized in the top-level metadata envelope. TALs are optional — Geocode Address returns a TS with point features but no TAL. A TS may carry multiple TALs simultaneously, enabling comparative territory analysis without creating separate files.
 
 ```json
 {
@@ -123,16 +124,26 @@ The TS is always a GeoJSON `FeatureCollection`. A TS may contain point features,
   "properties": {
     "ezt_mcp_version": "1",
     "solution_name": "East Region 2026",
-    "build_date": "2026-05-06",
+    "build_date": "2026-05-07",
     "ts_id": "ts_01HX7E9Q4K8Z3M2N6P5R1A0B7C",
-    "revision": 3,
+    "revision": 5,
     "content_hash": "sha256:9f2c...",
-    "updated_at": "2026-05-06T15:01:00Z",
+    "updated_at": "2026-05-07T15:00:00Z",
     "part_layer": "us_zips",
+    "active_tal_id": "tal_revenue",
     "layers": [
       {
-        "id": "tal",
+        "id": "tal_revenue",
         "kind": "territory_alignment",
+        "label": "By Revenue Q1",
+        "feature_role": "territory",
+        "part_layer": "us_zips",
+        "part_id_property": "zip"
+      },
+      {
+        "id": "tal_headcount",
+        "kind": "territory_alignment",
+        "label": "By Headcount",
         "feature_role": "territory",
         "part_layer": "us_zips",
         "part_id_property": "zip"
@@ -151,8 +162,15 @@ The TS is always a GeoJSON `FeatureCollection`. A TS may contain point features,
           "id": "executive_review",
           "label": "Executive Review",
           "layers": {
-            "tal": {
+            "tal_revenue": {
               "visible": true,
+              "fill": { "type": "categorical", "property": "territory_id", "palette": "ezt_distinct" },
+              "stroke": { "color": "#ffffff", "width": 1.5 },
+              "opacity": 0.72,
+              "label": { "property": "name", "min_zoom": 5 }
+            },
+            "tal_headcount": {
+              "visible": false,
               "fill": { "type": "categorical", "property": "territory_id", "palette": "ezt_distinct" },
               "stroke": { "color": "#ffffff", "width": 1.5 },
               "opacity": 0.72,
@@ -172,12 +190,24 @@ The TS is always a GeoJSON `FeatureCollection`. A TS may contain point features,
       "type": "Feature",
       "geometry": { "type": "MultiPolygon", "coordinates": ["..."] },
       "properties": {
-        "layer_id": "tal",
+        "layer_id": "tal_revenue",
         "feature_role": "territory",
         "territory_id": "north",
         "name": "Territory North",
         "group": "East Region",
         "part_ids": ["12345", "12346", "12347"]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "MultiPolygon", "coordinates": ["..."] },
+      "properties": {
+        "layer_id": "tal_headcount",
+        "feature_role": "territory",
+        "territory_id": "north",
+        "name": "Territory North",
+        "group": "East Region",
+        "part_ids": ["12345", "12348", "12349"]
       }
     },
     {
@@ -198,11 +228,13 @@ The TS is always a GeoJSON `FeatureCollection`. A TS may contain point features,
 Key rules:
 - **Valid GeoJSON throughout.** A TS is a GeoJSON `FeatureCollection`. All geometry follows the GeoJSON spec (RFC 7946). Any standard GeoJSON library can parse it.
 - A TS may contain **0-N point location layers**. Point layers are optional. Geocode Address returns a TS with one point layer and no TAL.
-- A TS may contain **0-1 territory alignment layer (TAL)**. The TAL is optional because some workflows are location-only until a build step creates territories.
+- A TS may contain **0-N territory alignment layers (TALs)**. TALs are optional and multiple TALs may coexist in the same TS. Each TAL is independently named and identified. This is the foundation of comparative territory analysis: Monica can build two alignments using different metrics, switch between them in the Map Component, and run Analyze across both before committing to one.
+- The `active_tal_id` field in top-level properties identifies which TAL the Map Component renders by default. The agent may set or update this field as the user switches between alignments.
 - When present, each TAL territory feature carries **dissolved polygon geometry** — the union of all its constituent parts. `part_ids` records composition.
-- The TAL records the `part_layer` it was built from (for example, `us_zips`) so later Realign and Analyze operations know which atomic geography underlies the solution.
+- Each TAL records the `part_layer` it was built from (for example, `us_zips`) so Realign and Analyze operations know which atomic geography underlies it. Multiple TALs in the same TS may use different part layers.
 - Each point layer declares `metric_fields` — the attribute names that Analyze should aggregate. Non-metric attributes are carried through but not analyzed.
 - The TS is the single artifact that flows through the pipeline: geocode → build → add layers → auto-build → realign → analyze → style → share. Tools should adorn/augment the incoming TS rather than forcing callers to manage separate geometry artifacts.
+- Build tools (Direct Build, Account Build, Auto Build) always **append** a new TAL — they never replace or modify existing TALs. The agent removes unwanted TALs after the user decides which alignment to keep. This is a deliberate constraint: the system of record for territory decisions is the agent, not EZT MCP.
 - **The customer's agent owns durable TS storage.** EZT MCP does not persist TS files as a system of record. Every tool call can pass the current TS in and receive an updated TS back. For efficiency, tools may also accept a short-lived TS cache handle instead of the full payload. The agent is still responsible for durable saving, retrieval, and pulling account data from the customer's source systems.
 
 ---
@@ -267,6 +299,22 @@ Benton's EZT Designer V2 work is the source of truth. Benton or Benton's agent s
 - TS presentation metadata defines solution-specific map styling: territory colors, classifications, labels, legends, named views.
 
 Together they keep the Map Component both product-consistent and solution-aware.
+
+## Comparative Territory Analysis
+
+When a TS carries multiple TALs, the Map Component and Analyze tool together enable a full comparison workflow:
+
+1. Monica asks the agent to build a territory alignment optimized for revenue balance.
+2. The agent runs Auto Build with metric `annual_revenue` and `tal_label: "By Revenue"` — the TS now has one TAL.
+3. Monica asks for a second alignment optimized for account count equity.
+4. The agent runs Auto Build again with metric `account_count` and `tal_label: "By Headcount"` — the TS now has two TALs.
+5. The Map Component TAL switcher lets Monica toggle between "By Revenue" and "By Headcount" overlaid on the same point data.
+6. Monica asks the agent to compare them. The agent calls Analyze with both `tal_ids` — the response includes cross-TAL balance scores, metric distribution differences, and a recommendation.
+7. Monica picks "By Revenue." The agent removes the `tal_headcount` TAL, updates `active_tal_id`, and persists the TS.
+
+This workflow requires no new tools. The multi-TAL TS structure, the `tal_id` parameter on Realign and Analyze, and the `active_tal_id` field on the Map Component are sufficient.
+
+---
 
 ## Map Styling and Symbology
 

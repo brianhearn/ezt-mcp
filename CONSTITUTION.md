@@ -1,7 +1,7 @@
 # CONSTITUTION.md — EZT MCP Non-Negotiables
 
-**Version:** 0.6.0
-**Date:** 2026-05-06
+**Version:** 0.7.0
+**Date:** 2026-05-07
 **Status:** Draft
 
 These are the architectural, security, stack, and convention decisions that are locked for the life of the project. Deviations require explicit revision of this document with justification. All downstream specs and implementation must conform.
@@ -135,18 +135,20 @@ Short-lived cache entries are still customer data and must be treated accordingl
 | **Realignment Instructions** | A set of directed part-move operations supplied to the Realign tool: move part P from territory A to territory B, or into a new territory. |
 | **Point Layer** | A named collection of point features embedded in a TS (e.g., accounts, stores, service locations). A TS supports 0-N point layers. Each layer declares `metric_fields` — the attributes Analyze should aggregate. |
 | **Metric Fields** | Attribute names on a point layer that carry quantitative values for analysis (e.g., `annual_revenue`, `account_count`). Declared at the layer level in the TS. |
-| **Territory Alignment Layer (TAL)** | The optional polygon layer inside a TS representing one territory alignment. A TS supports 0-1 TAL. Each territory feature carries dissolved geometry and `part_ids`. |
+| **Territory Alignment Layer (TAL)** | A named polygon layer inside a TS representing one territory alignment. A TS supports 0-N TALs. Each TAL has a stable `tal_id` and a human-readable `label`. Each territory feature within a TAL carries dissolved geometry and `part_ids`. |
 | **Resource Server** | EasyTerritory-hosted PostgreSQL/PostGIS instance containing shared part layers, self-hosted Nominatim + US reference datasets, geocode cache, and approved spatial helper functions. It is not customer storage. |
 | **Analysis Presentation Guidance** | Versioned guidance exposed to agents as resources/prompts or markdown, instructing them how to present Analyze output in executive, designer, sales manager, and QA contexts. |
 | **TS Identity** | Metadata carried by a TS: stable `ts_id`, current `revision`, deterministic `content_hash`, and `updated_at` timestamp. |
 | **TS Handle** | Short-lived, customer-scoped, non-guessable cache reference that lets a tool call refer to a cached TS payload instead of retransmitting it. Not durable storage. |
-| **Presentation Metadata** | Declarative styling and visualization metadata carried in a TS or referenced from EZT MCP style templates: visibility, colors, labels, classifications, symbols, legends, and named views. |
+| **Presentation Metadata** | Declarative styling and visualization metadata carried in a TS or referenced from EZT MCP style templates: visibility, colors, labels, classifications, symbols, legends, named views, and the `active_tal_id` controlling which TAL the Map Component renders by default. |
 | **DESIGN.md** | Repo-level design-system file for AI coding agents, combining machine-readable design tokens with human-readable guidance derived from EZT Designer V2. |
 
 Use these terms consistently in all tool names, resource names, API surface, documentation, and the ExpertPack.
 
-### 4.2 Territory Alignment Layer Is Optional, Singular, and Dissolved
-A TS supports zero or one Territory Alignment Layer (TAL). When a TAL is present, each Territory feature carries dissolved polygon geometry — the union of all its constituent parts. A TS is self-contained. `part_ids` records the composition and `part_layer` identifies the atomic geography used to construct the TAL, but the renderable geometry is pre-computed and embedded.
+### 4.2 Territory Alignment Layers Are Optional, Multiple, and Dissolved
+A TS supports zero or more Territory Alignment Layers (TALs). Each TAL is independently identified by a stable `tal_id` and carries a human-readable `label` (e.g., "By Revenue Q1", "By Headcount"). When a TAL is present, each Territory feature within it carries dissolved polygon geometry — the union of all its constituent parts. A TS is self-contained: `part_ids` records composition and `part_layer` identifies the atomic geography used to construct each TAL, but the renderable geometry is pre-computed and embedded.
+
+Multiple TALs coexisting in the same TS are the foundation of comparative territory analysis. The `active_tal_id` top-level field identifies which TAL is currently active for rendering. Build tools always append a new TAL; Realign targets a specific TAL by `tal_id`; Analyze may target one or multiple TALs for cross-alignment comparison. The agent is responsible for removing unwanted TALs after a decision is made.
 
 ### 4.3 Reference Data Is Read-Only
 The application never writes to `shared_geo` or Nominatim reference datasets. Reference data updates are an operational concern handled outside the application.
@@ -157,16 +159,17 @@ The geocode cache maps normalized address strings to lat/lon coordinates and pro
 ### 4.5 TS Layer Cardinality
 A valid TS may contain:
 - 0-N point location layers
-- 0-1 territory alignment layer (TAL)
+- 0-N territory alignment layers (TALs)
 
 Examples:
 - Geocode Address output: one point layer, no TAL
-- Direct Build output: one TAL, zero or more point layers
+- Direct Build output: one new TAL appended; incoming point layers preserved
 - Empty template TS: no point layers, no TAL
-- Full planning TS: one TAL plus one or more point layers
+- Single-alignment planning TS: one TAL plus one or more point layers
+- Comparative planning TS: two or more TALs (e.g., "By Revenue" and "By Headcount") plus shared point layers
 
 ### 4.6 TS In, TS Out
-Geometry-bearing tools should accept a TS and return an updated TS whenever practical. The TS flows through the system and is adorned/augmented over time. For example, Geocode Address adds point layers, Auto Build adds or replaces the TAL while preserving point layers, Realign updates the TAL, and sharing renders the TS without changing it.
+Geometry-bearing tools should accept a TS and return an updated TS whenever practical. The TS flows through the system and is adorned/augmented over time. For example, Geocode Address adds point layers, Auto Build appends a new TAL while preserving existing TALs and point layers, Realign updates a specific TAL identified by `tal_id`, and sharing renders the TS without changing it.
 
 Exceptions must be justified in the Functional Spec.
 
