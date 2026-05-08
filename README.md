@@ -11,7 +11,7 @@
 EZT MCP is an MCP server that gives AI agents the ability to build, balance, and analyze territory solutions — the same operations that previously required a trained user inside EZT Designer.
 
 **MVP tools:**
-- **Geocode Address** — address strings → TS with a point layer, using self-hosted Nominatim first and shared geocode cache
+- **Geocode Address** — address strings → TS with a point layer, using TomTom Level 1 first and Azure Maps fallback
 - **Direct Build** — alignment file (ZIP code → territory name mapping) + part layer → territory solution
 - **Account Build** — accounts with a grouping attribute (e.g., sales manager) → inferred territory solution with hole-filling and contiguity repair
 - **Auto Build** — TS + metric + part layer + target territory count → augmented TS with balanced TAL
@@ -24,8 +24,8 @@ Output is a **Territory Solution (TS)** — standard GeoJSON and the only geomet
 
 - **Hosted by EasyTerritory** — not self-hosted by customers
 - **Durably stateless MCP server** — no customer data persisted as system of record; customer's agent owns territory solution storage
-- **Resource Server: PostgreSQL/PostGIS** — part layers (US ZIPs, counties, states, Canadian FSAs), self-hosted Nominatim + US reference data, geocode cache, spatial compute support
-- **PMTiles/object storage** — vector basemap and part-layer tile archives are static browser-delivery artifacts hosted outside PostgreSQL; same OSM source extract may feed Nominatim and basemap generation as separate derived outputs
+- **Resource Server: PostgreSQL/PostGIS** — part layers (US ZIPs, counties, states, Canadian FSAs), geocode cache, spatial compute support
+- **PMTiles/object storage** — vector basemap and part-layer tile archives are static browser-delivery artifacts hosted outside PostgreSQL
 - **ExpertPack knowledge layer** — domain expertise for territory design, EZT product knowledge, workflow guidance
 
 ## Lifecycle

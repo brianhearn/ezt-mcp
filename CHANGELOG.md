@@ -7,6 +7,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-08) — v0.9.0
+- `VISION.md` / `CONSTITUTION.md` v0.9.0 — removed Nominatim from the v1 geocoding architecture
+- Geocoder provider hierarchy is now TomTom Level 1 → Azure Maps fallback
+- Resource Server scope is now canonical `shared_geo` part layers, `geocode_cache`, and spatial helper functions; it no longer includes Nominatim/geocoder reference data for v1
+- PMTiles basemap pipeline remains separate from PostgreSQL and is now described as independent of geocoding rather than sharing an OSM source with Nominatim
+- `README.md` / `MAP_COMPONENT.md` — aligned current-state docs with the TomTom/Azure Maps geocoding posture
+
 ### Changed (2026-05-08) — v0.8.0
 - `VISION.md` / `CONSTITUTION.md` v0.8.0 — codified PMTiles basemap/part-layer architecture: same OSM source extract, separate derived outputs for Nominatim/geocoding and vector basemap PMTiles
 - Clarified that Resource Server PostgreSQL/PostGIS holds Nominatim/geocoder data, `geocode_cache`, canonical `shared_geo` part layers, and spatial helper functions — not basemap PMTiles

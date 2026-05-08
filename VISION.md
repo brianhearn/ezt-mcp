@@ -1,4 +1,4 @@
-Version: 0.8.0
+Version: 0.9.0
 Date: 2026-05-08
 Status: Draft
 
@@ -61,7 +61,7 @@ Two primary interaction modes:
 ### 1. Geocode Address
 Input: one or more address strings
 Output: a Territory Solution (TS) with one point location layer and no territory alignment layer
-Provider hierarchy: self-hosted Nominatim on the EZT MCP Resource Server → TomTom → Azure Maps fallback
+Provider hierarchy: TomTom Level 1 → Azure Maps fallback
 Geocode results are cached in the Resource Server PostgreSQL database (address → lat/lon). Cache is non-customer-specific.
 
 ### 2. Direct Build — Alignment File → Territory Solution
@@ -262,7 +262,7 @@ The product claim should therefore be precise: EZT MCP does **not persist** cust
 
 ## Resource Server and Part Layers
 
-EZT MCP is backed by an EasyTerritory-hosted **Resource Server**: a PostgreSQL/PostGIS instance that provides shared spatial resources and compute support for the stateless MCP tier. It is not customer storage. It contains curated part geometry layers, self-hosted Nominatim data, US reference datasets, geocode cache tables, and spatial indexes/functions used when computation is better executed close to the geometry.
+EZT MCP is backed by an EasyTerritory-hosted **Resource Server**: a PostgreSQL/PostGIS instance that provides shared spatial resources and compute support for the stateless MCP tier. It is not customer storage. It contains curated part geometry layers, geocode cache tables, and spatial indexes/functions used when computation is better executed close to the geometry.
 
 Part layers are EasyTerritory's curated geographic datasets — the result of years of curation and refinement. Part layers are stored in PostgreSQL/PostGIS on the Resource Server and hosted by EasyTerritory.
 
@@ -276,13 +276,12 @@ The Resource Server is not the basemap tile store. Basemap and browser delivery 
 
 Recommended model:
 
-- **Same OSM source extract, separate derived outputs.** A US OSM extract can feed both Nominatim import and OSM-derived basemap tile generation, but the Nominatim geocoder schema is not the cartographic source of truth.
-- **Resource Server PostgreSQL/PostGIS** holds Nominatim/geocoder data, `geocode_cache`, curated `shared_geo` part layers, and approved spatial helper functions.
+- **Resource Server PostgreSQL/PostGIS** holds `geocode_cache`, curated `shared_geo` part layers, and approved spatial helper functions. It is not a basemap tile store.
 - **PMTiles build pipeline** produces vector PMTiles archives for the Map Component: OSM-derived basemap PMTiles from Protomaps/Planetiler-style processing, plus part-layer PMTiles generated from canonical `shared_geo` tables.
 - **Blob/object storage** is the natural home for PMTiles archives. They are static, read-only delivery artifacts served over HTTPS with HTTP Range Request support — not tables inside PostgreSQL and not customer data storage.
 - **TS GeoJSON remains the customer solution artifact.** Customer-specific territory solutions are rendered by the Map Component as TS/GeoJSON supplied by the agent, not baked into basemap PMTiles for v1.
 
-This separates responsibilities cleanly: PostGIS is canonical for geocoding, shared spatial computation, and curated part geometries; PMTiles is optimized browser delivery for basemap and part-boundary rendering.
+This separates responsibilities cleanly: PostGIS is canonical for shared spatial computation, geocode caching, and curated part geometries; PMTiles is optimized browser delivery for basemap and part-boundary rendering.
 
 ---
 
@@ -291,7 +290,7 @@ This separates responsibilities cleanly: PostGIS is canonical for geocoding, sha
 EasyTerritory hosts all infrastructure. Customers are not responsible for deployment.
 
 - **EZT MCP server** — stateless; hosted by EasyTerritory
-- **Resource Server: PostgreSQL (PostGIS)** — hosted by EasyTerritory in Azure; contains part layers, self-hosted Nominatim + US reference data, geocode cache, spatial indexes/functions, and no customer-specific territory data
+- **Resource Server: PostgreSQL (PostGIS)** — hosted by EasyTerritory in Azure; contains part layers, geocode cache, spatial indexes/functions, and no customer-specific territory data
 - **PMTiles/object storage** — vector basemap PMTiles and part-layer PMTiles are static browser-delivery artifacts hosted outside PostgreSQL, ideally in Azure Blob Storage or equivalent object storage with Range Request support
 - **Customer's agent** — owns all customer-specific data: Territory Solutions, account lists, alignment files. Pulls account data from source systems (CRM, spreadsheets, databases). Persists TS files between sessions. Passes TS into EZT MCP on each call; receives the updated TS back.
 - **Auth** — API key per customer; Bearer token on every request

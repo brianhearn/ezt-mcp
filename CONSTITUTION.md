@@ -1,6 +1,6 @@
 # CONSTITUTION.md — EZT MCP Non-Negotiables
 
-**Version:** 0.8.0
+**Version:** 0.9.0
 **Date:** 2026-05-08
 **Status:** Draft
 
@@ -16,7 +16,7 @@ These are the architectural, security, stack, and convention decisions that are 
 | MCP framework | FastMCP (official MCP SDK) | Inherited from ep-mcp |
 | Web layer | Starlette + Uvicorn | Inherited from ep-mcp |
 | CLI | Click | Inherited from ep-mcp |
-| Resource Server | PostgreSQL + PostGIS | Part layers, self-hosted Nominatim + US reference data, geocode cache, spatial compute support — shared resources only |
+| Resource Server | PostgreSQL + PostGIS | Part layers, geocode cache, spatial compute support — shared resources only |
 | Map renderer | MapLibre GL JS | Primary Map Component renderer candidate |
 | Tile delivery | PMTiles | Static vector basemap and part-layer delivery artifacts served from object/blob storage, not PostgreSQL |
 | Spatial / geo library | GeoPandas + Shapely | Territory computation pipeline (dissolve, partition, zone, realign) |
@@ -30,7 +30,7 @@ These are the architectural, security, stack, and convention decisions that are 
 ## 2. Architecture Non-Negotiables
 
 ### 2.1 Stateless MCP Tier
-The EZT MCP application container is **durably stateless**. It holds no persistent customer data, no durable territory solutions, and no mutable customer state that must survive restart. The Resource Server holds only shared reference data and shared spatial infrastructure (part layers, self-hosted Nominatim + US datasets, geocode cache, spatial indexes/functions). Container restarts and horizontal scaling are transparent to clients except for optional short-lived cache misses.
+The EZT MCP application container is **durably stateless**. It holds no persistent customer data, no durable territory solutions, and no mutable customer state that must survive restart. The Resource Server holds only shared reference data and shared spatial infrastructure (part layers, geocode cache, spatial indexes/functions). Container restarts and horizontal scaling are transparent to clients except for optional short-lived cache misses.
 
 ### 2.2 No Per-Customer State in EZT MCP
 EZT MCP does not persist territory solutions, account data, or any customer-specific data as a system of record. Every tool call supports the fully stateless path: the agent passes the current TS in, EZT MCP computes, the updated TS comes back out. For efficiency, the agent may use short-lived cache handles instead of repeatedly transmitting the same multi-MB TS. The agent is responsible for persisting outputs and for retrieving account data from the customer's source systems (CRM, spreadsheets, databases) before embedding it as a point layer.
@@ -40,18 +40,17 @@ This is a deliberate design choice — it minimizes data isolation complexity, r
 ### 2.3 Resource Server — Shared Spatial Infrastructure Only
 A single EasyTerritory-hosted Resource Server, implemented as PostgreSQL/PostGIS, serves all customers. It contains:
 - `shared_geo` schema — part layer polygons (US ZIPs, US counties, US states, Canadian FSAs, etc.). Read-only from the application.
-- `nominatim` schemas/tables — self-hosted Nominatim geocoding data and indexes, including required US address/reference datasets.
 - `geocode_cache` schema — address → lat/lon cache. Shared across all customers; contains no customer-identifying data.
 - Spatial helper functions/indexes used by the territory computation pipeline when work is better performed in PostGIS than in the application container.
 
 There are no per-customer schemas. The Resource Server is shared infrastructure, not customer storage. The application user has the minimum privileges required to read shared spatial resources, execute approved spatial helper functions, and read/write the geocode cache.
 
-Basemap PMTiles do not live in the Resource Server. The same OSM source extract may feed both Nominatim import and basemap generation, but those are separate derived outputs. Nominatim's schema is optimized for geocoding and must not become the cartographic basemap source of truth.
+Basemap PMTiles do not live in the Resource Server. OSM-derived basemap generation is a separate cartographic build pipeline and is not coupled to the geocoder.
 
 ### 2.4 Geocoding — Internal to MCP
 Geocoding is handled directly by EZT MCP (no separate geocoder microservice). Provider selection, tier routing, fallback, and cache lookup/write are all implemented within the MCP server. Provider credentials (TomTom, Azure Maps) are sourced from Azure Key Vault at startup.
 
-Provider hierarchy: self-hosted Nominatim on the Resource Server → TomTom → Azure Maps fallback. Public Nominatim is not used for the hosted commercial service.
+Provider hierarchy: TomTom Level 1 → Azure Maps fallback.
 
 ### 2.5 GeoJSON as the Universal Wire Format
 The Territory Solution (TS) is standard GeoJSON — a `FeatureCollection` with EZT MCP conventions expressed in standard `properties` fields. It is not a proprietary format, a custom binary, or an EZT-specific file type. Any GeoJSON-aware tool or library can parse a TS without an EZT SDK.
@@ -67,7 +66,7 @@ Territory dissolution (union of geographic parts into a territory polygon) and R
 A single shared ExpertPack backs the domain knowledge layer for all customers. All customers query the same pack. Per-customer pack overlays are not in scope for v1.
 
 ### 2.8 EasyTerritory Hosts Everything
-EZT MCP infrastructure is hosted and operated by EasyTerritory. Customers are not responsible for deployment, the Resource Server, Nominatim, PostGIS, or part layer data. Customer access is via API key only.
+EZT MCP infrastructure is hosted and operated by EasyTerritory. Customers are not responsible for deployment, the Resource Server, PostGIS, geocoder providers, or part layer data. Customer access is via API key only.
 
 ### 2.9 Sharing Is Flagship, But Not System of Record
 EZT MCP must support executive sharing workflows as a first-class flagship capability, but it must not become the system of record for customer Territory Solutions. Sharing surfaces are read-only projections of a TS supplied by the customer's agent or storage layer. Supported sharing directions include unified map-component views, Power BI-friendly projections/exports, and narrative executive summaries generated from TS + Analyze output.
@@ -147,7 +146,7 @@ Short-lived cache entries are still customer data and must be treated accordingl
 | **Point Layer** | A named collection of point features embedded in a TS (e.g., accounts, stores, service locations). A TS supports 0-N point layers. Each layer declares `metric_fields` — the attributes Analyze should aggregate. |
 | **Metric Fields** | Attribute names on a point layer that carry quantitative values for analysis (e.g., `annual_revenue`, `account_count`). Declared at the layer level in the TS. |
 | **Territory Alignment Layer (TAL)** | A named polygon layer inside a TS representing one territory alignment. A TS supports 0-N TALs. Each TAL has a stable `tal_id` and a human-readable `label`. Each territory feature within a TAL carries dissolved geometry and `part_ids`. |
-| **Resource Server** | EasyTerritory-hosted PostgreSQL/PostGIS instance containing shared part layers, self-hosted Nominatim + US reference datasets, geocode cache, and approved spatial helper functions. It is not customer storage. |
+| **Resource Server** | EasyTerritory-hosted PostgreSQL/PostGIS instance containing shared part layers, geocode cache, and approved spatial helper functions. It is not customer storage. |
 | **PMTiles** | Static single-file tile archives used by the Map Component for vector basemap and part-layer delivery. PMTiles are hosted from blob/object storage with Range Request support, not stored in PostgreSQL. |
 | **Analysis Presentation Guidance** | Versioned guidance exposed to agents as resources/prompts or markdown, instructing them how to present Analyze output in executive, designer, sales manager, and QA contexts. |
 | **TS Identity** | Metadata carried by a TS: stable `ts_id`, current `revision`, deterministic `content_hash`, and `updated_at` timestamp. |
@@ -163,7 +162,7 @@ A TS supports zero or more Territory Alignment Layers (TALs). Each TAL is indepe
 Multiple TALs coexisting in the same TS are the foundation of comparative territory analysis. The `active_tal_id` top-level field identifies which TAL is currently active for rendering. Build tools always append a new TAL; Realign targets a specific TAL by `tal_id`; Analyze may target one or multiple TALs for cross-alignment comparison. The agent is responsible for removing unwanted TALs after a decision is made.
 
 ### 4.3 Reference Data Is Read-Only
-The application never writes to `shared_geo` or Nominatim reference datasets. Reference data updates are an operational concern handled outside the application.
+The application never writes to `shared_geo`. Reference data updates are an operational concern handled outside the application.
 
 ### 4.4 Geocode Cache Is Non-Customer-Specific
 The geocode cache maps normalized address strings to lat/lon coordinates and provider metadata. It contains no customer identifiers, account data, or territory data. It is safe to share across all customers.

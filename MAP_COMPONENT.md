@@ -135,7 +135,7 @@ A hosted URL that can be embedded in other surfaces (Power Apps, Dynamics 365, e
 
 PMTiles note: EasyTerritory's part layer polygons (US ZIPs, counties, states, Canadian FSAs) need to be published as PMTiles archives. This is a one-time operational task per layer, re-run when layers are updated. Storage in Azure Blob Storage alongside the MCP infrastructure is the natural home.
 
-Basemap PMTiles should be treated separately from part-layer PMTiles. The preferred basemap path is an OSM-derived vector PMTiles archive generated through a Protomaps/Planetiler-style pipeline and served from object/blob storage with HTTP Range Request support. The same OSM extract may also feed Nominatim, but Nominatim's PostgreSQL schema is a geocoder data product, not the cartographic basemap source. Customer TS GeoJSON is rendered as an overlay supplied by the agent; it is not baked into PMTiles for v1.
+Basemap PMTiles should be treated separately from part-layer PMTiles. The preferred basemap path is an OSM-derived vector PMTiles archive generated through a Protomaps/Planetiler-style pipeline and served from object/blob storage with HTTP Range Request support. This basemap pipeline is independent of geocoding. Customer TS GeoJSON is rendered as an overlay supplied by the agent; it is not baked into PMTiles for v1.
 
 ---
 
