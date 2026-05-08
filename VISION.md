@@ -1,4 +1,4 @@
-Version: 0.9.0
+Version: 0.10.0
 Date: 2026-05-08
 Status: Draft
 
@@ -276,8 +276,8 @@ The Resource Server is not the basemap tile store. Basemap and browser delivery 
 
 Recommended model:
 
-- **Resource Server PostgreSQL/PostGIS** holds `geocode_cache`, curated `shared_geo` part layers, and approved spatial helper functions. It is not a basemap tile store.
-- **PMTiles build pipeline** produces vector PMTiles archives for the Map Component: OSM-derived basemap PMTiles from Protomaps/Planetiler-style processing, plus part-layer PMTiles generated from canonical `shared_geo` tables.
+- **Resource Server PostgreSQL/PostGIS** holds `geocode_cache`, curated `geo` part layers, and approved spatial helper functions. It is not a basemap tile store.
+- **PMTiles build pipeline** produces vector PMTiles archives for the Map Component: OSM-derived basemap PMTiles from Protomaps/Planetiler-style processing, plus part-layer PMTiles generated from canonical `geo` tables.
 - **Blob/object storage** is the natural home for PMTiles archives. They are static, read-only delivery artifacts served over HTTPS with HTTP Range Request support — not tables inside PostgreSQL and not customer data storage.
 - **TS GeoJSON remains the customer solution artifact.** Customer-specific territory solutions are rendered by the Map Component as TS/GeoJSON supplied by the agent, not baked into basemap PMTiles for v1.
 

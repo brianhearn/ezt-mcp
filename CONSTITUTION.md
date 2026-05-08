@@ -1,6 +1,6 @@
 # CONSTITUTION.md — EZT MCP Non-Negotiables
 
-**Version:** 0.9.0
+**Version:** 0.10.0
 **Date:** 2026-05-08
 **Status:** Draft
 
@@ -39,7 +39,7 @@ This is a deliberate design choice — it minimizes data isolation complexity, r
 
 ### 2.3 Resource Server — Shared Spatial Infrastructure Only
 A single EasyTerritory-hosted Resource Server, implemented as PostgreSQL/PostGIS, serves all customers. It contains:
-- `shared_geo` schema — part layer polygons (US ZIPs, US counties, US states, Canadian FSAs, etc.). Read-only from the application.
+- `geo` schema — part layer polygons (US ZIPs, US counties, US states, Canadian FSAs, etc.). Read-only from the application.
 - `geocode_cache` schema — address → lat/lon cache. Shared across all customers; contains no customer-identifying data.
 - Spatial helper functions/indexes used by the territory computation pipeline when work is better performed in PostGIS than in the application container.
 
@@ -96,7 +96,7 @@ EZT Designer V2 is the visual source of truth. The Map Component must use `DESIG
 ### 2.14 PMTiles Are Static Delivery Artifacts
 PMTiles archives are read-only browser delivery artifacts, not authoritative operational data stores. Vector basemap PMTiles are generated from OSM-derived cartographic processing, preferably Protomaps/Planetiler-style, and hosted in blob/object storage with HTTP Range Request support. They are not stored in PostgreSQL.
 
-Curated part layers are canonical in `shared_geo` PostGIS tables. Part-layer PMTiles may be generated from those tables for Map Component rendering and selection hit-testing. Regenerating part-layer PMTiles is an operational build step when canonical part geometry changes.
+Curated part layers are canonical in `geo` PostGIS tables. Part-layer PMTiles may be generated from those tables for Map Component rendering and selection hit-testing. Regenerating part-layer PMTiles is an operational build step when canonical part geometry changes.
 
 Customer-specific TS data is not baked into PMTiles for v1. The Map Component renders agent-supplied TS GeoJSON for active territory solutions, overlaid on static basemap and part-layer PMTiles.
 
@@ -139,7 +139,7 @@ Short-lived cache entries are still customer data and must be treated accordingl
 | **Part (P)** | A single geographic unit (e.g., one ZIP code polygon). The atomic unit of territory composition. |
 | **Territory (T)** | The dissolved union of one or more parts assigned to a named territory. A T is a GeoJSON Feature with dissolved MultiPolygon geometry and `part_ids` in properties. |
 | **Territory Solution (TS)** | The universal EZT MCP geometry artifact — a GeoJSON FeatureCollection that may contain 0-N point location layers and 0-N territory alignment layers (TALs), plus solution-level metadata. |
-| **Part Layer** | A named collection of part polygons stored on the Resource Server in `shared_geo` (e.g., `us_zips`, `us_counties`, `ca_fsa`). |
+| **Part Layer** | A named collection of part polygons stored on the Resource Server in `geo` (e.g., `us_zips`, `us_counties`, `ca_fsa`). |
 | **Alignment File** | A customer-supplied CSV or Excel file mapping part identifiers (e.g., ZIP codes) to territory names. Input to Direct Build. |
 | **Grouping Attribute** | A non-spatial attribute on an account record (e.g., sales manager name, territory name) used by Account Build to infer territory assignments. |
 | **Realignment Instructions** | A set of directed part-move operations supplied to the Realign tool: move part P from territory A to territory B, or into a new territory. |
@@ -162,7 +162,7 @@ A TS supports zero or more Territory Alignment Layers (TALs). Each TAL is indepe
 Multiple TALs coexisting in the same TS are the foundation of comparative territory analysis. The `active_tal_id` top-level field identifies which TAL is currently active for rendering. Build tools always append a new TAL; Realign targets a specific TAL by `tal_id`; Analyze may target one or multiple TALs for cross-alignment comparison. The agent is responsible for removing unwanted TALs after a decision is made.
 
 ### 4.3 Reference Data Is Read-Only
-The application never writes to `shared_geo`. Reference data updates are an operational concern handled outside the application.
+The application never writes to `geo`. Reference data updates are an operational concern handled outside the application.
 
 ### 4.4 Geocode Cache Is Non-Customer-Specific
 The geocode cache maps normalized address strings to lat/lon coordinates and provider metadata. It contains no customer identifiers, account data, or territory data. It is safe to share across all customers.
