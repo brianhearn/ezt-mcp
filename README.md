@@ -18,13 +18,14 @@ EZT MCP is an MCP server that gives AI agents the ability to build, balance, and
 - **Realign** — move parts between territories (or into a new territory) in an existing solution
 - **Analyze Territory Solution** — TS-embedded point layers + metrics → structured JSON analysis, paired with presentation guidance for agent-generated insight
 
-Output is a **Territory Solution (TS)** — standard GeoJSON and the only geometry-bearing file format used by EZT MCP. A TS supports 0-N point location layers and 0-1 territory alignment layer (TAL). Geocode Address returns a TS with a point layer and no TAL; build tools return a TS with a TAL.
+Output is a **Territory Solution (TS)** — standard GeoJSON and the only geometry-bearing file format used by EZT MCP. A TS supports 0-N point location layers and 0-N territory alignment layers (TALs). Geocode Address returns a TS with a point layer and no TAL; build tools append named TALs so agents and users can compare multiple alignment strategies side by side.
 
 ## Architecture
 
 - **Hosted by EasyTerritory** — not self-hosted by customers
 - **Durably stateless MCP server** — no customer data persisted as system of record; customer's agent owns territory solution storage
 - **Resource Server: PostgreSQL/PostGIS** — part layers (US ZIPs, counties, states, Canadian FSAs), self-hosted Nominatim + US reference data, geocode cache, spatial compute support
+- **PMTiles/object storage** — vector basemap and part-layer tile archives are static browser-delivery artifacts hosted outside PostgreSQL; same OSM source extract may feed Nominatim and basemap generation as separate derived outputs
 - **ExpertPack knowledge layer** — domain expertise for territory design, EZT product knowledge, workflow guidance
 
 ## Lifecycle

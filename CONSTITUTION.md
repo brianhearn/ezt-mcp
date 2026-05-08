@@ -1,7 +1,7 @@
 # CONSTITUTION.md — EZT MCP Non-Negotiables
 
-**Version:** 0.7.0
-**Date:** 2026-05-07
+**Version:** 0.8.0
+**Date:** 2026-05-08
 **Status:** Draft
 
 These are the architectural, security, stack, and convention decisions that are locked for the life of the project. Deviations require explicit revision of this document with justification. All downstream specs and implementation must conform.
@@ -17,6 +17,8 @@ These are the architectural, security, stack, and convention decisions that are 
 | Web layer | Starlette + Uvicorn | Inherited from ep-mcp |
 | CLI | Click | Inherited from ep-mcp |
 | Resource Server | PostgreSQL + PostGIS | Part layers, self-hosted Nominatim + US reference data, geocode cache, spatial compute support — shared resources only |
+| Map renderer | MapLibre GL JS | Primary Map Component renderer candidate |
+| Tile delivery | PMTiles | Static vector basemap and part-layer delivery artifacts served from object/blob storage, not PostgreSQL |
 | Spatial / geo library | GeoPandas + Shapely | Territory computation pipeline (dissolve, partition, zone, realign) |
 | Containers | Azure Container Apps | Stateless MCP instances |
 | Secrets (production) | Azure Key Vault | No plaintext credentials in config files or env vars in production |
@@ -43,6 +45,8 @@ A single EasyTerritory-hosted Resource Server, implemented as PostgreSQL/PostGIS
 - Spatial helper functions/indexes used by the territory computation pipeline when work is better performed in PostGIS than in the application container.
 
 There are no per-customer schemas. The Resource Server is shared infrastructure, not customer storage. The application user has the minimum privileges required to read shared spatial resources, execute approved spatial helper functions, and read/write the geocode cache.
+
+Basemap PMTiles do not live in the Resource Server. The same OSM source extract may feed both Nominatim import and basemap generation, but those are separate derived outputs. Nominatim's schema is optimized for geocoding and must not become the cartographic basemap source of truth.
 
 ### 2.4 Geocoding — Internal to MCP
 Geocoding is handled directly by EZT MCP (no separate geocoder microservice). Provider selection, tier routing, fallback, and cache lookup/write are all implemented within the MCP server. Provider credentials (TomTom, Azure Maps) are sourced from Azure Key Vault at startup.
@@ -90,6 +94,13 @@ The repo must contain a `DESIGN.md` file that captures the EasyTerritory product
 
 EZT Designer V2 is the visual source of truth. The Map Component must use `DESIGN.md` for product chrome, controls, legends, panels, empty/loading/error states, and default visual language. TS presentation metadata remains responsible for solution-specific map symbology.
 
+### 2.14 PMTiles Are Static Delivery Artifacts
+PMTiles archives are read-only browser delivery artifacts, not authoritative operational data stores. Vector basemap PMTiles are generated from OSM-derived cartographic processing, preferably Protomaps/Planetiler-style, and hosted in blob/object storage with HTTP Range Request support. They are not stored in PostgreSQL.
+
+Curated part layers are canonical in `shared_geo` PostGIS tables. Part-layer PMTiles may be generated from those tables for Map Component rendering and selection hit-testing. Regenerating part-layer PMTiles is an operational build step when canonical part geometry changes.
+
+Customer-specific TS data is not baked into PMTiles for v1. The Map Component renders agent-supplied TS GeoJSON for active territory solutions, overlaid on static basemap and part-layer PMTiles.
+
 ---
 
 ## 3. Security Non-Negotiables
@@ -128,7 +139,7 @@ Short-lived cache entries are still customer data and must be treated accordingl
 |---|---|
 | **Part (P)** | A single geographic unit (e.g., one ZIP code polygon). The atomic unit of territory composition. |
 | **Territory (T)** | The dissolved union of one or more parts assigned to a named territory. A T is a GeoJSON Feature with dissolved MultiPolygon geometry and `part_ids` in properties. |
-| **Territory Solution (TS)** | The universal EZT MCP geometry artifact — a GeoJSON FeatureCollection that may contain 0-N point location layers and 0-1 territory alignment layer (TAL), plus solution-level metadata. |
+| **Territory Solution (TS)** | The universal EZT MCP geometry artifact — a GeoJSON FeatureCollection that may contain 0-N point location layers and 0-N territory alignment layers (TALs), plus solution-level metadata. |
 | **Part Layer** | A named collection of part polygons stored on the Resource Server in `shared_geo` (e.g., `us_zips`, `us_counties`, `ca_fsa`). |
 | **Alignment File** | A customer-supplied CSV or Excel file mapping part identifiers (e.g., ZIP codes) to territory names. Input to Direct Build. |
 | **Grouping Attribute** | A non-spatial attribute on an account record (e.g., sales manager name, territory name) used by Account Build to infer territory assignments. |
@@ -137,6 +148,7 @@ Short-lived cache entries are still customer data and must be treated accordingl
 | **Metric Fields** | Attribute names on a point layer that carry quantitative values for analysis (e.g., `annual_revenue`, `account_count`). Declared at the layer level in the TS. |
 | **Territory Alignment Layer (TAL)** | A named polygon layer inside a TS representing one territory alignment. A TS supports 0-N TALs. Each TAL has a stable `tal_id` and a human-readable `label`. Each territory feature within a TAL carries dissolved geometry and `part_ids`. |
 | **Resource Server** | EasyTerritory-hosted PostgreSQL/PostGIS instance containing shared part layers, self-hosted Nominatim + US reference datasets, geocode cache, and approved spatial helper functions. It is not customer storage. |
+| **PMTiles** | Static single-file tile archives used by the Map Component for vector basemap and part-layer delivery. PMTiles are hosted from blob/object storage with Range Request support, not stored in PostgreSQL. |
 | **Analysis Presentation Guidance** | Versioned guidance exposed to agents as resources/prompts or markdown, instructing them how to present Analyze output in executive, designer, sales manager, and QA contexts. |
 | **TS Identity** | Metadata carried by a TS: stable `ts_id`, current `revision`, deterministic `content_hash`, and `updated_at` timestamp. |
 | **TS Handle** | Short-lived, customer-scoped, non-guessable cache reference that lets a tool call refer to a cached TS payload instead of retransmitting it. Not durable storage. |

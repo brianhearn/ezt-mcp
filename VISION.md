@@ -1,5 +1,5 @@
-Version: 0.7.0
-Date: 2026-05-07
+Version: 0.8.0
+Date: 2026-05-08
 Status: Draft
 
 EZT MCP is a server-side territory intelligence service that exposes EasyTerritory's core territory operations as MCP-native capabilities. It gives AI agents the ability to perform territory work that previously required a human expert inside EZT Designer.
@@ -270,6 +270,20 @@ Available layers in v1: US ZIP codes, US counties, US states, Canadian FSAs. Add
 
 Callers reference part layers by name (e.g., `"us_zips"`). EZT MCP resolves geometries internally and records the selected part layer in the TS/TAL metadata.
 
+### Basemap and PMTiles Delivery
+
+The Resource Server is not the basemap tile store. Basemap and browser delivery artifacts should be generated as separate derived outputs from the same source datasets and hosted as static files.
+
+Recommended model:
+
+- **Same OSM source extract, separate derived outputs.** A US OSM extract can feed both Nominatim import and OSM-derived basemap tile generation, but the Nominatim geocoder schema is not the cartographic source of truth.
+- **Resource Server PostgreSQL/PostGIS** holds Nominatim/geocoder data, `geocode_cache`, curated `shared_geo` part layers, and approved spatial helper functions.
+- **PMTiles build pipeline** produces vector PMTiles archives for the Map Component: OSM-derived basemap PMTiles from Protomaps/Planetiler-style processing, plus part-layer PMTiles generated from canonical `shared_geo` tables.
+- **Blob/object storage** is the natural home for PMTiles archives. They are static, read-only delivery artifacts served over HTTPS with HTTP Range Request support — not tables inside PostgreSQL and not customer data storage.
+- **TS GeoJSON remains the customer solution artifact.** Customer-specific territory solutions are rendered by the Map Component as TS/GeoJSON supplied by the agent, not baked into basemap PMTiles for v1.
+
+This separates responsibilities cleanly: PostGIS is canonical for geocoding, shared spatial computation, and curated part geometries; PMTiles is optimized browser delivery for basemap and part-boundary rendering.
+
 ---
 
 ## Infrastructure Model
@@ -278,6 +292,7 @@ EasyTerritory hosts all infrastructure. Customers are not responsible for deploy
 
 - **EZT MCP server** — stateless; hosted by EasyTerritory
 - **Resource Server: PostgreSQL (PostGIS)** — hosted by EasyTerritory in Azure; contains part layers, self-hosted Nominatim + US reference data, geocode cache, spatial indexes/functions, and no customer-specific territory data
+- **PMTiles/object storage** — vector basemap PMTiles and part-layer PMTiles are static browser-delivery artifacts hosted outside PostgreSQL, ideally in Azure Blob Storage or equivalent object storage with Range Request support
 - **Customer's agent** — owns all customer-specific data: Territory Solutions, account lists, alignment files. Pulls account data from source systems (CRM, spreadsheets, databases). Persists TS files between sessions. Passes TS into EZT MCP on each call; receives the updated TS back.
 - **Auth** — API key per customer; Bearer token on every request
 

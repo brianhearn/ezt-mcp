@@ -7,6 +7,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-08) — v0.8.0
+- `VISION.md` / `CONSTITUTION.md` v0.8.0 — codified PMTiles basemap/part-layer architecture: same OSM source extract, separate derived outputs for Nominatim/geocoding and vector basemap PMTiles
+- Clarified that Resource Server PostgreSQL/PostGIS holds Nominatim/geocoder data, `geocode_cache`, canonical `shared_geo` part layers, and spatial helper functions — not basemap PMTiles
+- Clarified that vector basemap PMTiles and part-layer PMTiles are static browser-delivery artifacts hosted from blob/object storage with HTTP Range Request support
+- Clarified that curated part layers are canonical in PostGIS and exported to PMTiles for Map Component rendering/selection, while customer TS GeoJSON remains the active solution artifact and is not baked into PMTiles for v1
+- `README.md` / `MAP_COMPONENT.md` — aligned overview and component notes with the PMTiles/object-storage split
+
 ### Changed (2026-05-07) — v0.7.0
 - `VISION.md` / `CONSTITUTION.md` v0.7.0 — TAL cardinality changed from **0-1** to **0-N**: a TS now supports multiple Territory Alignment Layers coexisting in the same file
 - Each TAL now carries a stable `tal_id` and a human-readable `label` (e.g., "By Revenue Q1", "By Headcount")
