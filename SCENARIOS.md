@@ -1,6 +1,6 @@
 # SCENARIOS.md — EZT MCP Workflow Scenarios
 
-**Version:** 0.3.0
+**Version:** 0.4.0
 **Date:** 2026-05-11
 **Status:** Scenario collection — draft
 
@@ -386,48 +386,52 @@ The share link should be temporary and scoped. It should not make EZT MCP the du
 ---
 
 
+
 ## Scenario 003 — Monica pulls CRM accounts and auto-builds two TALs for side-by-side comparison
 
 ### Summary
 
-Monica asks her agent to pull the latest accounts from CRM with sales figures. She then asks it to auto-build a new Territory Solution with two 10-territory TALs: one balanced by store count and one balanced by sales volume. The agent completes both builds and presents a comparative Analyze between the two alignments so Monica can decide which one to keep or whether to blend them.
+Monica asks her agent to pull the latest accounts from CRM with specific columns including sales figures and store counts. She then asks it to auto-build a new Territory Solution with two 10-territory TALs: one balanced by store count and one balanced by sales volume. The agent ingests the accounts (geocoding only what needs geocoding), runs both builds, and presents a comparative analysis — either as a styled HTML grid, as an interactive map with a TAL switcher, or both — so Monica can decide which alignment to keep.
 
 ### Actors
 
 - **Monica** — territory designer looking to rebuild territories from fresh CRM data
 - **Agent** — MCP-capable assistant with CRM tool access and EZT MCP connection
 - **CRM system** — customer's CRM (e.g. Dynamics 365), accessible via agent tools or connector
-- **EZT MCP Server** — geocoding, Auto Build, Analyze, and knowledge resources
+- **EZT MCP Server** — account ingestion, selective geocoding, Auto Build, Analyze, and knowledge resources
 - **Customer storage** — where the final TS is persisted; agent-owned, not EZT MCP
 
 ### Starting state
 
 - Monica has no existing TS for this project (fresh build).
-- The CRM has current account records including at minimum:
-  - Account name
-  - Address (street, city, state, ZIP or postal code)
-  - Store count (or equivalent unit-count metric)
-  - Sales volume / revenue (LTM or similar)
+- The CRM has current account records. Some rows have `lat`/`lon` already populated; others have only address fields.
+- Monica has specific columns she wants included: account name, address fields, `lat`, `lon`, `store_count`, `sales_volume`, and any other columns she directs the agent to pull.
 - The agent has a CRM tool available (e.g. D365 query, a configured MCP CRM server, or similar).
 - EZT MCP has a supported part layer for the relevant geography (e.g. `us_postal` for US ZIP-based territories).
 - Monica's region is the continental US; she wants 10 territories.
 
 ### User intent
 
-Monica wants to start territory design from scratch using the freshest data. She wants to see two candidate alignments — one that evenly distributes store counts, one that evenly distributes sales volume — before committing to a direction. She does not want to manually map accounts or hand-tune the initial build.
+Monica wants to start territory design from scratch using the freshest data. She specifies which columns to pull, wants to see two candidate alignments — one balanced on store count, one on sales volume — and wants to review the comparison before committing. She does not want to manually map accounts or hand-tune the initial build.
 
 ### Happy path
 
-1. Monica tells her agent: "Pull the latest accounts from CRM with their sales figures."
-2. The agent queries the CRM using its available tool (D365 query, CRM MCP server, etc.) and retrieves a record set: account name, address, store count, sales volume.
-3. The agent reports back: "I found 847 accounts. Do you want me to build territories from these?"
+1. Monica tells her agent: "Pull the latest accounts from CRM — I need account name, address, lat, lon, store count, and sales volume."
+2. The agent queries the CRM and retrieves 847 account records with the requested columns. Some rows have `lat`/`lon` populated; some do not.
+3. The agent reports back: "I found 847 accounts. 612 already have coordinates. Ready to ingest these and build territories?"
 4. Monica says: "Yes — build two TALs, 10 territories each. One balanced by store count, one by sales volume."
-5. The agent calls `geocode_accounts` on the account set, resolving addresses to `(lat, lon, part_id)` tuples against EZT MCP's geocode resource:
-   - Passes account records with addresses and metric properties.
-   - EZT MCP returns a TS with a point location layer containing geocoded accounts and both metrics as account properties.
+5. The agent calls `ingest_accounts` (the account ingestion tool) on the full record set:
+   - Passes all requested columns as account properties; every column becomes a property on the TS point layer.
+   - EZT MCP inspects each row:
+     - Rows with valid `lat`/`lon`: snapped directly to their containing `part_id` — no geocode call.
+     - Rows missing `lat`/`lon` (or with invalid coordinates): geocoded using TomTom → Azure Maps fallback; resolved `lat`, `lon`, and `part_id` written back as properties.
+   - EZT MCP returns a TS with a point location layer and a structured ingestion report:
+     - `total`: 847
+     - `used_coordinates`: 612
+     - `geocoded`: 229
+     - `geocode_failures`: 6 (structured list with account identifiers and failure reasons)
    - Identity metadata set: `ts_id`, `revision = 1`, `content_hash`, `updated_at`.
-   - Geocode failures returned as a structured list; agent surfaces count/summary to Monica.
-6. The agent confirms: "Geocoded 841 of 847 accounts (6 failed — listed below). Ready to build territories?"
+6. The agent reports: "Ingested 847 accounts. 612 used existing coordinates, 229 were geocoded, 6 failed (listed below). Ready to build?"
 7. Monica confirms or says "go ahead."
 8. The agent calls `auto_build_territory_solution` for the store-count TAL:
 
@@ -435,35 +439,31 @@ Monica wants to start territory design from scratch using the freshest data. She
 {
   "ts": "<ts_handle or inline TS>",
   "part_layer": "us_postal",
-  "metric": "store_count",
+  "balance_column": "store_count",
   "territory_count": 10,
   "tal_label": "Store Count Balance"
 }
 ```
 
-9. EZT MCP runs the Auto Build algorithm (metric-weighted ZIP aggregation + neighbor pairing), appends a new TAL (`tal_store_count`) to the TS, and returns the updated TS with:
-   - `revision = 2`
-   - `active_tal_id = tal_store_count`
-   - New TAL with 10 territories, each a dissolved set of ZIP polygons.
+   - EZT MCP aggregates `store_count` to the ZIP level by summing the column across all accounts in each ZIP, then runs the Auto Build algorithm (metric-weighted neighbor pairing).
+   - Appends TAL `tal_store_count` to the TS and returns updated TS with `revision = 2`, `active_tal_id = tal_store_count`.
 
-10. The agent calls `auto_build_territory_solution` for the sales-volume TAL on the same updated TS:
+9. The agent calls `auto_build_territory_solution` for the sales-volume TAL on the same updated TS:
 
 ```json
 {
   "ts": "<ts_handle or inline TS (revision 2)>",
   "part_layer": "us_postal",
-  "metric": "sales_volume",
+  "balance_column": "sales_volume",
   "territory_count": 10,
   "tal_label": "Sales Volume Balance"
 }
 ```
 
-11. EZT MCP appends a second TAL (`tal_sales_volume`) and returns the updated TS:
-    - `revision = 3`
-    - Two TALs in the TS: `tal_store_count` and `tal_sales_volume`.
-    - `active_tal_id` unchanged (still `tal_store_count`) unless the agent switches it.
+   - EZT MCP aggregates `sales_volume` to the ZIP level and runs Auto Build.
+   - Appends TAL `tal_sales_volume`; returns updated TS with `revision = 3`, `active_tal_id` unchanged (still `tal_store_count`).
 
-12. The agent calls `analyze_territory_solution` with both TAL IDs for a comparative analysis:
+10. The agent calls `analyze_territory_solution` with both TAL IDs and both metric columns:
 
 ```json
 {
@@ -473,50 +473,55 @@ Monica wants to start territory design from scratch using the freshest data. She
 }
 ```
 
-13. EZT MCP returns a structured comparative analysis:
-    - Per-TAL summary: territory count, metric totals, mean/min/max/std dev per territory.
-    - Per-territory breakdown for each TAL: metric distribution, geographic label if available.
-    - Cross-TAL balance score for each metric.
+11. EZT MCP returns a structured comparative analysis:
+    - Per-TAL summary: territory count, total and per-territory mean/min/max/std dev for each metric.
+    - Per-territory breakdown for each TAL: territory label, store count, sales volume, account count.
+    - Balance scores per TAL per metric (e.g. coefficient of variation).
     - Contiguity and compactness scores per TAL.
-    - Caveats: geocode failures excluded, accounts without metric values excluded, repair notes.
+    - Caveats: geocode failures excluded, null metric values excluded with counts.
 
-14. The agent presents Monica a side-by-side comparison:
-    - A summary table showing both TALs across key stats (balance, compactness, coverage).
-    - Narrative highlights: "Store Count TAL is better balanced on stores (std dev 4.2 vs 9.1), but the Sales Volume TAL distributes revenue more evenly (std dev $12k vs $28k). 6 accounts were excluded due to geocode failures."
-    - A follow-up prompt: "Which alignment would you like to keep, or should I open the map so you can compare them visually?"
+12. The agent presents Monica the comparison. Two output modes, offered together or on request:
 
-15. Monica says: "Open the map so I can look at both."
-16. The agent calls `map_session_create` with `mode = view`, `active_tal_id = tal_store_count`, and both TALs available for switching.
-17. The Map Component renders the first TAL. Monica uses the TAL switcher to toggle between `Store Count Balance` and `Sales Volume Balance`.
-18. Monica chooses Sales Volume Balance and says: "Keep the sales volume one. Save it."
-19. The agent optionally calls a cleanup operation to drop `tal_store_count` from the TS, then persists the final TS to customer storage.
-20. The agent confirms: "Saved. Your new Territory Solution has 10 territories balanced by sales volume, covering 841 accounts."
+    **Mode A — Styled HTML grid:**
+    - Side-by-side table: rows = territories (1–10), columns = TAL / metric combinations.
+    - Summary row: balance score, std dev, compactness.
+    - Narrative above: "Store Count TAL is better balanced on stores (CV 0.08 vs 0.21), but Sales Volume TAL distributes revenue more evenly (CV 0.11 vs 0.29). 6 accounts excluded from both builds due to geocode failures."
+    - Rendered inline in the agent host (e.g. OpenClaw Canvas embed) or offered as a downloadable artifact.
+
+    **Mode B — Interactive map:**
+    - Agent calls `map_session_create` with `mode = view`, both TALs available for switching.
+    - Monica toggles the TAL switcher between `Store Count Balance` and `Sales Volume Balance`.
+    - Per-territory metric labels visible on the map using TS presentation metadata.
+
+13. Monica reviews both views and says: "Keep the sales volume one. Save it."
+14. The agent optionally calls a cleanup operation to drop `tal_store_count`, then persists the final TS to customer storage.
+15. The agent confirms: "Saved. Your new Territory Solution has 10 territories balanced by sales volume, covering 841 accounts."
 
 ### Expected agent behavior
 
 The agent should:
 
-- Use its own CRM tool to pull account data; EZT MCP does not access the CRM directly.
-- Pass account data to EZT MCP for geocoding; the TS is the canonical artifact from that point forward.
-- Report geocode failures clearly before proceeding to build — never silently drop them.
-- Run both Auto Build calls sequentially on the same growing TS, not in parallel (second build depends on TS output from first).
-- Confirm account count and geocode quality before starting the build.
-- Use Analyze for the comparison — not hand-calculated summaries.
-- Present the comparison in plain language with a recommendation or clear framing; do not dump raw numbers.
+- Pull exactly the columns Monica specifies; pass all of them as properties through to the TS point layer — no filtering by EZT MCP.
+- Pass the full account set to `ingest_accounts`; EZT MCP decides per-row whether geocoding is needed.
+- Report the ingestion split (used coordinates / geocoded / failed) before building.
+- Run both Auto Build calls sequentially — the second depends on the first's TS output.
+- Use Analyze for the comparison, not hand-calculated summaries.
+- Offer both comparison output modes (HTML grid and map); default to presenting the grid immediately and offering the map on request, or offer both at once if the agent host supports it.
+- Frame the comparison in plain language with clear tradeoffs; do not dump raw numbers.
 - Ask Monica to choose before persisting the final TS.
-- Optionally clean up the unused TAL before saving if Monica has chosen one.
+- Optionally clean up the unused TAL; do not require it as a save precondition.
 
 ### EZT MCP capabilities exercised
 
 Candidate tool/resource/prompt surfaces:
 
-- `geocode_accounts` — resolve addresses → TS with point location layer and metric properties
-- `auto_build_territory_solution` — build a metric-balanced TAL, append to TS; called twice on same TS
-- `analyze_territory_solution` with `tal_ids[]` — multi-TAL comparative analysis
+- `ingest_accounts` — accept full account record set; pass all columns as point layer properties; selectively geocode only rows missing valid coordinates; return structured ingestion report
+- `auto_build_territory_solution` — aggregate `balance_column` to part level, build metric-balanced TAL, append to TS; called twice sequentially
+- `analyze_territory_solution` with `tal_ids[]` and `metrics[]` — multi-TAL comparative analysis
+- Analysis Presentation Guidance resource/prompt — styled HTML grid rendering rules and narrative framing for comparative output
 - `map_session_create` with multi-TAL TS, `mode = view`, TAL switcher enabled
 - `drop_tal` (or equivalent) — optional cleanup before final persist
-- Analysis Presentation Guidance resource/prompt — format comparison for human decision-making
-- `ep_search` — optional: caveats about metric-only balancing vs geographic compactness tradeoffs
+- `ep_search` — optional: caveats about single-metric balancing tradeoffs vs geographic compactness
 
 ### Map Component behavior
 
@@ -524,59 +529,61 @@ The Map Component should:
 
 - Render the active TAL on load.
 - Expose a TAL switcher when the TS contains multiple TALs (labels from `tal_label`).
-- Switch between TALs without a full page reload; re-render territory layer from TS GeoJSON.
-- Show per-territory metric labels (territory name + store count or revenue summary) using TS presentation metadata or defaults.
+- Switch TALs without a full page reload; re-render territory layer from TS GeoJSON.
+- Show per-territory metric labels using TS presentation metadata or defaults (e.g. territory label + primary balance metric value).
 - In `view` mode: no selection, no editing. TAL switching is the only interactive surface.
-- Display the active TAL label and revision/date in map chrome.
+- Display active TAL label and revision/date in map chrome.
 
 ### State and identity concerns
 
-- The TS grows through three revisions during this workflow: geocode (rev 1), first Auto Build (rev 2), second Auto Build (rev 3).
-- Each Auto Build call must pass the current TS (or TS handle at the correct revision); stale handles should produce a clear rejection.
-- The agent must track `ts_id` and `revision` throughout and not cache a stale handle across builds.
-- Geocode failures are informational; partial geocode success should not block the build unless Monica cancels.
-- The final persisted TS should have a clean `revision` and `content_hash` reflecting the chosen TAL and any cleanup.
+- The TS grows through three revisions: ingest (rev 1), first Auto Build (rev 2), second Auto Build (rev 3).
+- Each Auto Build call must pass the current TS or a handle at the correct revision; stale handles produce a clear revision-mismatch rejection.
+- The agent tracks `ts_id` and `revision` throughout; must not cache a stale handle across sequential builds.
+- Geocode failures from ingestion are informational; partial success does not block the build unless Monica cancels.
+- The final persisted TS should reflect the chosen TAL and any cleanup with a clean `revision` and `content_hash`.
 
 ### Failure and edge cases
 
 - **CRM query fails:** agent cannot proceed; surfaces error and suggests retry or manual data paste.
+- **All rows have coordinates:** `ingest_accounts` skips geocoding entirely; ingestion is a pure coordinate-snap + part-ID lookup pass.
+- **Mixed coordinates — some invalid:** rows with coordinates that fall outside any known part polygon are treated as geocode-required, not silently snapped to nearest part; EZT MCP surfaces them in the failure list.
 - **High geocode failure rate (>10%):** agent pauses and asks Monica to confirm before building on partial data.
-- **All accounts fail geocode for a region:** agent warns of geographic coverage gaps before Monica approves build.
-- **Metric missing for many accounts:** agent warns that balance scores will be skewed; `store_count` or `sales_volume` nulls need explicit handling (exclude, zero, or impute); EZT MCP should declare which strategy it uses.
-- **Auto Build produces unbalanced result:** EZT MCP returns a balance score; if poor, agent surfaces a caveat and asks if Monica wants to adjust parameters or accept.
+- **`balance_column` has many nulls:** EZT MCP excludes null-metric accounts from ZIP aggregation and reports the exclusion count; agent surfaces caveat before building.
+- **Auto Build produces unbalanced result:** EZT MCP returns balance score; if poor, agent surfaces caveat and asks if Monica wants to adjust or accept.
 - **Auto Build call 2 uses stale TS handle:** EZT MCP rejects with revision mismatch; agent retransmits with full TS or refreshed handle.
-- **Map session TAL switcher not available in host:** agent falls back to offering two separate map URLs, one per TAL.
-- **Monica wants both TALs kept:** agent skips cleanup and saves the TS with both TALs intact.
-- **Account dataset is very large (10k+):** agent may need to chunk geocoding or use a batch API; EZT MCP geocode contract should define max batch size.
-- **Part layer mismatch:** some accounts are in Canada but `us_postal` is selected; EZT MCP should surface coverage warnings for out-of-layer addresses.
+- **Monica wants a multi-column balance (e.g. "balance on both store count and sales volume at once"):** agent explains this is a harder optimization problem — EZT MCP v1 balances on one column per TAL. Suggest building both single-column TALs and comparing, or a future weighted-blend mode.
+- **Map session TAL switcher not available in agent host:** agent falls back to two separate map URLs, one per TAL.
+- **Monica wants both TALs kept:** agent skips cleanup and saves TS with both TALs intact.
+- **Account dataset is very large (10k+):** `ingest_accounts` should define a max batch size; agent may chunk if needed.
+- **Part layer mismatch:** some accounts are in Canada but `us_postal` is selected; EZT MCP surfaces coverage warnings for out-of-layer coordinates.
 
 ### Design conclusions from this scenario
 
-1. **CRM is agent territory, not EZT MCP territory.** EZT MCP should not require CRM credentials or define CRM query formats. The agent bridges CRM → TS.
-2. **Geocoding is the TS bootstrap step.** Output of geocoding is a valid TS (point layer only, no TAL yet). Auto Build appends TALs to this same TS in sequence.
-3. **Multi-TAL Auto Build is sequential, not parallel.** Each build reads and augments the same TS in order; the second call depends on the first's output.
-4. **Analyze should support multi-TAL comparison natively.** A separate comparison tool adds unnecessary surface area; extend Analyze with `tal_ids[]`.
-5. **Comparative presentation guidance is a first-class need.** Raw Analyze numbers are not enough — the agent needs EZT MCP guidance to frame the tradeoffs meaningfully.
-6. **TAL switcher in Map Component is required for multi-TAL workflows.** Without it, visual comparison requires two separate browser tabs.
-7. **Geocode failures must be surfaced, not silently dropped.** The agent owns the data-quality conversation with the user; EZT MCP must return structured failure lists.
-8. **TS cleanup is optional but useful.** Persisting unused TALs wastes storage; the agent should offer to drop them but not require it as a precondition for saving.
-9. **The CRM ↔ EZT MCP handoff is at the account-row level.** The agent passes account rows with addresses and metric properties; EZT MCP returns a TS. CRM integration stays decoupled from EZT MCP internals.
-10. **`active_tal_id` behavior after Auto Build needs a defined rule.** Should the newly added TAL become active, or should the prior `active_tal_id` be preserved? The contract matters for Map Component rendering and agent-side tracking.
+1. **`ingest_accounts` replaces `geocode_accounts` as the right primitive.** It handles three cases uniformly: use coordinates directly, geocode missing ones, and report failures — without the agent needing to pre-split the rows.
+2. **All columns pass through as point layer properties.** EZT MCP does not filter or interpret account columns beyond coordinates. The agent tells Monica which columns to pull; those columns become the TS point layer schema.
+3. **`balance_column` is a single named column reference into the point layer.** Auto Build aggregates that column to the part level (sum) and balances on it. One column per TAL build; multiple TALs cover multiple balance objectives.
+4. **Multi-column balancing is explicitly out of scope for v1.** The tension between competing metrics makes it a hard optimization problem. The correct v1 answer is: build separate single-column TALs and compare.
+5. **Comparative output has two modes: HTML grid and interactive map.** Both are legitimate and serve different needs. The HTML grid is the immediate analytical artifact; the map is for spatial intuition. Both should be supported.
+6. **HTML grid is an Analysis Presentation Guidance output.** EZT MCP provides the structured Analyze facts; the presentation guidance resource/prompt defines how the agent renders a styled comparative grid.
+7. **TAL switcher in the Map Component is required for multi-TAL workflows.** Two-tab comparison is a poor UX fallback.
+8. **Geocode failures must be surfaced, not silently dropped.** The ingestion report is a first-class output, not a log entry.
+9. **CRM integration stays fully on the agent side.** EZT MCP never touches the CRM; the handoff is a structured account record set.
+10. **`active_tal_id` after Auto Build should default to the newly added TAL.** This makes the Map Component render the freshest alignment by default without the agent needing an extra update call. Needs to be a defined contract rule.
 
 ### Open design questions
 
-- Should `geocode_accounts` accept full account records (with arbitrary properties), or only address columns? How are metric properties (store count, sales volume) passed through to the TS point layer?
-- What is the maximum batch size for `geocode_accounts` in v1?
-- Should `auto_build_territory_solution` accept a named metric from TS point layer properties, or require a pre-aggregated ZIP-level metric table?
-- How does Auto Build handle accounts that failed geocoding — excluded from metric aggregation, or does EZT MCP expect a pre-cleaned input TS?
-- What balance scoring algorithm should EZT MCP use — coefficient of variation, Gini, min/max ratio? Configurable or fixed?
-- Should Analyze produce a recommended TAL choice based on balance scores, or only present facts for the agent to interpret?
-- Should the TS returned from Auto Build set `active_tal_id` to the newly added TAL, or preserve the previous active?
-- What is the right cleanup surface — a `drop_tal` tool, an `update_ts` with omitted TALs, or something else?
-- For the Map Component TAL switcher: is it driven by the TS `tals[]` array automatically, or must the agent pass a whitelist of displayable TAL IDs to `map_session_create`?
-- Should the comparative Analyze response include a narrative summary, or only structured data with the agent providing narrative from presentation guidance?
+- Should `ingest_accounts` be a single tool, or split into `ingest_accounts` (coordinate-snap + part-ID lookup for rows with coordinates) and `geocode_accounts` (address resolution for rows without)? Single tool seems cleaner but the name matters.
+- What is the max batch size for `ingest_accounts` in v1?
+- How does EZT MCP detect "invalid" coordinates — out-of-bounds for the selected part layer, or globally invalid (NaN, 0,0, out of WGS-84 range)?
+- Should the ingestion report include a per-failure `reason` field (no coordinates, geocode service failure, address not found, out-of-layer)?
+- For Auto Build: does EZT MCP aggregate `balance_column` by summing all non-null account values in each part, or does it expect the column to already be a part-level metric? → **Confirmed: sum from point layer properties.**
+- What is the null-metric handling strategy for Auto Build — exclude silently, exclude with count reported, treat as zero? Default should be exclude with count reported.
+- Should Analyze produce a recommended TAL choice, or only structured facts for the agent to interpret?
+- Should the styled HTML grid be generated by EZT MCP (as a resource/tool output), by the agent from Analyze facts using presentation guidance, or by the agent host's rendering layer?
+- What format should the HTML grid artifact take — inline HTML string in the tool response, a URL to a hosted artifact, or a canvas-embeddable document?
+- Should `active_tal_id` be set to the newly added TAL after each Auto Build call, or require the agent to set it explicitly?
+- For the Map Component TAL switcher: driven automatically by the TS `tals[]` array, or does the agent pass a whitelist to `map_session_create`?
 
----
 
 ## Scenario Backlog
 
