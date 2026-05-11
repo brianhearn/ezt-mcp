@@ -2,7 +2,7 @@
 
 > Server-side territory operations for AI agents, backed by EasyTerritory domain expertise.
 
-**Status:** Pre-implementation — Vision and Constitution in active revision. See [VISION.md](VISION.md) for product intent.
+**Status:** Pre-implementation — Vision and Constitution in active revision. See [SDLC.md](SDLC.md) for documentation boundaries, [VISION.md](VISION.md) for product intent, and [SCENARIOS.md](SCENARIOS.md) for workflow scenarios used to stress-test the design.
 
 ---
 
@@ -30,10 +30,13 @@ Output is a **Territory Solution (TS)** — standard GeoJSON and the only geomet
 
 ## Lifecycle
 
+The repo's SDLC documents and ownership boundaries are defined in [SDLC.md](SDLC.md).
+
 | Phase | Status |
 |-------|--------|
 | Vision | ✅ Complete |
 | Constitution | ✅ Complete |
+| Scenario Collection | 🟡 Started — see [SCENARIOS.md](SCENARIOS.md) |
 | Functional Spec | 🔲 Not started |
 | Technical Spec | 🔲 Not started |
 | Implementation | 🔲 Not started |
@@ -57,11 +60,13 @@ The Analysis tool returns structured JSON facts. EZT MCP should also expose poli
 
 ## Sharing
 
-TS sharing is a flagship feature. EZT MCP should support upper-management consumption without making executives use Designer. The primary sharing surface is the same Map Component used for assisted workflows, running in read-only `view` mode. Additional sharing modes are Power BI-friendly projections/exports and narrative executive summaries generated from TS + Analyze output. The customer's agent/storage remains the system of record.
+TS sharing is a flagship feature. EZT MCP should support upper-management consumption without making executives use Designer. Sharing has three lanes: quick review through the Map Component in read-only `view` mode, formal executive reporting through Power BI-friendly projections/exports for the existing EasyTerritory Power BI visual, and interoperability through standard GeoJSON/table exports. Narrative executive summaries can be generated from TS + Analyze output. The customer's agent/storage remains the system of record.
 
 ## Map Component
 
 EZT MCP is accompanied by an embedded **Map Component** — a unified TS viewing and spatial I/O component. In `view` mode it provides read-only sharing/verification. In `select` mode it emits part selections (click, lasso, box) back to the agent. Monica selects parts visually; the agent calls Realign with the selection. The component is stateless — the agent owns the TS between interactions.
+
+Interactive selection should use short-lived map sessions and MCP Resource Subscriptions: the agent creates a map session, opens or embeds the returned map URL, subscribes to the session's selection resource, and receives a notification when Monica clicks Done. The Map Component posts committed selections to EZT MCP over a browser-safe session channel; EZT MCP bridges those commits back to the agent as resource notifications.
 
 Primary embedding target: OpenClaw Canvas (agent chat interface). Secondary: Microsoft Teams meeting app. Technology candidates: MapLibre GL JS + PMTiles. See [MAP_COMPONENT.md](MAP_COMPONENT.md) for the full concept stub.
 

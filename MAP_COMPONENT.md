@@ -1,7 +1,7 @@
 # MAP_COMPONENT.md — EZT MCP Map Component
 
-**Version:** 0.2.0 (stub)
-**Date:** 2026-05-06
+**Version:** 0.3.0 (stub)
+**Date:** 2026-05-11
 **Status:** Concept — not yet specced
 
 ---
@@ -34,6 +34,64 @@ The communication contract is simple:
 - **Output:** mode-dependent. In `view` mode, no mutation or selection output is emitted. In `select` mode, the component emits an array of `part_ids` the user has chosen.
 
 The agent session drives all territory operations. The component is a read/select surface only — it does not call EZT MCP tools directly.
+
+## Live Agent/MCP Communication Model
+
+The Map Component should be treated as a live spatial I/O surface attached to an agent/MCP session. It is not an MCP client and should not receive the customer's MCP API key. Instead, the agent asks EZT MCP to create a short-lived map session for a TS, and EZT MCP returns a map URL plus MCP resource URIs that the agent can subscribe to.
+
+Recommended flow:
+
+```
+Agent → EZT MCP: create map session for TS + active TAL + mode=select
+EZT MCP → Agent: map_url + map_session_id + selection resource URI
+Agent subscribes to selection resource and opens/embeds map_url
+Monica selects parts and clicks Done
+Map Component → EZT MCP web endpoint: selection.committed(part_ids[])
+EZT MCP → Agent via MCP resource notification: selection resource changed
+Agent calls Analyze / Realign as appropriate
+EZT MCP → Map Component live channel: TS updated / refresh needed
+```
+
+For OpenClaw specifically, this aligns with MCP Resource Subscriptions: EZT MCP exposes the map-session selection as a subscribable MCP resource, and OpenClaw receives selection commits as MCP notifications in its live event queue. The same pattern should work in other MCP hosts that implement resource subscriptions.
+
+### Map session resources
+
+A map session should be short-lived and customer/API-key scoped. Candidate MCP resources:
+
+- `ezt://map-sessions/{map_session_id}/selection` — latest committed selection from the Map Component
+- `ezt://map-sessions/{map_session_id}/state` — active TAL, mode, TS identity/revision/hash, expiry, and refresh status
+
+A selection resource update should carry awareness-level data, not full analysis:
+
+```json
+{
+  "event_type": "selection.committed",
+  "map_session_id": "ms_01J...",
+  "ts_id": "ts_01HX...",
+  "ts_revision": 7,
+  "active_tal_id": "tal_revenue",
+  "part_layer": "us_zips",
+  "part_ids": ["32309", "32308", "32312"],
+  "selection_method": "lasso",
+  "selected_count": 3,
+  "current_assignments": [
+    { "territory_id": "T1", "part_ids": ["32309", "32308", "32312"] }
+  ]
+}
+```
+
+The agent should call Analyze for authoritative sales volume, account counts, balance impact, and recommended guidance. Selection notifications should tell the agent what Monica selected, not try to replace analysis.
+
+### Canonical web channel
+
+The Map Component should communicate with EZT MCP over ordinary browser-safe web protocols using only a short-lived map session token or exchange code. The canonical pattern should be:
+
+- fetch initial session state / TS render payload from EZT MCP
+- maintain local transient selection while Monica clicks, lassos, boxes, and clears
+- emit a single `selection.committed` event only when Monica clicks Done
+- listen through SSE or WebSocket for `ts.updated`, `mode.changed`, and `session.expired`
+
+Iframe `postMessage` may still be useful inside OpenClaw Canvas or other host embeds, but it should be an embedding convenience rather than the authoritative cross-system protocol.
 
 ---
 
@@ -131,7 +189,7 @@ A hosted URL that can be embedded in other surfaces (Power Apps, Dynamics 365, e
 | Part layer tiles | PMTiles | Single-file tile archive; no tile server required; hosted in Azure Blob |
 | Basemap | MapLibre default / none | Optional; lightweight |
 | Selection engine | MapLibre feature querying | Click and box selection native; lasso requires custom polygon query |
-| Communication | PostMessage / WebSocket / SSE | TBD — depends on embedding host |
+| Communication | MCP Resource Subscriptions + HTTPS/SSE/WebSocket | MV commits selections to EZT MCP; EZT MCP notifies agent through subscribed resources; SSE/WebSocket refreshes MV |
 
 PMTiles note: EasyTerritory's part layer polygons (US ZIPs, counties, states, Canadian FSAs) need to be published as PMTiles archives. This is a one-time operational task per layer, re-run when layers are updated. Storage in Azure Blob Storage alongside the MCP infrastructure is the natural home.
 
@@ -141,9 +199,9 @@ Basemap PMTiles should be treated separately from part-layer PMTiles. The prefer
 
 ## Open Questions
 
-1. **Communication protocol** — how does the component post selections back to the agent session? Options: `postMessage` (iframe embed), WebSocket to a lightweight relay, direct SSE channel. The OpenClaw Canvas case and the Teams case may need different mechanisms.
+1. **Map session API shape** — what exact MCP tool/resource names create and expose a map session? Candidate: `map_session_create` returning `map_url`, `map_session_id`, `selection_resource_uri`, and `state_resource_uri`.
 
-2. **Auth / TS delivery** — how does the component receive the TS securely? Options: agent passes it as an inline payload (size concern for large TSes with many accounts), or agent deposits it at a short-lived signed URL the component fetches. Size of a TS with N point layers needs to be characterized.
+2. **Auth / TS delivery** — how does the component receive the TS securely? Options: EZT MCP serves a short-lived render payload from a TS cache handle, or the agent deposits a TS behind a short-lived signed URL the component fetches. Size of a TS with N point layers needs to be characterized.
 
 3. **PMTiles pipeline** — who owns generation and hosting of part layer PMTiles? Likely Matt Root / infra, but needs to be defined. Tile precision (zoom levels) affects both file size and selection granularity.
 

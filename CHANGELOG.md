@@ -7,6 +7,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-11) — v0.11.0 draft
+- Added `SDLC.md` to define repository documentation ownership boundaries and prevent redundancy across README, Vision, Constitution, Scenarios, Functional Spec, Technical Spec, Map Component, Design, Analysis Design, and Changelog
+- `MAP_COMPONENT.md` v0.3.0 — added live Agent/MCP communication model for Monica's map-selection workflow: short-lived map sessions, subscribable selection/state resources, committed selection events, and event-driven MV refresh
+- `README.md` / `VISION.md` — documented MCP Resource Subscriptions as the bridge from Map Component selection commits to agent notifications, while preserving agent-owned TS storage and EZT MCP's durably stateless posture
+- Added `SCENARIOS.md` with Scenario 001: Monica selects ZIPs along a territory boundary, reviews selection impact, and realigns them from T1 to T2
+- Expanded `SCENARIOS.md` with Scenario 002: Monica emails a temporary read-only latest East Coast TS/Map Component link to her boss
+- Clarified sharing lanes in `README.md`: read-only Map Component for quick review, Power BI for formal executive reporting, and GeoJSON/table exports for interoperability
+- Added working notes in `tmp/mv-agent-mcp-selection-workflow-2026-05-11.md` covering candidate `map_session_create`, selection resource payloads, scoped Analyze, Realign refresh, and open decisions
+
 ### Changed (2026-05-08) — v0.10.0
 - `VISION.md` / `CONSTITUTION.md` v0.10.0 — aligned canonical part-layer schema name with staging PostgreSQL/PostGIS: `geo` instead of `shared_geo`
 - Staging database `easyterritory` already contains `geo.us_postal`, `geo.us_postal_points`, `geo.us_county`, and `geo.ca_postal` with GiST geometry indexes

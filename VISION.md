@@ -1,5 +1,5 @@
-Version: 0.10.0
-Date: 2026-05-08
+Version: 0.11.0
+Date: 2026-05-11
 Status: Draft
 
 EZT MCP is a server-side territory intelligence service that exposes EasyTerritory's core territory operations as MCP-native capabilities. It gives AI agents the ability to perform territory work that previously required a human expert inside EZT Designer.
@@ -382,11 +382,12 @@ Recommended v1 sharing model:
    - `view` mode: pan, zoom, inspect, toggle layers, view labels/metrics, no changes emitted
    - `select` mode: view plus part selection output for agent-directed Realign
    - future `edit` mode: richer editing if/when warranted, still mediated by the agent and MCP tools
-3. **Read-only executive sharing** — the agent can generate or launch a read-only map view from a TS for upper management: territories, key metrics, labels, optional point overlays, and a simple legend. This is the MCP-era equivalent of a read-only Designer consumption path.
-4. **Power BI-friendly path** — because EasyTerritory already has Power BI integration, EZT MCP should be able to export or project the TS into Power BI-consumable GeoJSON/table outputs when the customer wants a dashboard rather than an agent-hosted map.
-5. **Narrative briefing** — the agent should be able to generate an executive summary from the TS + Analyze output: what changed, balance scores, exceptions, and recommended follow-up decisions.
+3. **Short-lived map sessions for live workflows** — the agent creates a map session from a TS or TS handle, receives a map URL plus MCP resource URIs, subscribes to the selection resource, and opens or embeds the Map Component. Monica's committed selection updates the resource; MCP Resource Subscriptions notify the agent. The Map Component talks to EZT MCP through a short-lived browser session token, never through the customer's MCP API key.
+4. **Read-only executive sharing** — the agent can generate or launch a read-only map view from a TS for upper management: territories, key metrics, labels, optional point overlays, and a simple legend. This is the MCP-era equivalent of a read-only Designer consumption path.
+5. **Power BI-friendly path** — because EasyTerritory already has Power BI integration, EZT MCP should be able to export or project the TS into Power BI-consumable GeoJSON/table outputs when the customer wants a dashboard rather than an agent-hosted map.
+6. **Narrative briefing** — the agent should be able to generate an executive summary from the TS + Analyze output: what changed, balance scores, exceptions, and recommended follow-up decisions.
 
-This creates three management consumption modes without introducing a new system of record: interactive read-only map, Power BI dashboard, and narrative summary. The read-only map and assisted map widget should be the same underlying component with capability flags, not two separate products.
+This creates three management consumption modes without introducing a new system of record: interactive read-only map, Power BI dashboard, and narrative summary. The read-only map and assisted map widget should be the same underlying component with capability flags, not two separate products. Live map sessions are transient coordination objects only; they do not make EZT MCP the durable TS owner.
 
 ## ExpertPack Knowledge Layer
 
