@@ -1,0 +1,308 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.easyterritory.com/ezt-mcp/auto_build.schema.json",
+  "title": "EZT MCP auto_build Tool Contract",
+  "type": "object",
+  "$defs": {
+    "modeA": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "territory_count"
+      ],
+      "properties": {
+        "mode": {
+          "const": "fixed_territory_count"
+        },
+        "territory_count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "modeB": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "target_workload",
+        "variant"
+      ],
+      "properties": {
+        "mode": {
+          "const": "fixed_workload_target"
+        },
+        "target_workload": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "workload_unit": {
+          "type": "string",
+          "enum": [
+            "minutes",
+            "hours"
+          ]
+        },
+        "cycle_unit": {
+          "type": "string",
+          "enum": [
+            "day",
+            "week",
+            "month",
+            "quarter",
+            "year"
+          ]
+        },
+        "variant": {
+          "type": "string",
+          "enum": [
+            "closest_to",
+            "closest_to_without_exceeding"
+          ]
+        }
+      }
+    },
+    "scopedSplit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "source_tal_id",
+        "source_territory_id",
+        "replacement_territory_count"
+      ],
+      "properties": {
+        "mode": {
+          "const": "scoped_split"
+        },
+        "source_tal_id": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString"
+        },
+        "source_territory_id": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString"
+        },
+        "replacement_territory_count": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "preserve_other_territories": {
+          "const": true,
+          "default": true
+        }
+      }
+    },
+    "buildMode": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/modeA"
+        },
+        {
+          "$ref": "#/$defs/modeB"
+        },
+        {
+          "$ref": "#/$defs/scopedSplit"
+        }
+      ]
+    },
+    "dwellTime": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "field"
+          ],
+          "properties": {
+            "type": {
+              "const": "field"
+            },
+            "field": {
+              "$ref": "common.schema.json#/$defs/nonEmptyString"
+            },
+            "unit": {
+              "type": "string",
+              "enum": [
+                "minutes",
+                "hours"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "value"
+          ],
+          "properties": {
+            "type": {
+              "const": "scalar"
+            },
+            "value": {
+              "type": "number",
+              "minimum": 0
+            },
+            "unit": {
+              "type": "string",
+              "enum": [
+                "minutes",
+                "hours"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "metricObjective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric"
+      ],
+      "properties": {
+        "metric": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "string",
+              "const": "synthetic_account_count"
+            }
+          ]
+        },
+        "workload_bias": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "metric_bias": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        }
+      }
+    },
+    "request": {
+      "allOf": [
+        {
+          "$ref": "ts-reference.schema.json#/$defs/tsInputRef"
+        },
+        {
+          "type": "object",
+          "required": [
+            "point_layer",
+            "part_layer",
+            "tal_label",
+            "build_mode"
+          ],
+          "properties": {
+            "point_layer": {
+              "$ref": "common.schema.json#/$defs/nonEmptyString"
+            },
+            "part_layer": {
+              "$ref": "common.schema.json#/$defs/nonEmptyString"
+            },
+            "tal_label": {
+              "$ref": "common.schema.json#/$defs/nonEmptyString"
+            },
+            "build_mode": {
+              "$ref": "#/$defs/buildMode"
+            },
+            "dwell_time": {
+              "$ref": "#/$defs/dwellTime"
+            },
+            "visit_frequency_field": {
+              "type": "string"
+            },
+            "objective": {
+              "$ref": "#/$defs/metricObjective"
+            },
+            "repair_policy": {
+              "type": "string",
+              "enum": [
+                "default",
+                "strict",
+                "report_only"
+              ],
+              "default": "default"
+            }
+          }
+        }
+      ]
+    },
+    "result": {
+      "allOf": [
+        {
+          "$ref": "ts-reference.schema.json#/$defs/tsOutputRef"
+        },
+        {
+          "type": "object",
+          "required": [
+            "tal_id",
+            "build_mode_summary",
+            "territory_count"
+          ],
+          "properties": {
+            "tal_id": {
+              "$ref": "common.schema.json#/$defs/nonEmptyString"
+            },
+            "build_mode_summary": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "scoped_split_summary": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "territory_count": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "objective_summary": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "distribution_summary": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      ]
+    },
+    "response": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "ok",
+            "result"
+          ],
+          "properties": {
+            "ok": {
+              "const": true
+            },
+            "result": {
+              "$ref": "#/$defs/result"
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "$ref": "common.schema.json#/$defs/warning"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/errorEnvelope"
+        }
+      ]
+    }
+  }
+}

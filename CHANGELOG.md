@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added (2026-05-11) — initial schemas
+- Added `schemas/` with draft JSON Schema 2020-12 external contracts: common envelope/error types, TS references/identity, `direct_build`, and `auto_build` including Scoped Split
+- Linked `FUNCTIONAL_SPEC.md` to the new schema drafts
+
 ### Changed (2026-05-11) — v0.1.1 (FUNCTIONAL_SPEC) / v0.9.1 (SCENARIOS)
 - Resolved v1 open questions: territory split is v1 via Auto Build Scoped Split (not Realign); TS cache is implicit (no public `ts_cache_put` tool); `map_session_create` is v1 with browser URL/OpenClaw Canvas first; schemas start before implementation; Power BI/export contracts are post-MVP; Point Location Update is post-MVP
 - `FUNCTIONAL_SPEC.md` v0.1.1 — updated v1 public tool surface, added Auto Build Scoped Split behavior, replaced open questions with resolved v1 scope decisions, and moved cache to implicit behavior

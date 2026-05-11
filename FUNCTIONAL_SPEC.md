@@ -23,6 +23,10 @@ This spec must conform to [CONSTITUTION.md](CONSTITUTION.md). Workflow coverage 
 
 ---
 
+## Schema Drafts
+
+Initial JSON Schema drafts live in [`schemas/`](schemas/). They cover the common envelope/error types, TS references/identity, `direct_build`, and `auto_build` including Scoped Split. These schemas are draft executable contracts and will expand as the functional surface stabilizes.
+
 ## 2. Common Data and Calling Conventions
 
 ### 2.1 Territory Solution references

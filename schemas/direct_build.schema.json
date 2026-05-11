@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.easyterritory.com/ezt-mcp/direct_build.schema.json",
+  "title": "EZT MCP direct_build Tool Contract",
+  "type": "object",
+  "$defs": {
+    "assignmentRow": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "part_id",
+        "territory_label"
+      ],
+      "properties": {
+        "row_id": {
+          "type": [
+            "string",
+            "integer"
+          ]
+        },
+        "part_id": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString"
+        },
+        "territory_id": {
+          "type": "string"
+        },
+        "territory_label": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "request": {
+      "allOf": [
+        {
+          "$ref": "ts-reference.schema.json#/$defs/tsInputRef"
+        },
+        {
+          "type": "object",
+          "required": [
+            "part_layer",
+            "tal_label",
+            "assignments"
+          ],
+          "properties": {
+            "part_layer": {
+              "$ref": "common.schema.json#/$defs/nonEmptyString"
+            },
+            "tal_label": {
+              "$ref": "common.schema.json#/$defs/nonEmptyString"
+            },
+            "assignments": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/assignmentRow"
+              }
+            },
+            "repair_policy": {
+              "type": "string",
+              "enum": [
+                "default",
+                "strict",
+                "report_only"
+              ],
+              "default": "default"
+            }
+          }
+        }
+      ]
+    },
+    "repairSummary": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "holes_filled": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "contiguity_repairs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "changed_part_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "result": {
+      "allOf": [
+        {
+          "$ref": "ts-reference.schema.json#/$defs/tsOutputRef"
+        },
+        {
+          "type": "object",
+          "required": [
+            "tal_id",
+            "territory_count",
+            "assignment_summary",
+            "repair_summary"
+          ],
+          "properties": {
+            "tal_id": {
+              "$ref": "common.schema.json#/$defs/nonEmptyString"
+            },
+            "territory_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "assignment_summary": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "repair_summary": {
+              "$ref": "#/$defs/repairSummary"
+            },
+            "invalid_parts": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "response": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "ok",
+            "result"
+          ],
+          "properties": {
+            "ok": {
+              "const": true
+            },
+            "result": {
+              "$ref": "#/$defs/result"
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "$ref": "common.schema.json#/$defs/warning"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/errorEnvelope"
+        }
+      ]
+    }
+  }
+}

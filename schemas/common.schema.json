@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.easyterritory.com/ezt-mcp/common.schema.json",
+  "title": "EZT MCP Common Contract Types",
+  "type": "object",
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "isoDateTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sha256Hash": {
+      "type": "string",
+      "pattern": "^sha256:[A-Fa-f0-9]{64}$"
+    },
+    "warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "message": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "errorCode": {
+      "type": "string",
+      "enum": [
+        "INVALID_TS",
+        "INVALID_TS_HANDLE",
+        "STALE_TS_REVISION",
+        "UNKNOWN_PART_LAYER",
+        "UNKNOWN_PART_ID",
+        "UNKNOWN_TAL_ID",
+        "AMBIGUOUS_TAL",
+        "UNKNOWN_POINT_LAYER",
+        "UNKNOWN_SOURCE_TERRITORY",
+        "UNKNOWN_FIELD",
+        "INVALID_FIELD_TYPE",
+        "CLARIFICATION_REQUIRED",
+        "UNSUPPORTED_OPERATION",
+        "PARTIAL_FAILURE",
+        "PROVIDER_UNAVAILABLE"
+      ]
+    },
+    "structuredError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message",
+        "retryable",
+        "user_action_required"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/errorCode"
+        },
+        "message": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "user_action_required": {
+          "type": "boolean"
+        }
+      }
+    },
+    "successEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ok",
+        "result"
+      ],
+      "properties": {
+        "ok": {
+          "const": true
+        },
+        "result": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/warning"
+          }
+        }
+      }
+    },
+    "errorEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ok",
+        "error"
+      ],
+      "properties": {
+        "ok": {
+          "const": false
+        },
+        "error": {
+          "$ref": "#/$defs/structuredError"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/warning"
+          }
+        }
+      }
+    },
+    "responseEnvelope": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/successEnvelope"
+        },
+        {
+          "$ref": "#/$defs/errorEnvelope"
+        }
+      ]
+    }
+  }
+}
