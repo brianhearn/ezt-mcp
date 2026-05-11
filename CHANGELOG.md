@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-11) — v0.16.0 (CONSTITUTION) / v0.8.0 (SCENARIOS)
+- `SCENARIOS.md` v0.8.0 — added Auto Build Scenario Suite (AB-001 through AB-016) as a testbed covering every Auto Build contract variation: pure workload (Mode A), session default persistence, workload+metric with 50-50 default, explicit bias, pure metric (workload_bias=0), synthetic account count, Mode B closest-to and not-to-exceed, Mode B+metric, visit frequency column, raw text visit frequency normalization (agent responsibility), build-time dwell override, per-account dwell column, multi-metric rejection (agent explains), Mode A/B mutual exclusion
+
 ### Changed (2026-05-11) — v0.16.0 (CONSTITUTION) / v0.7.0 (SCENARIOS)
 - `SCENARIOS.md` v0.7.0 — added Key Terms table at top of document defining TS, TAL, MC, MV, MCP, EP, T, P on first use; pointer to CONSTITUTION.md §4.1 for full definitions
 - `CONSTITUTION.md` v0.16.0 — added key abbreviations inline at top of document (TS, TAL, MC, MCP, EP, T, P) with pointer to §4.1

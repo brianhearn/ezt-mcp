@@ -1,6 +1,6 @@
 # SCENARIOS.md — EZT MCP Workflow Scenarios
 
-**Version:** 0.7.0
+**Version:** 0.8.0
 **Date:** 2026-05-11
 **Status:** Scenario collection — draft
 
@@ -634,6 +634,551 @@ The following samples show how natural-language Auto Build requests map to the `
 - ~~`active_tal_id` after Auto Build: TBD~~ → **Resolved: auto-set to the newly added TAL. Map Component renders the freshest alignment by default. Agent may override explicitly if needed.**
 - For the Map Component TAL switcher: driven automatically by the TS `tals[]` array, or does the agent pass a whitelist to `map_session_create`?
 - Future: is there a mathematical approach (e.g. Pareto frontier, weighted multi-objective optimization) that could support multiple secondary metrics without the current balance degradation?
+
+
+---
+
+## Auto Build Scenario Suite
+
+The following scenarios are a focused testbed for the Auto Build tool contract. Each covers a distinct variation of Mode, bias, metric, dwell time, visit frequency, or agent UX. Taken together they should verify that the `auto_build_territory_solution` contract handles every combination we've identified.
+
+All scenarios assume accounts have already been ingested (TS at revision 1 with a point location layer). The agent is the orchestrator; EZT MCP is the compute service.
+
+---
+
+### AB-001 — Pure workload balance, fixed territory count
+
+**Intent:** "Create 10 territories."
+
+**What the agent resolves before calling:**
+- No metric named → `workload_bias=100`, no `metric` block needed.
+- Workload required → agent checks for dwell time column. None found. Agent asks Monica for a default. Monica says "45 minutes." Agent asks "Use this going forward?" Monica says yes. Session default set to 45 min.
+
+**Tool call:**
+```json
+{
+  "ts": "<ts_handle rev=1>",
+  "part_layer": "us_postal",
+  "territory_count": 10,
+  "tal_label": "Workload Balance",
+  "workload": {
+    "dwell_time_minutes": 45
+  }
+}
+```
+
+**Expected behavior:**
+- EZT MCP appends TAL `tal_workload`, sets `active_tal_id = tal_workload`, returns TS at `revision = 2`.
+- Agent confirms: "Built 10 territories balanced on workload (45 min avg dwell). Estimated workload is ±10–20% vs a routed itinerary."
+
+**What this verifies:**
+- Default `workload_bias=100` when no metric specified.
+- Scalar dwell time accepted.
+- Agent session-default UX flow.
+- `active_tal_id` auto-set to new TAL.
+
+---
+
+### AB-002 — Pure workload balance, session default already set
+
+**Intent:** "Build another TAL — 12 territories this time."
+
+**What the agent resolves before calling:**
+- Session default dwell time already set (45 min from AB-001).
+- No metric named → `workload_bias=100`.
+- Agent does not re-ask for dwell time.
+
+**Tool call:**
+```json
+{
+  "ts": "<ts_handle rev=2>",
+  "part_layer": "us_postal",
+  "territory_count": 12,
+  "tal_label": "Workload Balance 12T",
+  "workload": {
+    "dwell_time_minutes": 45
+  }
+}
+```
+
+**Expected behavior:**
+- EZT MCP appends second TAL, sets `active_tal_id` to new TAL. TS at `revision = 3`.
+- TS now has two TALs: `tal_workload` (10T) and this new one (12T).
+- Agent: "Done. 12-territory workload TAL added. You now have two TALs to compare."
+
+**What this verifies:**
+- Session default persists across builds without re-prompting.
+- Multiple workload-only TALs can accumulate in the same TS.
+- `active_tal_id` updates to latest TAL each time.
+
+---
+
+### AB-003 — Workload + metric, 50-50 default bias
+
+**Intent:** "Create 10 territories balanced on sales volume."
+
+**What the agent resolves before calling:**
+- Metric named (`sales_volume`) but no bias specified.
+- Agent surfaces default: "I'll balance workload and sales volume equally (50-50). Want to adjust?"
+- Monica: "That's fine."
+- Session default dwell time (45 min) applies.
+
+**Tool call:**
+```json
+{
+  "ts": "<ts_handle>",
+  "part_layer": "us_postal",
+  "territory_count": 10,
+  "tal_label": "Workload + Sales Volume",
+  "workload": {
+    "dwell_time_minutes": 45
+  },
+  "metric": {
+    "column": "sales_volume",
+    "workload_bias": 50,
+    "metric_bias": 50
+  }
+}
+```
+
+**Expected behavior:**
+- EZT MCP builds TAL balancing workload and `sales_volume` at equal weight.
+- Returns TS with new TAL, `active_tal_id` updated.
+- Agent notes the metric tension caveat: "These two objectives often conflict — territories with high-revenue accounts may require more travel than low-revenue ones."
+
+**What this verifies:**
+- 50-50 default applied when metric named without bias.
+- Agent surfaces the default and invites override before building.
+- Metric tension caveat is surfaced in agent output.
+
+---
+
+### AB-004 — Workload + metric, explicit non-default bias
+
+**Intent:** "Create 10 territories — mostly balanced on workload, but lean toward equal revenue. Maybe 70-30."
+
+**What the agent resolves before calling:**
+- Explicit bias supplied by Monica: `workload_bias=70, metric_bias=30`.
+- No need to surface default.
+
+**Tool call:**
+```json
+{
+  "ts": "<ts_handle>",
+  "part_layer": "us_postal",
+  "territory_count": 10,
+  "tal_label": "Workload-Heavy + Revenue",
+  "workload": {
+    "dwell_time_minutes": 45
+  },
+  "metric": {
+    "column": "sales_volume",
+    "workload_bias": 70,
+    "metric_bias": 30
+  }
+}
+```
+
+**Expected behavior:**
+- Build executes with explicit bias. EZT MCP prioritizes workload balance but allows revenue imbalance to a greater degree.
+- Agent confirms: "Built with 70% workload / 30% revenue bias."
+
+**What this verifies:**
+- Arbitrary bias splits (not just 50-50 or 100-0) are accepted.
+- Agent does not override or normalize an explicitly provided bias.
+
+---
+
+### AB-005 — Pure metric balance (workload irrelevant)
+
+**Intent:** "Create 10 territories, each with the same sales volume. Don't worry about workload."
+
+**What the agent resolves before calling:**
+- `workload_bias=0, metric_bias=100`.
+- Dwell time NOT required. Agent must not ask for it.
+
+**Tool call:**
+```json
+{
+  "ts": "<ts_handle>",
+  "part_layer": "us_postal",
+  "territory_count": 10,
+  "tal_label": "Equal Revenue",
+  "metric": {
+    "column": "sales_volume",
+    "workload_bias": 0,
+    "metric_bias": 100
+  }
+}
+```
+
+**Expected behavior:**
+- No `workload` block in the call. EZT MCP builds purely on revenue balance.
+- Agent may note: "Territories may vary significantly in rep time burden since workload wasn't factored in."
+- Build proceeds without asking for dwell time.
+
+**What this verifies:**
+- `workload_bias=0` suppresses dwell time requirement entirely.
+- Agent must not ask for dwell time in this path.
+- Optional caveat about workload imbalance is appropriate but must not block the build.
+
+---
+
+### AB-006 — Account count balance (synthetic metric, 50-50 default)
+
+**Intent:** "Create 10 territories, each with the same number of accounts."
+
+**What the agent resolves before calling:**
+- "Same number of accounts" → synthetic account count metric. No column required.
+- Metric named → agent surfaces 50-50 default: "I'll balance workload and account count equally (50-50). Adjust?"
+- Monica: "Yes, go ahead."
+- Session default dwell time applies.
+
+**Tool call:**
+```json
+{
+  "ts": "<ts_handle>",
+  "part_layer": "us_postal",
+  "territory_count": 10,
+  "tal_label": "Workload + Account Count",
+  "workload": {
+    "dwell_time_minutes": 45
+  },
+  "metric": {
+    "synthetic": "account_count",
+    "workload_bias": 50,
+    "metric_bias": 50
+  }
+}
+```
+
+**Expected behavior:**
+- EZT MCP computes account count natively (1 per account, summed to part level). No column reference needed.
+- Build executes with workload + account count at 50-50.
+
+**What this verifies:**
+- Synthetic `account_count` metric supported natively.
+- No `column` field required for synthetic metrics.
+- Agent correctly maps "same number of accounts" to the synthetic metric parameter without prompting Monica for a column name.
+
+---
+
+### AB-007 — Pure account count balance (workload irrelevant)
+
+**Intent:** "Create 10 territories, each with the same number of accounts — don't take workload into account."
+
+**What the agent resolves before calling:**
+- `workload_bias=0, metric_bias=100`, synthetic `account_count`.
+- Dwell time not required.
+- Agent may note workload imbalance caveat.
+
+**Tool call:**
+```json
+{
+  "ts": "<ts_handle>",
+  "part_layer": "us_postal",
+  "territory_count": 10,
+  "tal_label": "Equal Account Count",
+  "metric": {
+    "synthetic": "account_count",
+    "workload_bias": 0,
+    "metric_bias": 100
+  }
+}
+```
+
+**Expected behavior:**
+- Pure count balance. No dwell time asked for. Agent notes: "Rep time burden may vary — territories with geographically spread accounts will have higher workload."
+
+**What this verifies:**
+- `workload_bias=0` with synthetic metric works.
+- Agent note is informative, not blocking.
+
+---
+
+### AB-008 — Mode B: fixed workload target, closest-to variant
+
+**Intent:** "Create territories each with 40 hours of workload."
+
+**What the agent resolves before calling:**
+- Mode B. No `territory_count` — it is derived.
+- Agent computes estimated total workload from the TS point layer and derives N.
+- Agent confirms with Monica: "Based on your accounts, that would give approximately 11 territories. Proceed?"
+- Monica: "Yes."
+- No metric named → `workload_bias=100`.
+
+**Tool call:**
+```json
+{
+  "ts": "<ts_handle>",
+  "part_layer": "us_postal",
+  "workload_target_hours": 40,
+  "workload_target_variant": "closest_to",
+  "tal_label": "40hr Workload Territories",
+  "workload": {
+    "dwell_time_minutes": 45
+  }
+}
+```
+
+**Expected behavior:**
+- EZT MCP derives N = total_workload ÷ 40, builds N territories minimizing deviation from mean.
+- Returns TS with new TAL and derived territory count in response metadata.
+- Agent reports: "Built 11 territories. Average workload: 39.8 hrs. Std dev: 1.2 hrs. (Estimates are ±10–20% vs a routed itinerary.)"
+
+**What this verifies:**
+- Mode B (fixed workload target) contract.
+- `territory_count` is absent; derived territory count is returned in response.
+- Agent confirms derived N before building.
+- Closest-to variant minimizes deviation from mean across all territories.
+
+---
+
+### AB-009 — Mode B: fixed workload target, closest-to-without-exceeding variant
+
+**Intent:** "Create territories each with no more than 40 hours of workload."
+
+**What the agent resolves before calling:**
+- Same as AB-008 but `workload_target_variant = "not_to_exceed"`.
+- Agent confirms derived N, which may be slightly higher than AB-008 (more territories to avoid any one exceeding 40 hrs).
+
+**Tool call:**
+```json
+{
+  "ts": "<ts_handle>",
+  "part_layer": "us_postal",
+  "workload_target_hours": 40,
+  "workload_target_variant": "not_to_exceed",
+  "tal_label": "Max 40hr Workload Territories",
+  "workload": {
+    "dwell_time_minutes": 45
+  }
+}
+```
+
+**Expected behavior:**
+- EZT MCP ensures no territory exceeds 40 hrs, minimizes deviation from mean within that constraint.
+- May produce N+1 territories vs AB-008 if the last territory would otherwise exceed the cap.
+- Agent: "Built 12 territories. No territory exceeds 40 hrs. Average workload: 36.7 hrs."
+
+**What this verifies:**
+- `not_to_exceed` variant enforces the cap as a hard constraint.
+- Territory count output may differ from `closest_to` for the same target.
+- Both variants minimize deviation from mean — one outlier territory is not acceptable in either.
+
+---
+
+### AB-010 — Mode B: fixed workload target + secondary metric
+
+**Intent:** "Create territories with about 40 hours each, balanced on sales too."
+
+**What the agent resolves before calling:**
+- Mode B + secondary metric. Agent surfaces 50-50 default.
+- Agent confirms derived N before building.
+
+**Tool call:**
+```json
+{
+  "ts": "<ts_handle>",
+  "part_layer": "us_postal",
+  "workload_target_hours": 40,
+  "workload_target_variant": "closest_to",
+  "tal_label": "40hr + Sales Balance",
+  "workload": {
+    "dwell_time_minutes": 45
+  },
+  "metric": {
+    "column": "sales_volume",
+    "workload_bias": 50,
+    "metric_bias": 50
+  }
+}
+```
+
+**Expected behavior:**
+- EZT MCP derives N from workload totals, then balances on workload + sales at 50-50 across those N territories.
+- Agent notes metric tension caveat.
+
+**What this verifies:**
+- Mode B + secondary metric can be combined.
+- Territory count is still derived from workload target, not from metric.
+
+---
+
+### AB-011 — Visit frequency column present, workload scaled
+
+**Intent:** "Create 10 territories." Account data includes `visit_freq_per_week` column (already ingested).
+
+**What the agent resolves before calling:**
+- Visit frequency column present in TS point layer. Agent tells Monica: "I see a `visit_freq_per_week` column — I'll use that to scale workload per account. Values range from 0.25 to 4. Does that look right?"
+- Monica confirms.
+- Agent passes `visit_frequency_column` to the build.
+
+**Tool call:**
+```json
+{
+  "ts": "<ts_handle>",
+  "part_layer": "us_postal",
+  "territory_count": 10,
+  "tal_label": "Freq-Weighted Workload",
+  "workload": {
+    "dwell_time_minutes": 45,
+    "visit_frequency_column": "visit_freq_per_week"
+  }
+}
+```
+
+**Expected behavior:**
+- EZT MCP multiplies both dwell time and estimated travel time by `visit_freq_per_week` for each account.
+- Accounts with higher visit frequency contribute proportionally more to territory workload.
+- Agent notes estimated workload includes frequency scaling.
+
+**What this verifies:**
+- `visit_frequency_column` accepted in the workload block.
+- Null/absent values default to frequency = 1 without error.
+- Agent surfaces the column and value range for Monica to confirm before building.
+
+---
+
+### AB-012 — Visit frequency as raw text, agent normalization required
+
+**Intent:** "Create 10 territories." Account data includes `visit_schedule` column with values like `"twice per week"`, `"monthly"`, `"every 3 weeks"`.
+
+**What the agent resolves before calling:**
+- Raw text frequency column detected. Agent cannot pass it directly to EZT MCP.
+- Agent samples values: "Your `visit_schedule` column has text values like 'twice per week', 'monthly', 'every 3 weeks'. I'll normalize these to visits-per-week — does this look right? twice/week → 2.0, monthly → 0.23, every 3 weeks → 0.33."
+- Monica confirms.
+- Agent writes normalized `visits_per_week` as a new point layer property on the TS before building.
+
+**Tool call (after normalization):**
+```json
+{
+  "ts": "<ts_handle with normalized visits_per_week property>",
+  "part_layer": "us_postal",
+  "territory_count": 10,
+  "tal_label": "Freq-Weighted Workload",
+  "workload": {
+    "dwell_time_minutes": 45,
+    "visit_frequency_column": "visits_per_week"
+  }
+}
+```
+
+**Expected behavior:**
+- EZT MCP receives a clean numeric column. No text parsing required on its end.
+- Agent is responsible for the normalization step and must surface the mapping to Monica for confirmation.
+
+**What this verifies:**
+- EZT MCP only accepts numeric `visits_per_cycle` float — it never parses text or inverse formats.
+- Agent owns scrubbing. EZT MCP contract is clean.
+- Ambiguous values (e.g. `"2"` — twice per cycle or every 2 cycles?) require Monica confirmation.
+
+---
+
+### AB-013 — Build-time dwell time override (ignores session default)
+
+**Intent:** "For this build, use 1 hour per visit instead of our usual 30 minutes."
+
+**What the agent resolves before calling:**
+- Session default is 30 min. Monica explicitly overrides for this build.
+- Agent applies override for this call only. Session default remains 30 min.
+
+**Tool call:**
+```json
+{
+  "ts": "<ts_handle>",
+  "part_layer": "us_postal",
+  "territory_count": 10,
+  "tal_label": "1hr Dwell Workload",
+  "workload": {
+    "dwell_time_minutes": 60
+  }
+}
+```
+
+**Expected behavior:**
+- Build uses 60-min dwell. Session default not changed.
+- Agent confirms: "Built with 1-hour dwell time. Your session default of 30 minutes is unchanged."
+
+**What this verifies:**
+- Build-time override is per-call only.
+- Session default persists unless Monica explicitly updates it.
+- Agent should confirm which dwell time was used and that the default is unchanged.
+
+---
+
+### AB-014 — Per-account dwell time column (overrides scalar default)
+
+**Intent:** "Create 10 territories." Account data includes `avg_visit_hrs` column (e.g. 0.5 for quick stops, 2.0 for complex accounts).
+
+**What the agent resolves before calling:**
+- Agent scans columns, finds `avg_visit_hrs`. Asks Monica: "I see an `avg_visit_hrs` column — should I use that as per-account dwell time instead of the session default?"
+- Monica: "Yes."
+- Per-account column takes precedence over session default.
+
+**Tool call:**
+```json
+{
+  "ts": "<ts_handle>",
+  "part_layer": "us_postal",
+  "territory_count": 10,
+  "tal_label": "Per-Account Dwell Workload",
+  "workload": {
+    "dwell_time_column": "avg_visit_hrs"
+  }
+}
+```
+
+**Expected behavior:**
+- EZT MCP uses `avg_visit_hrs` per account. No scalar default applied.
+- Agent: "Using per-account dwell times from `avg_visit_hrs` (range: 0.5–2.0 hrs)."
+
+**What this verifies:**
+- Per-account column takes precedence over scalar default when specified.
+- `dwell_time_column` and `dwell_time_minutes` are mutually exclusive in the workload block.
+- Agent surfaces the column and value range before building.
+
+---
+
+### AB-015 — Multi-metric request (not supported — agent explains)
+
+**Intent:** "Create 10 territories balanced on both store count and sales volume."
+
+**What the agent resolves before calling:**
+- Multiple secondary metrics requested → not supported in v1.
+- Agent explains: "EZT MCP supports one secondary metric per TAL. Balancing on multiple metrics simultaneously creates competing tensions that typically produce a poorly balanced result on all dimensions. The recommended approach is to build separate TALs — one balanced on store count, one on sales volume — and compare them."
+- Agent offers to proceed with two separate TAL builds.
+- Monica: "OK, do both."
+- Agent runs AB-003 and AB-006 style calls in sequence on the same TS.
+
+**Expected behavior:**
+- No tool call with multiple metrics is made.
+- Agent explains the constraint clearly and offers the correct alternative.
+- Two separate TAL builds produce a TS with two TALs, ready for comparative analysis.
+
+**What this verifies:**
+- Agent must intercept multi-metric requests before calling Auto Build.
+- The agent — not EZT MCP — owns the "not supported" explanation and remediation path.
+- EZT MCP never receives a multi-metric build call.
+
+---
+
+### AB-016 — Mode A and Mode B mutually exclusive
+
+**Intent:** "Create exactly 10 territories, each with about 40 hours of workload."
+
+**What the agent resolves before calling:**
+- Both `territory_count` and `workload_target_hours` specified → mutually exclusive.
+- Agent explains: "I can either build a fixed number of territories (10) balanced on workload, or build territories sized to ~40 hours each and let the count be derived — but not both at once. Which would you prefer?"
+- Monica chooses one.
+
+**Expected behavior:**
+- No tool call is made until Monica resolves the ambiguity.
+- Agent explains the two modes clearly and lets Monica decide.
+
+**What this verifies:**
+- Agent must detect and resolve the Mode A/B conflict before calling Auto Build.
+- EZT MCP never receives a call with both `territory_count` and `workload_target_hours` set.
 
 ## Scenario Backlog
 
