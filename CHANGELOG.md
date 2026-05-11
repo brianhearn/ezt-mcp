@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-11) — v0.15.0 (CONSTITUTION) / v0.6.3 (SCENARIOS)
+- `CONSTITUTION.md` v0.15.0 — locked `active_tal_id` behavior: Auto Build always sets it to the newly appended TAL; agent may override explicitly
+- `SCENARIOS.md` v0.6.3 — marked `active_tal_id` open question as resolved
+
 ### Changed (2026-05-11) — v0.14.0 (CONSTITUTION) / v0.6.2 (SCENARIOS)
 - `CONSTITUTION.md` v0.14.0 — expanded dwell time resolution: session default (agent-owned, persists across builds), build-time override, agent UX guidance (scan columns for dwell-time candidates, ask Monica, offer to persist as default); agent is responsible for scrubbing visit frequency raw formats (decimal, inverse-weeks, free text) into normalized `visits_per_cycle` float before passing to EZT MCP; account count synthetic metric supported natively (no column required); max batch size for `ingest_accounts` TBD (most customers 10K, some 100K+)
 - `SCENARIOS.md` v0.6.2 — marked dwell time and visit frequency open questions as resolved; annotated batch size and `active_tal_id` as TBD

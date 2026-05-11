@@ -1,6 +1,6 @@
 # CONSTITUTION.md — EZT MCP Non-Negotiables
 
-**Version:** 0.14.0
+**Version:** 0.15.0
 **Date:** 2026-05-11
 **Status:** Draft
 
@@ -153,6 +153,8 @@ Workload is always the primary balance objective. The operator may optionally sp
 **Account count as a synthetic metric** is supported natively by EZT MCP. The operator does not need a literal `account_count` column — Auto Build can use account density (1 per account, summed to part level) as the balance objective without any column reference. The agent should recognize natural-language requests like "same number of accounts" and map them to the native synthetic metric parameter.
 
 **Multiple secondary metrics are not supported.** Competing metric tensions compound and produce poorly balanced results across all dimensions. The correct approach is to build separate single-metric TALs and compare them. This is a deliberate product constraint, not a technical limitation.
+
+**`active_tal_id` after Auto Build:** Each Auto Build call sets `active_tal_id` to the newly appended TAL. This means the Map Component always renders the freshest alignment by default without requiring an explicit agent update. When building multiple TALs sequentially, the last build's TAL will be active on completion. The agent may override `active_tal_id` explicitly if a different TAL should be the default view.
 
 **Agent UX guidance:** When an operator specifies a metric without a bias, the agent should surface the 50-50 default and invite adjustment before building. When workload requires dwell time and none is in the data, the agent must ask for a default before calling Auto Build. When Mode B is used, the agent should confirm the derived territory count before building.
 
