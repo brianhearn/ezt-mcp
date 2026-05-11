@@ -1,6 +1,6 @@
 # SCENARIOS.md — EZT MCP Workflow Scenarios
 
-**Version:** 0.9.0
+**Version:** 0.9.1
 **Date:** 2026-05-11
 **Status:** Lean scenario registry — draft
 
@@ -39,7 +39,7 @@ Abbreviations used throughout this document. Full definitions in [CONSTITUTION.m
 8. EZT MCP updates the TS, repairs geometry if needed, and refreshes the live MC session.
 9. The agent persists the updated TS and summarizes the impact.
 
-Open question: Exact map-session tool/resource naming remains TBD.
+Decision: `map_session_create` is v1; exact resource payload schemas move to `FUNCTIONAL_SPEC.md` and `schemas/`.
 
 ### S002 — Monica emails a read-only latest East Coast TS view to her boss
 
@@ -51,7 +51,7 @@ Open question: Exact map-session tool/resource naming remains TBD.
 6. The agent sends the boss the read-only link and summary through Monica's approved email workflow.
 7. Monica's boss opens the URL in a browser and reviews the latest map without editing it.
 
-Open question: Teams embeds, Power BI embedding, and formal reporting lanes are TBD.
+Decision: V1 sharing is browser URL / OpenClaw Canvas plus Analyze-backed narrative; Teams, Power BI embedding, and formal export contracts are post-MVP.
 
 ### S003 — Monica pulls CRM accounts and auto-builds two TALs for side-by-side comparison
 
@@ -66,7 +66,7 @@ Open question: Teams embeds, Power BI embedding, and formal reporting lanes are 
 9. The agent calls Analyze across both TALs.
 10. Monica sees a side-by-side comparison and can switch between TALs in the MC.
 
-Open question: The exact polished comparison presentation belongs in Analysis Presentation Guidance.
+Decision: polished comparison presentation belongs in Analysis Presentation Guidance, not scenario prose.
 
 ---
 
@@ -347,7 +347,7 @@ Open question: The exact polished comparison presentation belongs in Analysis Pr
 4. Monica reviews the proposed new territories.
 5. The agent commits the split after Monica approves.
 
-Open question: Whether split is part of Realign v1 or a later specialized operation remains TBD.
+Decision: territory split is v1 via Auto Build Scoped Split, not Realign.
 
 ### RL-003 — Departed rep's territory is absorbed by adjacent territories
 
@@ -493,7 +493,7 @@ Open question: Whether split is part of Realign v1 or a later specialized operat
 4. EZT MCP updates the point location in the TS point layer.
 5. The agent saves the corrected TS and warns Monica if downstream TALs may need rebuilding.
 
-Open question: Point Location Update is a future tool, not Phase 1.
+Decision: Point Location Update is post-MVP; Phase 1 handles corrected locations through re-ingestion or point-layer replacement.
 
 ---
 

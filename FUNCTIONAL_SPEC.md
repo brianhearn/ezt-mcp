@@ -1,8 +1,8 @@
 # FUNCTIONAL_SPEC.md — EZT MCP Functional Contract
 
-**Version:** 0.1.0
+**Version:** 0.1.1
 **Date:** 2026-05-11
-**Status:** Draft — initial behavioral contract
+**Status:** Draft — open questions resolved for v1 surface
 
 This document defines EZT MCP's externally observable behavior for agent/client implementers. It specifies MCP tools, resources, prompts, caller-visible state rules, validation behavior, and acceptance criteria independent of implementation internals.
 
@@ -102,6 +102,7 @@ Common error codes include:
 | `UNKNOWN_TAL_ID` | Requested TAL does not exist in the TS. |
 | `AMBIGUOUS_TAL` | Multiple TALs exist and no explicit target was supplied. |
 | `UNKNOWN_POINT_LAYER` | Requested point layer does not exist in the TS. |
+| `UNKNOWN_SOURCE_TERRITORY` | Requested source territory for a scoped split or realign operation does not exist. |
 | `UNKNOWN_FIELD` | Requested metric/grouping/dwell/frequency field does not exist. |
 | `INVALID_FIELD_TYPE` | Field exists but cannot be used for the requested purpose. |
 | `CLARIFICATION_REQUIRED` | Request is under-specified and should be clarified by the agent. |
@@ -119,13 +120,12 @@ Common error codes include:
 | `ingest_accounts` | Create or append a TS point layer from account/location rows. | IA-001 to IA-005, S003 |
 | `direct_build` | Build a TAL from explicit part-to-territory assignments. | DB-001 to DB-003 |
 | `account_build` | Build a TAL by grouping account points on an attribute. | ACB-001 to ACB-003 |
-| `auto_build` | Build a balanced TAL from point layers, workload rules, and optional metric. | AB-001 to AB-016, S003 |
-| `realign` | Move parts within a specific TAL and return an updated TS. | RL-001 to RL-005, S001, MC-004 |
+| `auto_build` | Build a balanced TAL from point layers, workload rules, and optional metric; includes scoped territory-split builds. | AB-001 to AB-016, RL-002, S003 |
+| `realign` | Move parts within a specific TAL and return an updated TS. | RL-001, RL-003 to RL-005, S001, MC-004 |
 | `analyze` | Return structured analysis facts for one or more TALs or scopes. | AN-001 to AN-005, S001, S003 |
 | `map_session_create` | Create a transient read-only or select-mode Map Component session. | MC-001 to MC-004, S001, S002 |
-| `ts_cache_put` | Store a TS in short-lived cache and return a handle. | CH-001, CH-002 |
 
-Open question: `ts_cache_put` may remain implicit inside other tools rather than a public MCP tool.
+V1 TS cache behavior is implicit. Public tools may accept and return TS handles, but `ts_cache_put` is not a public v1 MCP tool.
 
 ---
 
@@ -358,8 +358,10 @@ The tool accepts:
 - `part_layer`;
 - new TAL label;
 - exactly one build mode:
-  - Mode A: fixed territory count; or
-  - Mode B: fixed workload target with closest-to or not-to-exceed variant;
+  - Mode A: fixed territory count;
+  - Mode B: fixed workload target with closest-to or not-to-exceed variant; or
+  - Scoped Split: split one existing territory into two or more balanced replacement territories within a derived TAL;
+- optional source `tal_id` and `territory_id` when using Scoped Split;
 - resolved dwell-time input when workload is used;
 - optional normalized visit-frequency field;
 - optional one secondary metric field or synthetic account count metric;
@@ -369,15 +371,17 @@ The agent is responsible for resolving dwell time and normalizing visit frequenc
 
 ### 8.3 Functional behavior
 
-1. Reject requests that combine Mode A and Mode B.
-2. Use pure workload balance when no metric is named.
-3. Use default 50-50 workload/metric bias when a metric is named but no bias is supplied.
-4. Support pure metric balance when workload bias is zero and do not require dwell time in that case.
-5. Support synthetic account count without requiring an account-count column.
-6. Reject multiple secondary metrics.
-7. Estimate workload according to Constitution §2.10.
-8. Append a new TAL and set it as `active_tal_id`.
-9. Preserve existing point layers and TALs.
+1. Reject requests that combine incompatible build modes.
+2. For full-TS builds, append a new TAL built from the selected point layer and part layer.
+3. For Scoped Split, derive a new TAL from the source TAL, replace the selected source territory with the newly optimized territories, preserve all other territories from the source TAL, and append the derived TAL to the TS.
+4. Use pure workload balance when no metric is named.
+5. Use default 50-50 workload/metric bias when a metric is named but no bias is supplied.
+6. Support pure metric balance when workload bias is zero and do not require dwell time in that case.
+7. Support synthetic account count without requiring an account-count column.
+8. Reject multiple secondary metrics.
+9. Estimate workload according to Constitution §2.10.
+10. Append a new TAL and set it as `active_tal_id`.
+11. Preserve existing point layers and existing TALs.
 
 ### 8.4 Functional output
 
@@ -387,6 +391,7 @@ Returns:
 - TS identity;
 - new `tal_id`;
 - build mode summary;
+- scoped split summary when applicable;
 - territory count;
 - objective/bias summary;
 - workload and metric distribution summary;
@@ -395,13 +400,16 @@ Returns:
 ### 8.5 Failure behavior
 
 - Mode conflict returns `CLARIFICATION_REQUIRED` or `UNSUPPORTED_OPERATION` with guidance.
+- Scoped Split without a source TAL or source territory returns `CLARIFICATION_REQUIRED`.
+- Scoped Split with an unknown source territory returns `UNKNOWN_SOURCE_TERRITORY`.
 - Missing dwell time for workload build returns `CLARIFICATION_REQUIRED`.
 - Unknown metric field returns `UNKNOWN_FIELD`.
 - Multiple metrics return `UNSUPPORTED_OPERATION` and should recommend separate TALs.
 
 ### 8.6 Acceptance criteria
 
-- Covers AB-001 through AB-016 and S003.
+- Covers AB-001 through AB-016, RL-002, and S003.
+- Scoped Split is v1 behavior for customer requests like “split this oversized territory”; it is handled by Auto Build, not Realign.
 - Build-time dwell override, per-account dwell column, and session default behavior are caller-visible and explainable.
 - Visit frequency is numeric and normalized before EZT MCP consumes it.
 
@@ -460,7 +468,7 @@ Returns:
 - Realign never modifies untargeted TALs.
 - Stale map selections are rejected safely.
 
-Open question: RL-002 territory split may be a future specialized operation rather than Realign v1.
+Territory splitting is intentionally excluded from Realign v1. Use `auto_build` Scoped Split for RL-002.
 
 ---
 
@@ -571,47 +579,23 @@ Returns:
 
 ---
 
-## 12. Tool Contract: `ts_cache_put`
+## 12. TS Cache Behavior — implicit v1 surface
 
-### 12.1 User intent
+TS caching is a transport optimization, not a public v1 MCP tool. Agents should not need to manage cache lifecycle directly.
 
-Use when an agent is about to perform several operations against a large TS and wants to avoid resending it on each call.
+Functional behavior:
 
-### 12.2 Functional input
+1. Tools may accept either full `ts` payloads or valid `ts_handle` references where appropriate.
+2. Tools may return a `ts_handle` for large TS payloads or sequential workflows.
+3. Handles are short-lived, customer/API-key scoped, non-guessable, and safe to miss.
+4. Cache miss returns `INVALID_TS_HANDLE`; the agent resends the full TS.
+5. No cache handle is durable customer storage or a system-of-record reference.
 
-The tool accepts:
-
-- full TS payload;
-- optional desired TTL within policy limits;
-- optional expected identity metadata.
-
-### 12.3 Functional behavior
-
-1. Validate the TS enough to compute identity and safely cache it.
-2. Store it in short-lived customer/API-key-scoped cache.
-3. Return a non-guessable handle and expiry.
-4. Treat cache as discardable; no caller may rely on it for durability.
-
-### 12.4 Functional output
-
-Returns:
-
-- `ts_handle`;
-- `ts_identity`;
-- `expires_at`;
-- size/limits warnings when useful.
-
-### 12.5 Failure behavior
-
-- Invalid TS returns `INVALID_TS`.
-- Oversized payload returns a structured size/limit error.
-
-### 12.6 Acceptance criteria
+Acceptance criteria:
 
 - Covers CH-001 and CH-002.
-- Cache miss behavior is safe because every downstream tool accepts full TS resend.
-
-Open question: This may be implicit/tool-return behavior rather than a public v1 MCP tool.
+- There is no public v1 `ts_cache_put` tool.
+- Cache behavior never changes the TS-in/TS-out functional model.
 
 ---
 
@@ -686,14 +670,14 @@ Functional behavior:
 
 ---
 
-## 15. Open Design Questions
+## 15. Resolved v1 Scope Decisions
 
-1. **Realign split scope:** Is RL-002 territory split part of `realign` v1, a future `split_territory` operation, or an Auto Build variant scoped to one territory?
-2. **Cache surface:** Is `ts_cache_put` a public MCP tool or implicit behavior returned by large TS-producing tools?
-3. **Map session MVP:** Is `map_session_create` in the v1 MCP tool set or deferred behind a sharing/map surface?
-4. **Exact schemas:** When to introduce `schemas/` for TS, tool inputs/outputs, resources, and test vectors?
-5. **Exports/Power BI lane:** Which export/share contracts belong in v1 versus post-MVP?
-6. **Point Location Update:** Future PLU workflow is recognized but not Phase 1.
+1. **Territory split is v1 via Auto Build.** Customer requests like “split this oversized territory” are common and belong in v1. The contract is `auto_build` Scoped Split: derive a new TAL from the source TAL, replace one source territory with two or more optimized territories, and preserve the rest of the source TAL. It is not part of `realign` v1.
+2. **TS cache is implicit.** Public tools may accept/return TS handles, but `ts_cache_put` is not a public v1 MCP tool. Cache miss is expected and recoverable by resending the full TS.
+3. **Map sessions are v1.** `map_session_create` is part of the public v1 MCP tool set with `view` and `select` modes. Browser URL / OpenClaw Canvas is v1; Teams and Power BI embedding are post-MVP.
+4. **Schemas start before implementation.** Add `schemas/` after this functional surface stabilizes and before implementation begins. JSON Schema owns exact structure; this Functional Spec owns behavior.
+5. **Exports and Power BI are post-MVP.** V1 sharing is read-only MC browser URL plus Analyze-backed narrative. Formal Power BI/export contracts are deferred.
+6. **Point Location Update is post-MVP.** PLU-001 remains a future scenario. Phase 1 handles corrected locations through re-ingestion or point-layer replacement by the agent workflow.
 
 ---
 
@@ -710,13 +694,13 @@ Functional behavior:
 | ACB-001 to ACB-003 | `account_build` |
 | AB-001 to AB-016 | `auto_build` |
 | RL-001, RL-003 to RL-005 | `realign` |
-| RL-002 | Open design question |
+| RL-002 | `auto_build` Scoped Split |
 | AN-001 to AN-005 | `analyze`, presentation guidance |
 | MC-001 to MC-004 | `map_session_create`, resources |
 | MC-005 | `analyze`, presentation guidance |
-| CH-001 to CH-002 | TS handles / `ts_cache_put` |
+| CH-001 to CH-002 | Implicit TS handles / cache behavior |
 | PLU-001 | Future tool, not Phase 1 |
 
 ---
 
-*This is the first functional contract draft. Prefer tightening behavior here before starting implementation.*
+*This functional contract draft has the v1 public surface decisions resolved. Prefer moving next into executable schemas before implementation.*

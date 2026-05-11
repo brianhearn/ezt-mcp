@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-11) — v0.1.1 (FUNCTIONAL_SPEC) / v0.9.1 (SCENARIOS)
+- Resolved v1 open questions: territory split is v1 via Auto Build Scoped Split (not Realign); TS cache is implicit (no public `ts_cache_put` tool); `map_session_create` is v1 with browser URL/OpenClaw Canvas first; schemas start before implementation; Power BI/export contracts are post-MVP; Point Location Update is post-MVP
+- `FUNCTIONAL_SPEC.md` v0.1.1 — updated v1 public tool surface, added Auto Build Scoped Split behavior, replaced open questions with resolved v1 scope decisions, and moved cache to implicit behavior
+- `SCENARIOS.md` v0.9.1 — replaced remaining open-question notes with resolved decisions
+
 ### Added (2026-05-11) — v0.1.0 (FUNCTIONAL_SPEC)
 - Added `FUNCTIONAL_SPEC.md` v0.1.0 — initial external behavior contract covering common TS/handle conventions, structured errors, v1 draft MCP tools (`geocode_address`, `ingest_accounts`, `direct_build`, `account_build`, `auto_build`, `realign`, `analyze`, `map_session_create`, `ts_cache_put`), map-session resources, guidance resources, open design questions, and scenario coverage matrix
 
