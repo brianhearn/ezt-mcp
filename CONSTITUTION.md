@@ -1,6 +1,6 @@
 # CONSTITUTION.md — EZT MCP Non-Negotiables
 
-**Version:** 0.13.0
+**Version:** 0.14.0
 **Date:** 2026-05-11
 **Status:** Draft
 
@@ -110,17 +110,36 @@ This model reflects the empirical observation that US roads are laid down with r
 
 #### Dwell time resolution
 
-1. Per-account column in the TS point layer (e.g. `avg_visit_duration`) — operator/agent specifies column name.
-2. No column → operator supplies a scalar default (e.g. 45 minutes per visit).
-3. If `workload_bias = 0` (pure metric balance) → dwell time is not required and should not be requested.
+Dwell time is resolved in this order:
+
+1. **Per-account column** in the TS point layer (e.g. `avg_visit_duration`) — operator/agent specifies column name at build time.
+2. **Session default** — a scalar average set by Monica earlier in the engagement and stored by the agent (not by EZT MCP). The agent carries this forward across TS builds and applies it whenever no per-account column is available.
+3. **Build-time override** — Monica may override the session default for a specific build (e.g. "use 1 hour for this one instead of our usual 30 minutes"). Applies to that build only; does not update the session default unless Monica says so.
+4. If `workload_bias = 0` (pure metric balance) → dwell time is not required and must not be requested.
+
+**Agent UX guidance for dwell time:**
+When starting a workload-based build and no dwell time column has been identified and no session default exists, the agent should:
+- Scan the account column list for numeric columns that look like dwell time (e.g. names containing `dwell`, `visit_duration`, `stop_time`, `service_time`, `call_time`).
+- If a candidate column is found: ask Monica whether to use it as the per-account dwell time column.
+- If no candidate column is found: ask Monica for an average dwell time.
+- After establishing the default: ask "Would you like me to use this going forward?" and store it as the session default if Monica agrees.
+
+The session default is agent-owned state, not an EZT MCP concept. EZT MCP always receives a resolved dwell time value (column name or scalar) per build call — it never stores operator preferences.
 
 #### Visit frequency
 
 Visit frequency is always an attribute on the account/location data — it is never a build-time parameter. When present, it is a column in the TS point layer (ingested via `ingest_accounts` alongside all other account columns). Many customers do not have visit frequency data at all; it is optional.
 
-When a visit frequency column is present and referenced, both dwell time AND estimated travel time are multiplied by the visit frequency to compute per-cycle workload for that account. An account visited twice per week contributes double the dwell time and double the estimated travel time to the territory workload total.
+When a visit frequency column is present and referenced, both dwell time AND estimated travel time are multiplied by the normalized visit frequency to compute per-cycle workload for that account.
 
-Accounts without a visit frequency value (column absent, or null for a given row) are assumed to have frequency = 1. The operator must ensure all non-null frequency values use the same cycle unit as the workload target (e.g. all weekly if Mode B target is in hours/week).
+**Normalization — agent responsibility:** Customer data is not consistent in how visit frequency is expressed. Common formats include:
+- Decimal visits per cycle: `2.0` = twice per week, `0.5` = once every two weeks
+- Weeks between visits (inverse): `"3"` = once every 3 weeks = `1/3` visits/week; `"0.5"` = twice per week
+- Free text: `"twice per week"`, `"monthly"`, `"bi-weekly"`
+
+The agent is responsible for scrubbing the raw frequency column into a normalized decimal `visits_per_cycle` float before passing it to EZT MCP. EZT MCP expects a single numeric `visits_per_cycle` value per account — it does not parse text or interpret inverse formats. The agent should surface a sample of raw values to Monica for confirmation before normalizing, especially when the format is ambiguous (e.g. `"2"` could mean twice per cycle or every 2 cycles).
+
+Accounts without a visit frequency value (column absent, or null for a given row) default to `visits_per_cycle = 1`. The normalization cycle (weekly, monthly, etc.) must be consistent across all accounts and must match the cycle unit used in any Mode B workload target.
 
 #### Secondary metric and bias
 
@@ -130,6 +149,8 @@ Workload is always the primary balance objective. The operator may optionally sp
 - `workload_bias=50, metric_bias=50` — equal importance. **Default when a metric is named but no bias is specified.**
 - `workload_bias=0, metric_bias=100` — pure metric balance; dwell time not required.
 - Any other split summing to 100 is valid.
+
+**Account count as a synthetic metric** is supported natively by EZT MCP. The operator does not need a literal `account_count` column — Auto Build can use account density (1 per account, summed to part level) as the balance objective without any column reference. The agent should recognize natural-language requests like "same number of accounts" and map them to the native synthetic metric parameter.
 
 **Multiple secondary metrics are not supported.** Competing metric tensions compound and produce poorly balanced results across all dimensions. The correct approach is to build separate single-metric TALs and compare them. This is a deliberate product constraint, not a technical limitation.
 
