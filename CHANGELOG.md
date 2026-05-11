@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-11) — v0.9.0 (SCENARIOS)
+- `SCENARIOS.md` v0.9.0 — refactored from detailed scenario specs into a lean scenario registry: terse numbered narrative steps only, no JSON/tool contracts/subsections; added coverage for Geocode Address, Ingest Accounts, Direct Build, Account Build, Realign, Analyze, Map Component/sharing, TS cache/identity, and future Point Location Update scenarios
+
 ### Changed (2026-05-11) — v0.16.0 (CONSTITUTION) / v0.8.0 (SCENARIOS)
 - `SCENARIOS.md` v0.8.0 — added Auto Build Scenario Suite (AB-001 through AB-016) as a testbed covering every Auto Build contract variation: pure workload (Mode A), session default persistence, workload+metric with 50-50 default, explicit bias, pure metric (workload_bias=0), synthetic account count, Mode B closest-to and not-to-exceed, Mode B+metric, visit frequency column, raw text visit frequency normalization (agent responsibility), build-time dwell override, per-account dwell column, multi-metric rejection (agent explains), Mode A/B mutual exclusion
 
