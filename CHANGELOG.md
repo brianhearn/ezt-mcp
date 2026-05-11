@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added (2026-05-11) — v0.1.0 (FUNCTIONAL_SPEC)
+- Added `FUNCTIONAL_SPEC.md` v0.1.0 — initial external behavior contract covering common TS/handle conventions, structured errors, v1 draft MCP tools (`geocode_address`, `ingest_accounts`, `direct_build`, `account_build`, `auto_build`, `realign`, `analyze`, `map_session_create`, `ts_cache_put`), map-session resources, guidance resources, open design questions, and scenario coverage matrix
+
 ### Changed (2026-05-11) — v0.9.0 (SCENARIOS)
 - `SCENARIOS.md` v0.9.0 — refactored from detailed scenario specs into a lean scenario registry: terse numbered narrative steps only, no JSON/tool contracts/subsections; added coverage for Geocode Address, Ingest Accounts, Direct Build, Account Build, Realign, Analyze, Map Component/sharing, TS cache/identity, and future Point Location Update scenarios
 

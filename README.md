@@ -2,7 +2,7 @@
 
 > Server-side territory operations for AI agents, backed by EasyTerritory domain expertise.
 
-**Status:** Pre-implementation — Vision and Constitution in active revision. See [SDLC.md](SDLC.md) for documentation boundaries, [VISION.md](VISION.md) for product intent, and [SCENARIOS.md](SCENARIOS.md) for workflow scenarios used to stress-test the design.
+**Status:** Pre-implementation — Vision, Constitution, Scenarios, and Functional Spec in active revision. See [SDLC.md](SDLC.md) for documentation boundaries, [VISION.md](VISION.md) for product intent, [SCENARIOS.md](SCENARIOS.md) for workflow scenarios, and [FUNCTIONAL_SPEC.md](FUNCTIONAL_SPEC.md) for the draft external behavior contract.
 
 ---
 
@@ -36,8 +36,8 @@ The repo's SDLC documents and ownership boundaries are defined in [SDLC.md](SDLC
 |-------|--------|
 | Vision | ✅ Complete |
 | Constitution | ✅ Complete |
-| Scenario Collection | 🟡 Started — see [SCENARIOS.md](SCENARIOS.md) |
-| Functional Spec | 🔲 Not started |
+| Scenario Collection | ✅ Initial registry complete — see [SCENARIOS.md](SCENARIOS.md) |
+| Functional Spec | 🟡 Started — see [FUNCTIONAL_SPEC.md](FUNCTIONAL_SPEC.md) |
 | Technical Spec | 🔲 Not started |
 | Implementation | 🔲 Not started |
 | Verification | 🔲 Not started |
