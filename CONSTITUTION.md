@@ -1,7 +1,7 @@
 # CONSTITUTION.md — EZT MCP Non-Negotiables
 
-**Version:** 0.10.0
-**Date:** 2026-05-08
+**Version:** 0.11.0
+**Date:** 2026-05-11
 **Status:** Draft
 
 These are the architectural, security, stack, and convention decisions that are locked for the life of the project. Deviations require explicit revision of this document with justification. All downstream specs and implementation must conform.
@@ -73,27 +73,49 @@ EZT MCP must support executive sharing workflows as a first-class flagship capab
 
 Read-only sharing and assisted map selection must use the same underlying map component with capability flags/modes, not two divergent UI implementations.
 
-### 2.10 Analysis Presentation Guidance Is Product Surface
+### 2.10 Auto Build Balance Model
+
+Auto Build always balances on **workload** unless the operator explicitly sets workload bias to zero. Workload is the sum of estimated travel time plus dwell time for each account in a territory.
+
+**Travel time** is a statistical estimate derived from account coordinates. Roads in the US are laid down with reasonable efficiency — two random points at the same straight-line distance typically have similar transit times. This holds across large, geographically spread account sets. Exceptions exist (mountain ranges, water bodies, dense urban cores vs rural roads), and the estimate typically carries ±10–20% error versus an actual routed itinerary. This is an acceptable tradeoff for the planning phase; detailed routing can follow once a TAL is chosen. Travel time estimation accuracy is an area for future improvement.
+
+**Dwell time** resolution:
+1. Per-account column in the TS point layer (e.g. `avg_visit_duration`) — Monica tells the agent which column to use.
+2. No column present → operator must supply a scalar default (e.g. 45 minutes per visit).
+3. If workload bias = 0 (pure metric balance) → dwell time is not required.
+
+**Secondary metric balance** is optional. The operator may specify exactly one numeric column from the TS point layer as a secondary balance objective. EZT MCP will try to balance workload AND that metric simultaneously. Because these objectives almost always create tension (you cannot achieve perfect balance of both simultaneously), the operator must also supply a bias split:
+
+- `workload_bias` + `metric_bias` = 100
+- Example: `workload_bias=50, metric_bias=50` — equal importance
+- Example: `workload_bias=100` — pure workload balance; no secondary metric
+- Example: `workload_bias=0, metric_bias=100` — pure metric balance; dwell time not required
+
+**Multiple secondary metrics are not supported.** Competing metric tensions compound rapidly and produce alignments that are poorly balanced across all dimensions. The correct approach is to build separate single-metric TALs and compare them. This is a deliberate product constraint, not a technical limitation.
+
+**Agent UX guidance:** When Monica wants to compare multiple balance strategies, the correct pattern is multiple TAL builds, each with its own balance objective, layered into the same TS. The comparative Analyze and Map Component TAL switcher then let Monica evaluate the tradeoffs visually and numerically before choosing.
+
+### 2.11 Analysis Presentation Guidance Is Product Surface
 Analyze Territory Solution returns structured JSON facts. EZT MCP must also provide agent-facing presentation guidance — as MCP resources/prompts and/or versioned markdown such as `ANALYSIS_DESIGN.md` — so calling agents can turn analysis JSON into clear, domain-appropriate operator insight.
 
 This guidance is part of the product surface, not incidental documentation. It must be versioned, tested against example analysis outputs, and kept aligned with the Analysis tool schema.
 
-### 2.11 Short-Lived TS Cache Is Allowed
+### 2.12 Short-Lived TS Cache Is Allowed
 TS payloads may be many MBs. EZT MCP may provide cache-check/cache-put/cache-handle behavior so agents can avoid repeatedly transmitting full TS payloads across sequential tool calls. This cache is permitted only as a TTL-bound transport optimization, not as durable storage or a customer system of record.
 
 A cache miss must be safe and expected: the agent can always resend the full TS. Cache handles must be scoped to the customer/API key and must not be guessable.
 
-### 2.12 TS Presentation Metadata and Styling
+### 2.13 TS Presentation Metadata and Styling
 The Map Component must support declarative TS presentation metadata for lightweight but useful styling. Styling must travel with the TS as GeoJSON-compatible metadata and/or be resolved from versioned EZT MCP style resources/templates. The component must render the same style spec consistently in read-only `view` and assisted `select` modes.
 
 V1 styling must stay intentionally smaller than EZT Designer: territory colors/boundaries/opacity, labels, point symbol styling, simple classification, legends, and named visualization presets. Full Designer-style symbology editing, complex filtering, clustering, hotspots, and print layouts are not required for v1 unless later specs explicitly add them.
 
-### 2.13 DESIGN.md Product Design System
+### 2.14 DESIGN.md Product Design System
 The repo must contain a `DESIGN.md` file that captures the EasyTerritory product design language for AI coding agents. `DESIGN.md` should follow the emerging AI-agent design-system pattern: YAML frontmatter for machine-readable tokens and Markdown prose for rationale, constraints, and component guidance.
 
 EZT Designer V2 is the visual source of truth. The Map Component must use `DESIGN.md` for product chrome, controls, legends, panels, empty/loading/error states, and default visual language. TS presentation metadata remains responsible for solution-specific map symbology.
 
-### 2.14 PMTiles Are Static Delivery Artifacts
+### 2.15 PMTiles Are Static Delivery Artifacts
 PMTiles archives are read-only browser delivery artifacts, not authoritative operational data stores. Vector basemap PMTiles are generated from OSM-derived cartographic processing, preferably Protomaps/Planetiler-style, and hosted in blob/object storage with HTTP Range Request support. They are not stored in PostgreSQL.
 
 Curated part layers are canonical in `geo` PostGIS tables. Part-layer PMTiles may be generated from those tables for Map Component rendering and selection hit-testing. Regenerating part-layer PMTiles is an operational build step when canonical part geometry changes.
@@ -145,6 +167,9 @@ Short-lived cache entries are still customer data and must be treated accordingl
 | **Realignment Instructions** | A set of directed part-move operations supplied to the Realign tool: move part P from territory A to territory B, or into a new territory. |
 | **Point Layer** | A named collection of point features embedded in a TS (e.g., accounts, stores, service locations). A TS supports 0-N point layers. Each layer declares `metric_fields` — the attributes Analyze should aggregate. |
 | **Metric Fields** | Attribute names on a point layer that carry quantitative values for analysis (e.g., `annual_revenue`, `account_count`). Declared at the layer level in the TS. |
+| **Workload** | The estimated total time burden for a sales rep to service all accounts in a territory in one cycle. Workload = sum of (travel time + dwell time) for each account in the territory. Travel time is a statistical estimate derived from account coordinates; dwell time is either a per-account column in the account data or a default average supplied by the operator. Workload is the primary balance objective in Auto Build and is always included unless the operator explicitly sets its bias weight to zero. |
+| **Balance Bias** | A weight between 0 and 100 (summing to 100 across all objectives) that controls the relative importance of workload vs. a secondary metric column in Auto Build. Example: `workload=70, metric=30` means workload dominates. `workload=0, metric=100` means pure metric balance, in which case dwell time is not required. |
+| **Dwell Time** | The estimated time spent at a single account location per visit cycle. Sourced from a per-account column in the point layer when available; otherwise an operator-supplied scalar default. Only required when workload bias > 0. |
 | **Territory Alignment Layer (TAL)** | A named polygon layer inside a TS representing one territory alignment. A TS supports 0-N TALs. Each TAL has a stable `tal_id` and a human-readable `label`. Each territory feature within a TAL carries dissolved geometry and `part_ids`. |
 | **Resource Server** | EasyTerritory-hosted PostgreSQL/PostGIS instance containing shared part layers, geocode cache, and approved spatial helper functions. It is not customer storage. |
 | **PMTiles** | Static single-file tile archives used by the Map Component for vector basemap and part-layer delivery. PMTiles are hosted from blob/object storage with Range Request support, not stored in PostgreSQL. |

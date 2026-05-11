@@ -7,7 +7,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-### Changed (2026-05-11) — v0.11.0 draft
+### Changed (2026-05-11) — v0.11.0 (CONSTITUTION) / v0.5.0 (SCENARIOS)
+- `CONSTITUTION.md` v0.11.0 — added Workload definition to terminology table; added Section 2.10 Auto Build Balance Model capturing: workload as primary balance objective, statistical travel time estimation (±10–20% vs routed itinerary), dwell time resolution order, single optional secondary metric with bias weighting, and explicit constraint against multi-metric balancing
+- `SCENARIOS.md` v0.5.0 — rewrote Scenario 003 to reflect correct Auto Build balance model: workload always included, dwell time defaulted when not in account data, one optional secondary metric with `workload_bias` / `metric_bias`, metric tension explained as expected product behavior, comparative HTML grid + map as dual output modes
+
+### Changed (2026-05-11) — v0.4.0 (SCENARIOS)
+- `SCENARIOS.md` v0.4.0 — refined Scenario 003: renamed `geocode_accounts` → `ingest_accounts` (selective geocoding only for rows missing valid coordinates); all account columns pass through as point layer properties; `balance_column` is a single named column aggregated from the point layer; multi-metric balancing explicitly out of scope for v1; two comparison output modes (styled HTML grid + interactive map with TAL switcher)
+
+### Changed (2026-05-11) — v0.3.0 (SCENARIOS) draft
 - Added `SDLC.md` to define repository documentation ownership boundaries and prevent redundancy across README, Vision, Constitution, Scenarios, Functional Spec, Technical Spec, Map Component, Design, Analysis Design, and Changelog
 - `MAP_COMPONENT.md` v0.3.0 — added live Agent/MCP communication model for Monica's map-selection workflow: short-lived map sessions, subscribable selection/state resources, committed selection events, and event-driven MV refresh
 - `README.md` / `VISION.md` — documented MCP Resource Subscriptions as the bridge from Map Component selection commits to agent notifications, while preserving agent-owned TS storage and EZT MCP's durably stateless posture
