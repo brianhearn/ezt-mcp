@@ -1,6 +1,6 @@
 # CONSTITUTION.md — EZT MCP Non-Negotiables
 
-**Version:** 0.11.0
+**Version:** 0.12.0
 **Date:** 2026-05-11
 **Status:** Draft
 
@@ -75,25 +75,63 @@ Read-only sharing and assisted map selection must use the same underlying map co
 
 ### 2.10 Auto Build Balance Model
 
-Auto Build always balances on **workload** unless the operator explicitly sets workload bias to zero. Workload is the sum of estimated travel time plus dwell time for each account in a territory.
+#### Two build modes — mutually exclusive
 
-**Travel time** is a statistical estimate derived from account coordinates. Roads in the US are laid down with reasonable efficiency — two random points at the same straight-line distance typically have similar transit times. This holds across large, geographically spread account sets. Exceptions exist (mountain ranges, water bodies, dense urban cores vs rural roads), and the estimate typically carries ±10–20% error versus an actual routed itinerary. This is an acceptable tradeoff for the planning phase; detailed routing can follow once a TAL is chosen. Travel time estimation accuracy is an area for future improvement.
+**Mode A — Fixed territory count:** Operator specifies N territories. EZT MCP balances workload (and optional metric) across exactly N territories. Territory count is an input; workload per territory is an output.
 
-**Dwell time** resolution:
-1. Per-account column in the TS point layer (e.g. `avg_visit_duration`) — Monica tells the agent which column to use.
-2. No column present → operator must supply a scalar default (e.g. 45 minutes per visit).
-3. If workload bias = 0 (pure metric balance) → dwell time is not required.
+**Mode B — Fixed workload target:** Operator specifies a target workload per territory (e.g. 40 hours per week). EZT MCP computes total workload across all accounts, derives N = total_workload ÷ target, then builds N territories minimizing deviation from the mean — not just trying to approach the target. Two sub-variants:
+- **Closest to:** minimize deviation from the target across all territories
+- **Closest to without exceeding:** no territory exceeds the target; minimize deviation from below
 
-**Secondary metric balance** is optional. The operator may specify exactly one numeric column from the TS point layer as a secondary balance objective. EZT MCP will try to balance workload AND that metric simultaneously. Because these objectives almost always create tension (you cannot achieve perfect balance of both simultaneously), the operator must also supply a bias split:
+In Mode B the operator never specifies both a target AND a territory count — they are mutually exclusive. The territory count is derived. The goal is always minimum deviation across all territories (one outlier territory far from target is not acceptable).
 
-- `workload_bias` + `metric_bias` = 100
-- Example: `workload_bias=50, metric_bias=50` — equal importance
-- Example: `workload_bias=100` — pure workload balance; no secondary metric
-- Example: `workload_bias=0, metric_bias=100` — pure metric balance; dwell time not required
+#### Workload definition
 
-**Multiple secondary metrics are not supported.** Competing metric tensions compound rapidly and produce alignments that are poorly balanced across all dimensions. The correct approach is to build separate single-metric TALs and compare them. This is a deliberate product constraint, not a technical limitation.
+Workload for a territory = Σ over all accounts i in the territory of: `(travel_time_i + dwell_time_i) × visit_frequency_i`
 
-**Agent UX guidance:** When Monica wants to compare multiple balance strategies, the correct pattern is multiple TAL builds, each with its own balance objective, layered into the same TS. The comparative Analyze and Map Component TAL switcher then let Monica evaluate the tradeoffs visually and numerically before choosing.
+where the sum is over one visit cycle (e.g. one week). Travel time and dwell time are estimated per account (see below). Visit frequency scales both.
+
+#### Travel time estimation
+
+Travel time between accounts is estimated using a spatial quadtree + kd-tree model derived from the existing EZT Designer codebase (`partitioning.quadtree.ts`, `partitioning.utility.ts`). The algorithm:
+
+1. Account point cloud is recursively partitioned into a quadtree (max depth 6, leaf threshold 16 points).
+2. Within each leaf cell, a kd-tree finds the nearest-neighbor graph distance (MST approximation).
+3. Inter-cell travel is estimated as centroid-to-centroid distance with latitude scale correction.
+4. Distance is converted to time using an empirical log-scale speed model:
+   - `speed (m/hr) = (15 × log10(clamp(dist_km, 1, 1000)) + 5) × 1609.34`
+   - Short distances (~1 km) → ~5–8 mph effective speed
+   - Medium distances (~10 km) → ~24 mph
+   - Long distances (~100 km) → ~39 mph
+   - Under 10 meters → floored at 24 km/hr
+5. Duplicate locations (same coordinates, e.g. multi-rep same building) are tracked and excluded from distance computation but included in dwell-time totals.
+
+This model reflects the empirical observation that US roads are laid down with reasonable efficiency — random points at the same straight-line distance tend to have similar transit times across large account sets. Exceptions exist (mountains, water bodies, dense urban cores). The estimate typically carries **±10–20% error** versus an actual routed itinerary. This is acceptable at the planning stage. Travel time estimation accuracy is an area for future improvement.
+
+#### Dwell time resolution
+
+1. Per-account column in the TS point layer (e.g. `avg_visit_duration`) — operator/agent specifies column name.
+2. No column → operator supplies a scalar default (e.g. 45 minutes per visit).
+3. If `workload_bias = 0` (pure metric balance) → dwell time is not required and should not be requested.
+
+#### Visit frequency
+
+When account data includes a visit frequency column (e.g. `visit_freq_per_week`), both dwell time AND travel time are multiplied by that frequency to compute per-cycle workload for that account. An account visited twice per week contributes double the dwell time and double the estimated travel time to the territory's workload.
+
+Accounts without a visit frequency value are assumed to have frequency = 1 (one visit per cycle). The normalization cycle (weekly, monthly, etc.) is consistent across all accounts in a build; the operator must ensure all frequency values use the same cycle unit.
+
+#### Secondary metric and bias
+
+Workload is always the primary balance objective. The operator may optionally specify **exactly one** secondary metric column:
+
+- `workload_bias=100` (no metric) — pure workload balance. **Default when no metric is named; no explicit bias input required.**
+- `workload_bias=50, metric_bias=50` — equal importance. **Default when a metric is named but no bias is specified.**
+- `workload_bias=0, metric_bias=100` — pure metric balance; dwell time not required.
+- Any other split summing to 100 is valid.
+
+**Multiple secondary metrics are not supported.** Competing metric tensions compound and produce poorly balanced results across all dimensions. The correct approach is to build separate single-metric TALs and compare them. This is a deliberate product constraint, not a technical limitation.
+
+**Agent UX guidance:** When an operator specifies a metric without a bias, the agent should surface the 50-50 default and invite adjustment before building. When workload requires dwell time and none is in the data, the agent must ask for a default before calling Auto Build. When Mode B is used, the agent should confirm the derived territory count before building.
 
 ### 2.11 Analysis Presentation Guidance Is Product Surface
 Analyze Territory Solution returns structured JSON facts. EZT MCP must also provide agent-facing presentation guidance — as MCP resources/prompts and/or versioned markdown such as `ANALYSIS_DESIGN.md` — so calling agents can turn analysis JSON into clear, domain-appropriate operator insight.
@@ -167,9 +205,12 @@ Short-lived cache entries are still customer data and must be treated accordingl
 | **Realignment Instructions** | A set of directed part-move operations supplied to the Realign tool: move part P from territory A to territory B, or into a new territory. |
 | **Point Layer** | A named collection of point features embedded in a TS (e.g., accounts, stores, service locations). A TS supports 0-N point layers. Each layer declares `metric_fields` — the attributes Analyze should aggregate. |
 | **Metric Fields** | Attribute names on a point layer that carry quantitative values for analysis (e.g., `annual_revenue`, `account_count`). Declared at the layer level in the TS. |
-| **Workload** | The estimated total time burden for a sales rep to service all accounts in a territory in one cycle. Workload = sum of (travel time + dwell time) for each account in the territory. Travel time is a statistical estimate derived from account coordinates; dwell time is either a per-account column in the account data or a default average supplied by the operator. Workload is the primary balance objective in Auto Build and is always included unless the operator explicitly sets its bias weight to zero. |
-| **Balance Bias** | A weight between 0 and 100 (summing to 100 across all objectives) that controls the relative importance of workload vs. a secondary metric column in Auto Build. Example: `workload=70, metric=30` means workload dominates. `workload=0, metric=100` means pure metric balance, in which case dwell time is not required. |
-| **Dwell Time** | The estimated time spent at a single account location per visit cycle. Sourced from a per-account column in the point layer when available; otherwise an operator-supplied scalar default. Only required when workload bias > 0. |
+| **Workload** | The estimated total time burden for a sales rep to service all accounts in a territory in one visit cycle. Workload = Σ (travel_time_i + dwell_time_i × visit_frequency_i) for each account i in the territory. Travel time per account is a statistical estimate derived from account coordinates (see Section 2.10). Workload is the primary balance objective in Auto Build and is always present unless the operator explicitly sets `workload_bias=0`. |
+| **Balance Bias** | A weight pair `(workload_bias, metric_bias)` summing to 100 that controls the relative importance of workload vs. a secondary metric column in Auto Build. Default when a metric is named but bias is not specified: 50–50. Default when no metric is named: `workload_bias=100`. Example: `workload=0, metric=100` = pure metric balance (dwell time not required). |
+| **Dwell Time** | The estimated time spent at a single account location per visit. Sourced from a per-account column in the TS point layer when available; otherwise an operator-supplied scalar default. Only required when `workload_bias > 0`. |
+| **Visit Frequency** | How often each account is visited per cycle (e.g. once per week, twice per week, once per month). When present as a column in the account data, both dwell time and estimated travel time are multiplied by the visit frequency to compute per-cycle workload for that account. Accounts without a visit frequency column are assumed to have frequency = 1. |
+| **Auto Build Mode A** | Fixed territory count: operator specifies N territories. EZT MCP balances workload (and optional metric) across exactly N territories. Territory count is an input. |
+| **Auto Build Mode B** | Fixed workload target: operator specifies a target workload per territory (e.g. 40 hours). EZT MCP derives territory count = total_workload ÷ target, then balances across that many territories to minimize deviation from the mean. Two sub-variants: (a) minimize deviation from target, (b) minimize deviation from target without exceeding it. Mode A and Mode B are mutually exclusive inputs. |
 | **Territory Alignment Layer (TAL)** | A named polygon layer inside a TS representing one territory alignment. A TS supports 0-N TALs. Each TAL has a stable `tal_id` and a human-readable `label`. Each territory feature within a TAL carries dissolved geometry and `part_ids`. |
 | **Resource Server** | EasyTerritory-hosted PostgreSQL/PostGIS instance containing shared part layers, geocode cache, and approved spatial helper functions. It is not customer storage. |
 | **PMTiles** | Static single-file tile archives used by the Map Component for vector basemap and part-layer delivery. PMTiles are hosted from blob/object storage with Range Request support, not stored in PostgreSQL. |

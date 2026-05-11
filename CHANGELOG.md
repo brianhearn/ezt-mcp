@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-11) — v0.12.0 (CONSTITUTION) / v0.6.0 (SCENARIOS)
+- `CONSTITUTION.md` v0.12.0 — major expansion of Section 2.10 Auto Build Balance Model: Mode A (fixed territory count) vs Mode B (fixed workload target, two sub-variants: closest-to / closest-to-without-exceeding); workload formula with visit frequency multiplier; full travel time algorithm documented (quadtree + kd-tree + empirical log-scale speed model from existing Designer codebase); dwell time resolution order; visit frequency semantics (scales both dwell and travel time per cycle); bias defaults (100-0 when no metric named, 50-50 when metric named without bias); multi-metric explicitly prohibited; agent UX guidance for surfacing defaults
+- Updated terminology table: Workload, Balance Bias, Dwell Time definitions revised; added Visit Frequency, Auto Build Mode A, Auto Build Mode B
+- `SCENARIOS.md` v0.6.0 — added Auto Build intent translation reference table (5 canonical samples mapping natural-language requests to tool contract parameters); resolved workload block optional/default question; added visit frequency open question; annotated resolved questions
+
 ### Changed (2026-05-11) — v0.11.0 (CONSTITUTION) / v0.5.0 (SCENARIOS)
 - `CONSTITUTION.md` v0.11.0 — added Workload definition to terminology table; added Section 2.10 Auto Build Balance Model capturing: workload as primary balance objective, statistical travel time estimation (±10–20% vs routed itinerary), dwell time resolution order, single optional secondary metric with bias weighting, and explicit constraint against multi-metric balancing
 - `SCENARIOS.md` v0.5.0 — rewrote Scenario 003 to reflect correct Auto Build balance model: workload always included, dwell time defaulted when not in account data, one optional secondary metric with `workload_bias` / `metric_bias`, metric tension explained as expected product behavior, comparative HTML grid + map as dual output modes
