@@ -1,12 +1,27 @@
 # SCENARIOS.md — EZT MCP Workflow Scenarios
 
-**Version:** 0.6.3
+**Version:** 0.7.0
 **Date:** 2026-05-11
 **Status:** Scenario collection — draft
 
 This document collects concrete human/agent/EZT MCP scenarios before the Functional Spec is finalized. The goal is to stress-test the product architecture against realistic workflows, especially where natural language, map interaction, TS state, MCP tools, resources, and notifications intersect.
 
 Scenarios should be written from the user's perspective first, then mapped to the proposed architecture. As this file grows, it should help validate tool boundaries, resource contracts, notification behavior, TS revision handling, Map Component responsibilities, and agent orchestration patterns.
+
+## Key Terms
+
+Abbreviations used throughout this document. Full definitions in [CONSTITUTION.md §4.1](CONSTITUTION.md).
+
+| Abbreviation | Full Term | Short Definition |
+|---|---|---|
+| **TS** | Territory Solution | A GeoJSON FeatureCollection — the universal EZT MCP geometry artifact. Contains 0-N point location layers and 0-N TALs, plus solution-level metadata. |
+| **TAL** | Territory Alignment Layer | One named territory arrangement inside a TS (e.g. "By Revenue Q1"). A TS can hold multiple TALs for side-by-side comparison. |
+| **MC** | Map Component | The browser-based map surface embedded in the agent host. Renders TS geometry over PMTiles basemap/part layers. Supports `view`, `select` modes. |
+| **MV** | Map Visual / Map Component | Used interchangeably with MC in older notes; refers to the same Map Component surface. |
+| **MCP** | Model Context Protocol | The open protocol (Anthropic/standard) used for tool, resource, and prompt communication between the agent and EZT MCP Server. |
+| **EP** | ExpertPack | Structured domain knowledge pack backing EZT MCP's `ep_search` knowledge retrieval surface. |
+| **T** | Territory | A single named geographic area within a TAL — the dissolved union of one or more parts (e.g. ZIP codes). |
+| **P / Part** | Part | The atomic geographic unit (e.g. one ZIP code polygon) from which territories are composed. |
 
 ---
 

@@ -4,7 +4,9 @@ Status: Draft
 
 EZT MCP is a server-side territory intelligence service that exposes EasyTerritory's core territory operations as MCP-native capabilities. It gives AI agents the ability to perform territory work that previously required a human expert inside EZT Designer.
 
-Agents connect to EZT MCP to build, balance, analyze, share, and export territory solutions — using the same domain expertise that EasyTerritory has developed over a decade, encoded as an ExpertPack knowledge layer.
+Agents connect to EZT MCP to build, balance, analyze, share, and export territory solutions — using the same domain expertise that EasyTerritory has developed over a decade, encoded as an ExpertPack (EP) knowledge layer.
+
+**Key abbreviations used throughout:** **TS** = Territory Solution (GeoJSON artifact — defined in §“Canonical Format”), **TAL** = Territory Alignment Layer (one named territory arrangement within a TS), **MC** = Map Component (browser-based map surface), **T** = Territory, **P** = Part (atomic geographic unit, e.g. a ZIP code polygon). Full definitions in [CONSTITUTION.md §4.1](CONSTITUTION.md).
 
 ---
 

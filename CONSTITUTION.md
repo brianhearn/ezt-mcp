@@ -1,10 +1,12 @@
 # CONSTITUTION.md — EZT MCP Non-Negotiables
 
-**Version:** 0.15.0
+**Version:** 0.16.0
 **Date:** 2026-05-11
 **Status:** Draft
 
 These are the architectural, security, stack, and convention decisions that are locked for the life of the project. Deviations require explicit revision of this document with justification. All downstream specs and implementation must conform.
+
+**Key abbreviations used throughout:** **TS** = Territory Solution (the primary GeoJSON artifact), **TAL** = Territory Alignment Layer (one named territory arrangement within a TS), **MC** = Map Component (the browser-based map surface), **MCP** = Model Context Protocol, **EP** = ExpertPack (the domain knowledge layer), **T** = Territory, **P** = Part (the atomic geographic unit). Full definitions in §4.1 (Terminology).
 
 ---
 

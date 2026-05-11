@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-11) — v0.16.0 (CONSTITUTION) / v0.7.0 (SCENARIOS)
+- `SCENARIOS.md` v0.7.0 — added Key Terms table at top of document defining TS, TAL, MC, MV, MCP, EP, T, P on first use; pointer to CONSTITUTION.md §4.1 for full definitions
+- `CONSTITUTION.md` v0.16.0 — added key abbreviations inline at top of document (TS, TAL, MC, MCP, EP, T, P) with pointer to §4.1
+- `VISION.md` — added key abbreviations inline at top of document with pointer to CONSTITUTION.md §4.1
+
 ### Changed (2026-05-11) — v0.15.0 (CONSTITUTION) / v0.6.3 (SCENARIOS)
 - `CONSTITUTION.md` v0.15.0 — locked `active_tal_id` behavior: Auto Build always sets it to the newly appended TAL; agent may override explicitly
 - `SCENARIOS.md` v0.6.3 — marked `active_tal_id` open question as resolved
