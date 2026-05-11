@@ -1,6 +1,6 @@
 # CONSTITUTION.md — EZT MCP Non-Negotiables
 
-**Version:** 0.12.0
+**Version:** 0.13.0
 **Date:** 2026-05-11
 **Status:** Draft
 
@@ -116,9 +116,11 @@ This model reflects the empirical observation that US roads are laid down with r
 
 #### Visit frequency
 
-When account data includes a visit frequency column (e.g. `visit_freq_per_week`), both dwell time AND travel time are multiplied by that frequency to compute per-cycle workload for that account. An account visited twice per week contributes double the dwell time and double the estimated travel time to the territory's workload.
+Visit frequency is always an attribute on the account/location data — it is never a build-time parameter. When present, it is a column in the TS point layer (ingested via `ingest_accounts` alongside all other account columns). Many customers do not have visit frequency data at all; it is optional.
 
-Accounts without a visit frequency value are assumed to have frequency = 1 (one visit per cycle). The normalization cycle (weekly, monthly, etc.) is consistent across all accounts in a build; the operator must ensure all frequency values use the same cycle unit.
+When a visit frequency column is present and referenced, both dwell time AND estimated travel time are multiplied by the visit frequency to compute per-cycle workload for that account. An account visited twice per week contributes double the dwell time and double the estimated travel time to the territory workload total.
+
+Accounts without a visit frequency value (column absent, or null for a given row) are assumed to have frequency = 1. The operator must ensure all non-null frequency values use the same cycle unit as the workload target (e.g. all weekly if Mode B target is in hours/week).
 
 #### Secondary metric and bias
 

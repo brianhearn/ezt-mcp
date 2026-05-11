@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-11) — v0.13.0 (CONSTITUTION) / v0.6.1 (SCENARIOS)
+- `CONSTITUTION.md` v0.13.0 — locked visit frequency as an account-data attribute only (never a build-time parameter); optional, ingested via `ingest_accounts` as a point layer property; null/absent rows default to frequency = 1; cycle-unit consistency requirement clarified
+- `SCENARIOS.md` v0.6.1 — marked visit frequency open question as resolved
+
 ### Changed (2026-05-11) — v0.12.0 (CONSTITUTION) / v0.6.0 (SCENARIOS)
 - `CONSTITUTION.md` v0.12.0 — major expansion of Section 2.10 Auto Build Balance Model: Mode A (fixed territory count) vs Mode B (fixed workload target, two sub-variants: closest-to / closest-to-without-exceeding); workload formula with visit frequency multiplier; full travel time algorithm documented (quadtree + kd-tree + empirical log-scale speed model from existing Designer codebase); dwell time resolution order; visit frequency semantics (scales both dwell and travel time per cycle); bias defaults (100-0 when no metric named, 50-50 when metric named without bias); multi-metric explicitly prohibited; agent UX guidance for surfacing defaults
 - Updated terminology table: Workload, Balance Bias, Dwell Time definitions revised; added Visit Frequency, Auto Build Mode A, Auto Build Mode B
