@@ -196,11 +196,14 @@ This document defines the repository's SDLC documents and their boundaries. The 
 
 **Purpose:** provide AI-codable design guidance for product chrome and visual consistency.
 
+**Current status:** v0.2.0 is populated from Benton's EZT Designer V2 extraction and is the canonical visual source for the EZT MCP Map Component.
+
 **Owns:**
 - visual tokens
 - typography, spacing, color, and component language
 - buttons, panels, legends, empty/error/loading states
 - map callouts and UI patterns
+- Map Component chrome variants and map-specific visual states
 - design rationale and constraints
 
 **Does not own:**
@@ -209,7 +212,7 @@ This document defines the repository's SDLC documents and their boundaries. The 
 - MCP contracts
 - product scope
 
-**Rule of thumb:** DESIGN.md tells an implementation agent how the UI should look and feel, not what the product does.
+**Rule of thumb:** DESIGN.md tells an implementation agent how the UI should look and feel, not what the product does. Implementation agents building UI must read it before editing Map Component code.
 
 ---
 

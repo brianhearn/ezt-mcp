@@ -48,7 +48,9 @@ Every TS should carry `ts_id`, `revision`, `content_hash`, and `updated_at` meta
 
 ## DESIGN.md
 
-The repo includes `DESIGN.md`, a scaffold for an AI-agent-readable EasyTerritory design system derived from Benton's EZT Designer V2 work. It should be populated with tokens and guidance for colors, typography, spacing, components, legends, map callouts, and product chrome so the EZT MCP Map Component stays visually consistent with the broader product stack.
+[`DESIGN.md`](DESIGN.md) is the canonical AI-agent-readable EasyTerritory design system for this repo. As of v0.2.0 it contains Benton's extracted EZT Designer V2 tokens and rules for colors, typography, spacing, components, legends, map callouts, map chrome, territory states, empty/loading/error states, and sanctioned Map Component variants.
+
+Any agent or developer implementing the Map Component should read `DESIGN.md` first. TS presentation metadata may control solution-specific symbology, but `DESIGN.md` controls the EasyTerritory product chrome and default visual language.
 
 ## Styling
 
@@ -68,7 +70,7 @@ EZT MCP is accompanied by an embedded **Map Component** — a unified TS viewing
 
 Interactive selection should use short-lived map sessions and MCP Resource Subscriptions: the agent creates a map session, opens or embeds the returned map URL, subscribes to the session's selection resource, and receives a notification when Monica clicks Done. The Map Component posts committed selections to EZT MCP over a browser-safe session channel; EZT MCP bridges those commits back to the agent as resource notifications.
 
-Primary embedding target: OpenClaw Canvas (agent chat interface). Secondary: Microsoft Teams meeting app. Technology candidates: MapLibre GL JS + PMTiles. See [MAP_COMPONENT.md](MAP_COMPONENT.md) for the full concept stub.
+Primary embedding target: OpenClaw Canvas (agent chat interface). Secondary: Microsoft Teams meeting app. Technology candidates: MapLibre GL JS + PMTiles. See [MAP_COMPONENT.md](MAP_COMPONENT.md) for the full concept stub and [DESIGN.md](DESIGN.md) for the required visual system.
 
 ## Lineage
 

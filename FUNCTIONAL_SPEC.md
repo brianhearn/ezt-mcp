@@ -6,7 +6,7 @@
 
 This document defines EZT MCP's externally observable behavior for agent/client implementers. It specifies MCP tools, resources, prompts, caller-visible state rules, validation behavior, and acceptance criteria independent of implementation internals.
 
-This spec must conform to [CONSTITUTION.md](CONSTITUTION.md). Workflow coverage comes from [SCENARIOS.md](SCENARIOS.md). Map Component UX concepts live in [MAP_COMPONENT.md](MAP_COMPONENT.md). Internal implementation design belongs in the future `TECHNICAL_SPEC.md`.
+This spec must conform to [CONSTITUTION.md](CONSTITUTION.md). Workflow coverage comes from [SCENARIOS.md](SCENARIOS.md). Map Component UX concepts live in [MAP_COMPONENT.md](MAP_COMPONENT.md). Map Component product chrome and visual tokens live in [DESIGN.md](DESIGN.md). Internal implementation design belongs in the future `TECHNICAL_SPEC.md`.
 
 ---
 
@@ -26,6 +26,12 @@ This spec must conform to [CONSTITUTION.md](CONSTITUTION.md). Workflow coverage 
 ## Schema Drafts
 
 Initial JSON Schema drafts live in [`schemas/`](schemas/). They cover the common envelope/error types, TS references/identity, `direct_build`, and `auto_build` including Scoped Split. These schemas are draft executable contracts and will expand as the functional surface stabilizes.
+
+## Related UI Contract
+
+[`MAP_COMPONENT.md`](MAP_COMPONENT.md) owns the human-facing map interaction model: view/select modes, selection UX, embedding targets, and browser/session communication at the conceptual level. [`DESIGN.md`](DESIGN.md) owns the visual contract for that component: EZT Designer V2 tokens, map chrome, panels, legends, labels, empty/loading/error states, and hard design constraints.
+
+Functional tool/resource contracts should reference mode, selection, and session behavior from this spec and `MAP_COMPONENT.md`; they should not restate visual rules. Implementation agents building the Map Component must read `DESIGN.md` before writing UI.
 
 ## 2. Common Data and Calling Conventions
 

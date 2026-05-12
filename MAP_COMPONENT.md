@@ -112,20 +112,24 @@ Potential future mode for richer map interactions, still mediated by the agent a
 
 ## Rendering Requirements
 
-- Territory polygons — rendered as colored/labeled polygons with visible boundaries
+Rendering must follow the visual contract in [`DESIGN.md`](DESIGN.md), especially the map-specific tokens for basemap choice, territory fill/stroke opacity, hover/selected states, selected halos, dissolved seams, labels, drawing tools, zoom pill, popups, legends, and z-index ordering.
+
+- Territory polygons — rendered as colored/labeled polygons with visible boundaries using `tokens.map.territory`; default colors come from `tokens.colors.map_territory_palette` unless TS presentation metadata overrides them
 - Point layers — rendered as named overlays (e.g., accounts as dots, colored by territory assignment)
 - Part boundaries — rendered as a lighter layer beneath territories so individual ZIPs/counties are selectable
-- Selection state — selected parts highlighted; count and territory assignment shown
-- Pan / zoom — standard map navigation
-- Basemap — optional; lightweight tile basemap or none
+- Selection state — selected parts highlighted; count and territory assignment shown using the selected/hover conventions from `DESIGN.md`
+- Pan / zoom — standard map navigation plus the sanctioned zoom pill / controls for the chosen chrome variant
+- Basemap — default to the `DESIGN.md` dark/light basemap guidance; exact Azure Maps style literals remain a design open question
 
 ---
 
 ## Product Design System
 
-The Map Component should use repo-level `DESIGN.md` for EasyTerritory product chrome: toolbar controls, panels, legends, buttons, empty states, loading states, typography, spacing, and semantic colors.
+[`DESIGN.md`](DESIGN.md) is the canonical visual source for the Map Component. It is not a placeholder: as of `DESIGN.md` v0.2.0 it contains Benton's extracted EZT Designer V2 tokens, component rules, hard constraints, and sanctioned map chrome variants.
 
-TS presentation metadata controls solution-specific map symbology. `DESIGN.md` controls the surrounding product look and default visual language.
+The Map Component should use `DESIGN.md` for EasyTerritory product chrome: toolbar controls, panels, legends, buttons, empty states, loading states, typography, spacing, semantic colors, focus rings, map labels, territory interaction states, and visual restraint rules.
+
+TS presentation metadata controls solution-specific map symbology. `DESIGN.md` controls the surrounding product look and default visual language. If the two conflict, TS metadata may override data-driven symbology for a specific solution, but it must not introduce new product chrome, fonts, focus behavior, or component language outside `DESIGN.md`.
 
 This separation lets the same component feel like EasyTerritory while still rendering each TS according to its own named views, classifications, and territory styles.
 

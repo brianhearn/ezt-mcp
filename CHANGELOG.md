@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-12) — DESIGN.md v0.2.0 and cross-links
+- Replaced the `DESIGN.md` scaffold with Benton's extracted EZT Designer V2 design-system contract: populated tokens, map-specific styling, hard rules, chrome variants, source surfaces, references, and open design questions
+- Tightened `README.md`, `FUNCTIONAL_SPEC.md`, `MAP_COMPONENT.md`, and `SDLC.md` cross-links so implementation agents treat `DESIGN.md` as the canonical visual source for the Map Component
+
 ### Added (2026-05-11) — initial schemas
 - Added `schemas/` with draft JSON Schema 2020-12 external contracts: common envelope/error types, TS references/identity, `direct_build`, and `auto_build` including Scoped Split
 - Linked `FUNCTIONAL_SPEC.md` to the new schema drafts
