@@ -1,7 +1,7 @@
 # FUNCTIONAL_SPEC.md — EZT MCP Functional Contract
 
-**Version:** 0.1.1
-**Date:** 2026-05-11
+**Version:** 0.1.2
+**Date:** 2026-05-12
 **Status:** Draft — open questions resolved for v1 surface
 
 This document defines EZT MCP's externally observable behavior for agent/client implementers. It specifies MCP tools, resources, prompts, caller-visible state rules, validation behavior, and acceptance criteria independent of implementation internals.
@@ -255,22 +255,25 @@ The tool accepts:
 
 - optional existing `ts` or `ts_handle`;
 - `part_layer`;
-- assignment rows mapping part IDs to territory labels or IDs;
+- assignment rows mapping part IDs to a `territory_path` (ordered array of labels from root to leaf, max 5 elements);
 - new TAL label;
 - optional territory metadata fields;
 - optional repair policy flags allowed by this spec.
 
-The agent is responsible for converting Excel, CSV, or JSON from external systems into standard assignment rows before calling the tool.
+The `territory_path` replaces the flat `territory_label` field. A single-element path `["FL-01"]` is equivalent to the former flat label — non-hierarchical builds require no structural change from the caller. Multi-element paths such as `["Eastern US", "Southeast Region", "Florida"]` cause the server to materialize rollup nodes automatically.
+
+The agent is responsible for converting Excel, CSV, or JSON from external systems into standard assignment rows before calling the tool. When a source uses pipe-delimited names (e.g., `East|Southeast|FL`), the agent splits on `|` and passes the resulting array as `territory_path`; the tool itself never accepts pipe strings.
 
 ### 6.3 Functional behavior
 
 1. Validate the part layer and all supplied part IDs.
-2. Group assigned parts by territory label/ID.
-3. Dissolve parts into territory geometry.
-4. Run Repair for gaps, holes, and contiguity issues according to product rules.
-5. Append a new TAL to the input TS or create a new TS when no TS was supplied.
-6. Preserve existing point layers and existing TALs.
-7. Set `active_tal_id` to the newly appended TAL unless the caller opts out where allowed.
+2. Derive the territory tree from `territory_path` arrays: leaf nodes are territories with assigned parts; intermediate nodes are rollup territories created automatically.
+3. Assign `depth` (0 = root) and `parent_territory_id` to each territory node; set `is_leaf` accordingly.
+4. Dissolve leaf parts into leaf territory geometry; dissolve rollup geometry as the union of child geometries, bottom-up.
+5. Run Repair for gaps, holes, and contiguity issues on leaf territories according to product rules.
+6. Append a new TAL to the input TS or create a new TS when no TS was supplied.
+7. Preserve existing point layers and existing TALs.
+8. Set `active_tal_id` to the newly appended TAL unless the caller opts out where allowed.
 
 ### 6.4 Functional output
 
@@ -279,8 +282,9 @@ Returns:
 - updated TS or TS handle;
 - TS identity;
 - new `tal_id`;
-- territory count;
+- leaf territory count and total territory count (leaf + rollup);
 - assignment summary;
+- hierarchy summary (max depth reached, rollup node count);
 - repair summary;
 - invalid/unmatched part list if partial behavior is allowed.
 
@@ -497,7 +501,8 @@ The tool accepts:
 - optional `scope`, such as selected part IDs;
 - optional metric fields;
 - optional comparison request across TALs;
-- optional hypothetical move context for impact analysis.
+- optional hypothetical move context for impact analysis;
+- optional `max_depth`: integer 0–4; when supplied, rollup metrics are returned only up to this depth level (e.g., `max_depth: 1` returns region-level rollups without leaf detail).
 
 ### 10.3 Functional behavior
 
@@ -508,16 +513,17 @@ The tool accepts:
 5. Support geography-only analysis when no point layers exist.
 6. Return structured facts, caveats, and confidence notes.
 7. Do not generate polished prose; agents use Analysis Presentation Guidance for that.
+8. For hierarchical TALs, compute rollup metrics bottom-up from leaf territories. Return analysis at all depth levels by default, or up to `max_depth` when specified. Leaf-level metrics are always authoritative; rollup metrics are derived sums.
 
 ### 10.4 Functional output
 
 Returns structured analysis sections as applicable:
 
-- TS/TAL summary;
-- balance scores;
-- territory metric distributions;
+- TS/TAL summary (including hierarchy depth and rollup node count when the TAL is hierarchical);
+- balance scores (computed over leaf territories only; rollup balance is not meaningful);
+- territory metric distributions, organized by depth level for hierarchical TALs;
 - workload distributions;
-- outliers and exceptions;
+- outliers and exceptions (leaf territories only);
 - scoped selection aggregates;
 - cross-TAL comparison;
 - caveats and missing-data notes;

@@ -4,6 +4,57 @@
   "title": "EZT MCP Territory Solution References",
   "type": "object",
   "$defs": {
+    "talMetadata": {
+      "title": "Territory Alignment Layer Metadata",
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["tal_id", "label", "part_layer"],
+      "properties": {
+        "tal_id": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "part_layer": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Single part layer shared by all leaf territories in this TAL, e.g. us_zips, us_counties."
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4,
+          "description": "Maximum depth of the territory hierarchy within this TAL. 0 means flat (no hierarchy)."
+        }
+      }
+    },
+    "territoryFeatureProperties": {
+      "title": "Territory Feature Properties",
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["territory_id", "label", "tal_id", "depth", "is_leaf", "part_ids"],
+      "properties": {
+        "territory_id": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "tal_id": { "type": "string", "minLength": 1 },
+        "depth": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4,
+          "description": "Depth of this territory in the TAL hierarchy. 0 = root. Max 4 (5 levels total)."
+        },
+        "parent_territory_id": {
+          "type": ["string", "null"],
+          "description": "territory_id of the parent, or null for root-level territories."
+        },
+        "is_leaf": {
+          "type": "boolean",
+          "description": "True if this territory holds part_ids directly. False if it is a rollup/grouping node."
+        },
+        "part_ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Part IDs assigned to this territory. Empty array for rollup territories."
+        }
+      }
+    },
     "territorySolution": {
       "title": "Territory Solution GeoJSON FeatureCollection",
       "type": "object",

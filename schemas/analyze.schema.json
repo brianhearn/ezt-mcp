@@ -76,6 +76,12 @@
               "type": "array",
               "items": { "$ref": "#/$defs/hypotheticalMove" },
               "description": "Optional. Compute impact of these hypothetical part moves without persisting any change."
+            },
+            "max_depth": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4,
+              "description": "Optional. For hierarchical TALs, return rollup metrics only up to this depth level. Omit to return all levels."
             }
           }
         }
@@ -84,7 +90,7 @@
     "territoryMetrics": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["territory_id"],
+      "required": ["territory_id", "depth", "is_leaf"],
       "properties": {
         "territory_id": {
           "$ref": "common.schema.json#/$defs/nonEmptyString"
@@ -92,9 +98,21 @@
         "territory_label": {
           "type": "string"
         },
+        "depth": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "parent_territory_id": {
+          "type": ["string", "null"]
+        },
+        "is_leaf": {
+          "type": "boolean"
+        },
         "part_count": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "description": "For leaf territories: direct part count. For rollup territories: sum of all descendant leaf part counts."
         },
         "account_count": {
           "type": ["integer", "null"]
@@ -102,7 +120,7 @@
         "metric_totals": {
           "type": "object",
           "additionalProperties": { "type": ["number", "null"] },
-          "description": "Keyed by requested metric field names."
+          "description": "Keyed by requested metric field names. Rollup values are sums of descendant leaf values."
         },
         "workload_total": {
           "type": ["number", "null"]
@@ -112,7 +130,7 @@
     "talAnalysis": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["tal_id", "territory_count", "territories"],
+      "required": ["tal_id", "territory_count", "leaf_territory_count", "territories"],
       "properties": {
         "tal_id": {
           "$ref": "common.schema.json#/$defs/nonEmptyString"
@@ -122,20 +140,33 @@
         },
         "territory_count": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "description": "Total territory count including rollup nodes."
+        },
+        "leaf_territory_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Count of leaf territories only (the units that hold parts)."
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4,
+          "description": "Deepest hierarchy level present in this TAL. 0 = flat."
         },
         "balance_scores": {
           "type": "object",
           "additionalProperties": { "type": "number" },
-          "description": "Balance score (0–100) per metric field. Higher = more balanced."
+          "description": "Balance score (0–100) per metric field, computed over leaf territories only. Higher = more balanced."
         },
         "territories": {
           "type": "array",
-          "items": { "$ref": "#/$defs/territoryMetrics" }
+          "items": { "$ref": "#/$defs/territoryMetrics" },
+          "description": "All territory nodes returned (leaf and rollup, up to requested max_depth). Rollup metrics are derived sums of descendants."
         },
         "outliers": {
           "type": "array",
-          "description": "Territories flagged as significant outliers.",
+          "description": "Leaf territories flagged as significant outliers.",
           "items": {
             "type": "object",
             "additionalProperties": true,

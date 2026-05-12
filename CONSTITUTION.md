@@ -1,7 +1,7 @@
 # CONSTITUTION.md — EZT MCP Non-Negotiables
 
-**Version:** 0.16.0
-**Date:** 2026-05-11
+**Version:** 0.17.0
+**Date:** 2026-05-12
 **Status:** Draft
 
 These are the architectural, security, stack, and convention decisions that are locked for the life of the project. Deviations require explicit revision of this document with justification. All downstream specs and implementation must conform.
@@ -224,7 +224,7 @@ Short-lived cache entries are still customer data and must be treated accordingl
 | Term | Definition |
 |---|---|
 | **Part (P)** | A single geographic unit (e.g., one ZIP code polygon). The atomic unit of territory composition. |
-| **Territory (T)** | The dissolved union of one or more parts assigned to a named territory. A T is a GeoJSON Feature with dissolved MultiPolygon geometry and `part_ids` in properties. |
+| **Territory (T)** | A named geographic area within a TAL, represented as a GeoJSON Feature with dissolved MultiPolygon geometry. A territory is either a **leaf territory** (holds `part_ids` directly) or a **rollup territory** (holds no parts; its geometry is the union of its child territories). Territories may be organized into a parent-child hierarchy within a TAL — see §4.9. |
 | **Territory Solution (TS)** | The universal EZT MCP geometry artifact — a GeoJSON FeatureCollection that may contain 0-N point location layers and 0-N territory alignment layers (TALs), plus solution-level metadata. |
 | **Part Layer** | A named collection of part polygons stored on the Resource Server in `geo` (e.g., `us_zips`, `us_counties`, `ca_fsa`). |
 | **Alignment File** | A customer-supplied CSV or Excel file mapping part identifiers (e.g., ZIP codes) to territory names. Input to Direct Build. |
@@ -238,7 +238,7 @@ Short-lived cache entries are still customer data and must be treated accordingl
 | **Visit Frequency** | How often each account is visited per cycle (e.g. once per week, twice per week, once per month). When present as a column in the account data, both dwell time and estimated travel time are multiplied by the visit frequency to compute per-cycle workload for that account. Accounts without a visit frequency column are assumed to have frequency = 1. |
 | **Auto Build Mode A** | Fixed territory count: operator specifies N territories. EZT MCP balances workload (and optional metric) across exactly N territories. Territory count is an input. |
 | **Auto Build Mode B** | Fixed workload target: operator specifies a target workload per territory (e.g. 40 hours). EZT MCP derives territory count = total_workload ÷ target, then balances across that many territories to minimize deviation from the mean. Two sub-variants: (a) minimize deviation from target, (b) minimize deviation from target without exceeding it. Mode A and Mode B are mutually exclusive inputs. |
-| **Territory Alignment Layer (TAL)** | A named polygon layer inside a TS representing one territory alignment. A TS supports 0-N TALs. Each TAL has a stable `tal_id` and a human-readable `label`. Each territory feature within a TAL carries dissolved geometry and `part_ids`. |
+| **Territory Alignment Layer (TAL)** | A named polygon layer inside a TS representing one territory alignment. A TS supports 0-N TALs. Each TAL has a stable `tal_id`, a human-readable `label`, and a single `part_layer` shared by all leaf territories within it. A TAL may contain a flat list of territories or a hierarchical tree of territories up to 5 levels deep — see §4.9. |
 | **Resource Server** | EasyTerritory-hosted PostgreSQL/PostGIS instance containing shared part layers, geocode cache, and approved spatial helper functions. It is not customer storage. |
 | **PMTiles** | Static single-file tile archives used by the Map Component for vector basemap and part-layer delivery. PMTiles are hosted from blob/object storage with Range Request support, not stored in PostgreSQL. |
 | **Analysis Presentation Guidance** | Versioned guidance exposed to agents as resources/prompts or markdown, instructing them how to present Analyze output in executive, designer, sales manager, and QA contexts. |
@@ -250,9 +250,43 @@ Short-lived cache entries are still customer data and must be treated accordingl
 Use these terms consistently in all tool names, resource names, API surface, documentation, and the ExpertPack.
 
 ### 4.2 Territory Alignment Layers Are Optional, Multiple, and Dissolved
-A TS supports zero or more Territory Alignment Layers (TALs). Each TAL is independently identified by a stable `tal_id` and carries a human-readable `label` (e.g., "By Revenue Q1", "By Headcount"). When a TAL is present, each Territory feature within it carries dissolved polygon geometry — the union of all its constituent parts. A TS is self-contained: `part_ids` records composition and `part_layer` identifies the atomic geography used to construct each TAL, but the renderable geometry is pre-computed and embedded.
+A TS supports zero or more Territory Alignment Layers (TALs). Each TAL is independently identified by a stable `tal_id` and carries a human-readable `label` (e.g., "By Revenue Q1", "By Headcount") and a single `part_layer` (e.g., `us_zips`) shared by all leaf territories within it. When a TAL is present, each Territory feature within it carries dissolved polygon geometry. Leaf territories dissolve their own `part_ids`; rollup territories dissolve the union of all descendant leaf geometries. A TS is self-contained: renderable geometry is pre-computed and embedded. Part IDs are stored only on leaf territory features.
 
 Multiple TALs coexisting in the same TS are the foundation of comparative territory analysis. The `active_tal_id` top-level field identifies which TAL is currently active for rendering. Build tools always append a new TAL; Realign targets a specific TAL by `tal_id`; Analyze may target one or multiple TALs for cross-alignment comparison. The agent is responsible for removing unwanted TALs after a decision is made.
+
+### 4.9 Territory Hierarchy Within a TAL
+
+Territories within a TAL may be organized into a **parent-child hierarchy** of up to **5 levels** (depth 0 through 4). This replaces the brittle pipe-delimited naming convention used in EZT Designer.
+
+**Rules:**
+- **Leaf territories** (depth = deepest level for their branch, `is_leaf: true`) hold `part_ids` and are the units of build, realign, and metric analysis.
+- **Rollup territories** (`is_leaf: false`, `part_ids: []`) are grouping nodes. Their geometry is the pre-dissolved union of all descendant leaf geometries. They hold no parts directly.
+- Every TAL has a single `part_layer` shared by all leaf territories in that TAL. If different part types are needed, use separate TALs.
+- Each territory feature carries:
+  - `parent_territory_id`: the `territory_id` of the parent, or `null` for root-level territories.
+  - `depth`: integer 0–4. Root territories are depth 0. Max depth is 4 (5 levels total).
+  - `is_leaf`: boolean. True if the territory holds parts; false if it is a rollup grouping node.
+- A TAL with no hierarchy is valid: all territories are roots (`parent_territory_id: null`, `depth: 0`, `is_leaf: true`).
+- Circular parent references are invalid and must be rejected.
+- The `part_layer` is declared at the TAL level, not per territory feature.
+
+**Example tree (one TAL):**
+```
+depth 0 — Eastern US         (rollup, parent: null)
+  depth 1 — Southeast Region  (rollup, parent: Eastern US)
+    depth 2 — Florida          (leaf, parts: ZIPs)
+    depth 2 — Georgia          (leaf, parts: ZIPs)
+  depth 1 — Northeast Region  (rollup, parent: Eastern US)
+    depth 2 — New York         (leaf, parts: ZIPs)
+```
+
+**Direct Build with hierarchy:** The `direct_build` tool accepts a `territory_path` array (ordered root-to-leaf, max 5 elements) per assignment row instead of a flat territory label. The server materializes rollup nodes automatically. A flat single-element `territory_path` is equivalent to the current flat territory label — no breaking change for non-hierarchical builds.
+
+**Realign with hierarchy:** Realign moves parts between leaf territories only. Rollup territory geometry is recomputed automatically after any leaf change. Moving an entire branch (all leaves under a rollup node to another parent) requires explicit moves of each leaf, after which the server recomputes all affected rollup geometries.
+
+**Analyze with hierarchy:** Analyze returns metrics at the requested depth. Rollup metrics are the sum of all descendant leaf metrics. The default is to return all levels; the caller may request a specific depth ceiling.
+
+---
 
 ### 4.3 Reference Data Is Read-Only
 The application never writes to `geo`. Reference data updates are an operational concern handled outside the application.

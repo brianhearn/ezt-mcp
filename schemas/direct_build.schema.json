@@ -9,23 +9,21 @@
       "additionalProperties": true,
       "required": [
         "part_id",
-        "territory_label"
+        "territory_path"
       ],
       "properties": {
         "row_id": {
-          "type": [
-            "string",
-            "integer"
-          ]
+          "type": ["string", "integer"]
         },
         "part_id": {
           "$ref": "common.schema.json#/$defs/nonEmptyString"
         },
-        "territory_id": {
-          "type": "string"
-        },
-        "territory_label": {
-          "$ref": "common.schema.json#/$defs/nonEmptyString"
+        "territory_path": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+          "description": "Ordered path of territory labels from root to leaf, e.g. [\"Eastern US\", \"Southeast Region\", \"Florida\"]. Single-element path is equivalent to a flat territory label."
         },
         "metadata": {
           "type": "object",
@@ -92,6 +90,26 @@
         }
       }
     },
+    "hierarchySummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_depth": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4,
+          "description": "Deepest level present in the built TAL. 0 = flat (no hierarchy)."
+        },
+        "leaf_territory_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rollup_territory_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
     "result": {
       "allOf": [
         {
@@ -103,6 +121,7 @@
             "tal_id",
             "territory_count",
             "assignment_summary",
+            "hierarchy_summary",
             "repair_summary"
           ],
           "properties": {
@@ -111,20 +130,22 @@
             },
             "territory_count": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 0,
+              "description": "Total territory count including both leaf and rollup nodes."
             },
             "assignment_summary": {
               "type": "object",
               "additionalProperties": true
+            },
+            "hierarchy_summary": {
+              "$ref": "#/$defs/hierarchySummary"
             },
             "repair_summary": {
               "$ref": "#/$defs/repairSummary"
             },
             "invalid_parts": {
               "type": "array",
-              "items": {
-                "type": "string"
-              }
+              "items": { "type": "string" }
             }
           }
         }

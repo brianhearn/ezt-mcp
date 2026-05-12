@@ -1,7 +1,7 @@
 # SCENARIOS.md — EZT MCP Workflow Scenarios
 
-**Version:** 0.9.1
-**Date:** 2026-05-11
+**Version:** 0.9.2
+**Date:** 2026-05-12
 **Status:** Lean scenario registry — draft
 
 This document is a compact registry of human/agent/EZT MCP workflows. It exists to validate that the product architecture still covers real scenarios as tool contracts and implementation details evolve.
@@ -167,6 +167,21 @@ Decision: polished comparison presentation belongs in Analysis Presentation Guid
 3. EZT MCP Direct Builds a new TAL from Monica's assignment file.
 4. EZT MCP appends the TAL to the TS instead of replacing existing TALs.
 5. Monica can compare the legacy TAL against newer TALs.
+
+### DB-004 — Direct Build with a three-level territory hierarchy
+
+1. Monica uploads a spreadsheet with columns: Region, District, Territory, ZIP.
+2. The agent maps each row to `territory_path: [Region, District, Territory]` and `part_id: ZIP`.
+3. EZT MCP builds a hierarchical TAL: rollup nodes for Regions and Districts, leaf territories holding ZIPs.
+4. EZT MCP returns `hierarchy_summary` showing max depth 2, leaf count, and rollup count.
+5. Monica's agent confirms the structure and presents the map.
+
+### DB-005 — Direct Build from legacy pipe-delimited territory names
+
+1. Monica supplies a CSV with a `TerritoryName` column using pipe-delimited values: `East|Southeast|FL-01`.
+2. The agent splits each value on `|` to produce a `territory_path` array before calling `direct_build`.
+3. EZT MCP builds the TAL with the correct hierarchy — no pipes reach the tool.
+4. Monica's regions and sub-regions render correctly without any special naming conventions.
 
 ---
 
