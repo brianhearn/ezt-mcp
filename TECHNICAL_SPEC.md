@@ -938,14 +938,28 @@ Once implementation exists, smoke-test the main workflow:
 
 ## 14. Migrations and Deployment
 
-### 14.1 Migration policy
+### 14.1 Deploy/test environment
+
+The active EZT MCP deploy/test environment is the ExpertPack droplet:
+
+- Host: `165.245.136.51`
+- Public site: `https://expertpack.ai`
+- External MCP path: `https://expertpack.ai/mcp/`
+- Reverse proxy: nginx `location /mcp/` → `http://127.0.0.1:8100/`
+- Existing service lineage: formerly EP MCP testbed; now repurposed as the EZT MCP deploy/test host
+
+The `/mcp` path can be reused for EZT MCP. That means the prior EP MCP service on that path is superseded in this environment unless a separate path is intentionally added later.
+
+The implementation should be forked/derived from the existing EP MCP codebase rather than built as an unrelated server. Reuse the proven FastMCP/Starlette/service structure, auth pattern, config loading, systemd deployment shape, and `/mcp` nginx proxy posture, then add EZT-specific resources/tools on top.
+
+### 14.2 Migration policy
 
 - Use explicit versioned migrations.
 - Migrations must be backward-compatible during Azure Container Apps revision rollout.
 - Never require downtime for production.
 - Reference data updates to `geo` are operational data pipeline tasks, not app migrations.
 
-### 14.2 Container contents
+### 14.3 Container contents
 
 The container image includes:
 
@@ -955,7 +969,7 @@ The container image includes:
 - no customer data;
 - no secrets.
 
-### 14.3 Configuration
+### 14.4 Configuration
 
 Configuration sources:
 
@@ -971,22 +985,23 @@ Config should validate at startup and fail fast when required production secrets
 
 Recommended implementation order:
 
-1. Project scaffold and CI gates.
-2. Shared models: TS parse/serialize, identity, structured errors.
-3. Schema/example validation in CI.
-4. DB pool and repositories for part layers, transient cache, audit log.
-5. Direct Build flat path.
-6. Direct Build hierarchical path and rollup geometry.
-7. Analyze for Direct Build outputs.
-8. Realign for leaf moves.
-9. Map session create + selection/state resources.
-10. Ingest Accounts + geocoder cache/provider mocks.
-11. Account Build.
-12. Auto Build Mode A.
-13. Auto Build Mode B.
-14. Auto Build Scoped Split.
-15. Analysis presentation guidance resources/prompts.
-16. Production hardening: auth, Key Vault, observability, limits, deployment manifests.
+1. Fork/derive the implementation from the existing EP MCP server skeleton and preserve the proven FastMCP/Starlette deployment shape.
+2. Project scaffold and CI gates.
+3. Shared models: TS parse/serialize, identity, structured errors.
+4. Schema/example validation in CI.
+5. DB pool and repositories for part layers, transient cache, audit log.
+6. Direct Build flat path.
+7. Direct Build hierarchical path and rollup geometry.
+8. Analyze for Direct Build outputs.
+9. Realign for leaf moves.
+10. Map session create + selection/state resources.
+11. Ingest Accounts + geocoder cache/provider mocks.
+12. Account Build.
+13. Auto Build Mode A.
+14. Auto Build Mode B.
+15. Auto Build Scoped Split.
+16. Analysis presentation guidance resources/prompts.
+17. Production hardening: auth, Key Vault, observability, limits, deployment manifests.
 
 This sequence intentionally starts with Direct Build because it exercises the TS/TAL/hierarchy core without requiring account ingestion, geocoding, or optimization algorithms.
 

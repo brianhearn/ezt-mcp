@@ -74,7 +74,11 @@ Primary embedding target: OpenClaw Canvas (agent chat interface). Secondary: Mic
 
 ## Lineage
 
-Forked from [`brianhearn/ep-mcp`](https://github.com/brianhearn/ep-mcp). Retains the EP MCP retrieval engine as the domain knowledge layer. Adds EZT-specific tool, resource, and prompt surfaces on top.
+Forked/derived from [`brianhearn/ep-mcp`](https://github.com/brianhearn/ep-mcp). Retains the proven FastMCP/Starlette service shape and the EP retrieval engine as the domain knowledge layer. Adds EZT-specific tool, resource, and prompt surfaces on top.
+
+## Deploy/Test Target
+
+The active deploy/test host is the ExpertPack droplet at `165.245.136.51` (`expertpack.ai`). The existing `/mcp` reverse-proxy path can be reused for EZT MCP: `https://expertpack.ai/mcp/` → localhost MCP service on the droplet. This supersedes the old EP MCP testbed role for that path unless a separate path is intentionally introduced later.
 
 ## License
 

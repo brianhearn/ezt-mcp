@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-12) — deploy target and EP MCP lineage clarified
+- Clarified that EZT MCP deploy/test uses the ExpertPack droplet `165.245.136.51` / `expertpack.ai`, reusing the `/mcp` reverse-proxy path unless a separate path is intentionally introduced later
+- Clarified implementation lineage: EZT MCP is forked/derived from EP MCP and should reuse the proven FastMCP/Starlette/service/deploy shape
+
 ### Added (2026-05-12) — part-layer discovery resources
 - Added Functional Spec resources `ezt://part-layers` and `ezt://part-layers/{part_layer}` so agents can discover available canonical part layers before calling build/realign/analyze tools
 - Expanded Technical Spec part-layer metadata and resource implementation notes, including safe public fields, capability flags, and internal metadata redaction
