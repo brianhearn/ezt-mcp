@@ -37,6 +37,7 @@ class AppState:
 def create_mcp_server(state: AppState):
     """Create the FastMCP server and register EZT resources."""
     from mcp.server.fastmcp import FastMCP
+    from mcp.server.fastmcp.server import TransportSecuritySettings
 
     mcp = FastMCP(
         name="ezt-mcp",
@@ -46,6 +47,18 @@ def create_mcp_server(state: AppState):
         ),
         streamable_http_path="/",
         stateless_http=True,
+        transport_security=TransportSecuritySettings(
+            allowed_hosts=[
+                "expertpack.ai",
+                "www.expertpack.ai",
+                "127.0.0.1:8100",
+                "localhost:8100",
+            ],
+            allowed_origins=[
+                "https://expertpack.ai",
+                "https://www.expertpack.ai",
+            ],
+        ),
     )
 
     @mcp.resource("ezt://part-layers")
