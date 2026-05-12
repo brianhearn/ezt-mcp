@@ -1,0 +1,48 @@
+{
+  "ok": true,
+  "result": {
+    "ts_handle": "tsh_us_sales_after_realign",
+    "expires_at": "2026-05-12T20:40:00Z",
+    "ts_identity": {
+      "ts_id": "ts-us-sales-2026-q2",
+      "revision": 8,
+      "content_hash": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "updated_at": "2026-05-12T19:40:00Z"
+    },
+    "tal_id": "tal-current",
+    "moved_part_ids": [
+      "30318",
+      "30327"
+    ],
+    "changed_territories": [
+      {
+        "territory_id": "terr-atlanta-north",
+        "territory_label": "Atlanta North",
+        "parts_added": [
+          "30327"
+        ],
+        "parts_removed": [
+          "30318"
+        ]
+      },
+      {
+        "territory_id": "terr-atlanta-central",
+        "territory_label": "Atlanta Central",
+        "parts_added": [
+          "30318"
+        ],
+        "parts_removed": []
+      }
+    ],
+    "repair_summary": {
+      "holes_filled": 0,
+      "contiguity_repairs": 0,
+      "changed_part_ids": []
+    },
+    "map_refresh": {
+      "notified": true,
+      "map_session_id": "msess_01hx_ezt_review",
+      "status": "sent"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "ts_handle": "tsh_existing_us_sales_2026_q2",
+  "expected_revision": 7,
+  "tal_ids": [
+    "tal-current",
+    "tal-proposed"
+  ],
+  "part_layer": "us_zips",
+  "metrics": [
+    "annual_revenue",
+    "account_count"
+  ],
+  "scope": {
+    "part_ids": [
+      "30318",
+      "30327",
+      "30328"
+    ]
+  },
+  "compare_tals": true,
+  "hypothetical_moves": [
+    {
+      "part_id": "30318",
+      "from_territory_id": "terr-atlanta-north",
+      "to_territory_id": "terr-atlanta-central"
+    }
+  ],
+  "max_depth": 2
+}

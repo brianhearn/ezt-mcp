@@ -1,0 +1,23 @@
+{
+  "ts_handle": "tsh_existing_us_sales_2026_q2",
+  "expected_revision": 7,
+  "point_layer": "accounts",
+  "part_layer": "us_zips",
+  "tal_label": "Balanced 6 Territory Plan",
+  "build_mode": {
+    "mode": "fixed_territory_count",
+    "territory_count": 6
+  },
+  "objective": {
+    "metric": "annual_revenue",
+    "workload_bias": 40,
+    "metric_bias": 60
+  },
+  "dwell_time": {
+    "type": "scalar",
+    "value": 30,
+    "unit": "minutes"
+  },
+  "visit_frequency_field": "visits_per_month",
+  "repair_policy": "default"
+}

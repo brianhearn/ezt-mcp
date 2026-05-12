@@ -1,0 +1,54 @@
+{
+  "ts_handle": "tsh_existing_us_sales_2026_q2",
+  "expected_revision": 7,
+  "part_layer": "us_zips",
+  "tal_label": "US Sales Hierarchy",
+  "assignments": [
+    {
+      "row_id": "A-001",
+      "part_id": "33101",
+      "territory_path": [
+        "East",
+        "Southeast",
+        "South Florida"
+      ]
+    },
+    {
+      "row_id": "A-002",
+      "part_id": "33602",
+      "territory_path": [
+        "East",
+        "Southeast",
+        "Central Florida"
+      ]
+    },
+    {
+      "row_id": "A-003",
+      "part_id": "30301",
+      "territory_path": [
+        "East",
+        "Southeast",
+        "Georgia"
+      ]
+    },
+    {
+      "row_id": "A-004",
+      "part_id": "10001",
+      "territory_path": [
+        "East",
+        "Northeast",
+        "New York Metro"
+      ]
+    },
+    {
+      "row_id": "A-005",
+      "part_id": "94105",
+      "territory_path": [
+        "West",
+        "Pacific",
+        "Bay Area"
+      ]
+    }
+  ],
+  "repair_policy": "report_only"
+}

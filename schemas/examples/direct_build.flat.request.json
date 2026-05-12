@@ -1,0 +1,39 @@
+{
+  "ts_handle": "tsh_existing_us_sales_2026_q2",
+  "expected_revision": 7,
+  "part_layer": "us_zips",
+  "tal_label": "Florida Sales Territories",
+  "assignments": [
+    {
+      "row_id": 1,
+      "part_id": "32003",
+      "territory_path": [
+        "North Florida"
+      ],
+      "metadata": {
+        "source_row": 2
+      }
+    },
+    {
+      "row_id": 2,
+      "part_id": "33101",
+      "territory_path": [
+        "South Florida"
+      ],
+      "metadata": {
+        "source_row": 3
+      }
+    },
+    {
+      "row_id": 3,
+      "part_id": "33602",
+      "territory_path": [
+        "Central Florida"
+      ],
+      "metadata": {
+        "source_row": 4
+      }
+    }
+  ],
+  "repair_policy": "default"
+}

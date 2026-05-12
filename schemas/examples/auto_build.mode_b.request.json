@@ -1,0 +1,40 @@
+{
+  "ts": {
+    "type": "FeatureCollection",
+    "properties": {
+      "ts_id": "ts-us-sales-2026-q2",
+      "active_tal_id": "tal-current",
+      "tal_metadata": [
+        {
+          "tal_id": "tal-current",
+          "label": "Current Territories",
+          "part_layer": "us_zips",
+          "max_depth": 0
+        }
+      ]
+    },
+    "features": []
+  },
+  "point_layer": "accounts",
+  "part_layer": "us_zips",
+  "tal_label": "Monthly Workload Plan",
+  "build_mode": {
+    "mode": "fixed_workload_target",
+    "target_workload": 160,
+    "workload_unit": "hours",
+    "cycle_unit": "month",
+    "variant": "closest_to_without_exceeding"
+  },
+  "objective": {
+    "metric": "synthetic_account_count",
+    "workload_bias": 80,
+    "metric_bias": 20
+  },
+  "dwell_time": {
+    "type": "field",
+    "field": "avg_visit_minutes",
+    "unit": "minutes"
+  },
+  "visit_frequency_field": "monthly_visit_frequency",
+  "repair_policy": "strict"
+}

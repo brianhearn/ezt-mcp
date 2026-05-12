@@ -16,6 +16,18 @@ These JSON Schemas define externally visible MCP request/response structures. Th
 | `analyze.schema.json` | `analyze` request and response payloads, including TAL analysis, scoped aggregates, cross-TAL comparison, and hypothetical impact. |
 | `map_session_create.schema.json` | `map_session_create` request and response payloads, including session mode, presentation context, and resource URIs. |
 
+## Test vectors
+
+Schema-valid example payloads live in [`examples/`](examples/). They cover request and success-response examples for `direct_build`, `auto_build`, `realign`, `analyze`, and `map_session_create`.
+
+Run validation from the repo root:
+
+```bash
+python3 schemas/validate_examples.py
+```
+
+The validator reads `examples/manifest.json` and checks each payload against the relevant tool schema definition (`#/$defs/request` or `#/$defs/response`).
+
 ## Notes
 
 - Draft target is JSON Schema 2020-12.

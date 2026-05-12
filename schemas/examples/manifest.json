@@ -1,0 +1,82 @@
+[
+  {
+    "file": "analyze.request.json",
+    "schema": "analyze.schema.json",
+    "definition": "request"
+  },
+  {
+    "file": "analyze.response.json",
+    "schema": "analyze.schema.json",
+    "definition": "response"
+  },
+  {
+    "file": "auto_build.mode_a.request.json",
+    "schema": "auto_build.schema.json",
+    "definition": "request"
+  },
+  {
+    "file": "auto_build.mode_a.response.json",
+    "schema": "auto_build.schema.json",
+    "definition": "response"
+  },
+  {
+    "file": "auto_build.mode_b.request.json",
+    "schema": "auto_build.schema.json",
+    "definition": "request"
+  },
+  {
+    "file": "auto_build.mode_b.response.json",
+    "schema": "auto_build.schema.json",
+    "definition": "response"
+  },
+  {
+    "file": "auto_build.scoped_split.request.json",
+    "schema": "auto_build.schema.json",
+    "definition": "request"
+  },
+  {
+    "file": "auto_build.scoped_split.response.json",
+    "schema": "auto_build.schema.json",
+    "definition": "response"
+  },
+  {
+    "file": "direct_build.flat.request.json",
+    "schema": "direct_build.schema.json",
+    "definition": "request"
+  },
+  {
+    "file": "direct_build.flat.response.json",
+    "schema": "direct_build.schema.json",
+    "definition": "response"
+  },
+  {
+    "file": "direct_build.hierarchical.request.json",
+    "schema": "direct_build.schema.json",
+    "definition": "request"
+  },
+  {
+    "file": "direct_build.hierarchical.response.json",
+    "schema": "direct_build.schema.json",
+    "definition": "response"
+  },
+  {
+    "file": "map_session_create.request.json",
+    "schema": "map_session_create.schema.json",
+    "definition": "request"
+  },
+  {
+    "file": "map_session_create.response.json",
+    "schema": "map_session_create.schema.json",
+    "definition": "response"
+  },
+  {
+    "file": "realign.request.json",
+    "schema": "realign.schema.json",
+    "definition": "request"
+  },
+  {
+    "file": "realign.response.json",
+    "schema": "realign.schema.json",
+    "definition": "response"
+  }
+]

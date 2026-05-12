@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "result": {
+    "ts_handle": "tsh_us_sales_after_auto_mode_b",
+    "expires_at": "2026-05-12T20:40:00Z",
+    "ts_identity": {
+      "ts_id": "ts-us-sales-2026-q2",
+      "revision": 1,
+      "content_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "updated_at": "2026-05-12T19:40:00Z"
+    },
+    "tal_id": "tal-monthly-workload",
+    "build_mode_summary": {
+      "mode": "fixed_workload_target",
+      "target_workload": 160,
+      "workload_unit": "hours",
+      "cycle_unit": "month",
+      "variant": "closest_to_without_exceeding"
+    },
+    "territory_count": 8,
+    "objective_summary": {
+      "metric": "synthetic_account_count",
+      "workload_bias": 80,
+      "metric_bias": 20
+    },
+    "distribution_summary": {
+      "workload_min": 143.5,
+      "workload_max": 159.2,
+      "balance_score": 88.7
+    }
+  }
+}

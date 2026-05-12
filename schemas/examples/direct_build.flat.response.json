@@ -1,0 +1,30 @@
+{
+  "ok": true,
+  "result": {
+    "ts_handle": "tsh_us_sales_after_direct_build_flat",
+    "expires_at": "2026-05-12T20:40:00Z",
+    "ts_identity": {
+      "ts_id": "ts-us-sales-2026-q2",
+      "revision": 8,
+      "content_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "updated_at": "2026-05-12T19:40:00Z"
+    },
+    "tal_id": "tal-fl-sales",
+    "territory_count": 3,
+    "assignment_summary": {
+      "assigned_part_count": 3,
+      "unassigned_part_count": 0
+    },
+    "hierarchy_summary": {
+      "max_depth": 0,
+      "leaf_territory_count": 3,
+      "rollup_territory_count": 0
+    },
+    "repair_summary": {
+      "holes_filled": 0,
+      "contiguity_repairs": 0,
+      "changed_part_ids": []
+    },
+    "invalid_parts": []
+  }
+}

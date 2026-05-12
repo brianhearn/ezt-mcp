@@ -1,0 +1,35 @@
+{
+  "ok": true,
+  "result": {
+    "ts_handle": "tsh_us_sales_after_scoped_split",
+    "expires_at": "2026-05-12T20:40:00Z",
+    "ts_identity": {
+      "ts_id": "ts-us-sales-2026-q2",
+      "revision": 8,
+      "content_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "updated_at": "2026-05-12T19:40:00Z"
+    },
+    "tal_id": "tal-split-atlanta",
+    "build_mode_summary": {
+      "mode": "scoped_split",
+      "source_tal_id": "tal-current",
+      "source_territory_id": "terr-atlanta"
+    },
+    "scoped_split_summary": {
+      "replaced_territory_id": "terr-atlanta",
+      "replacement_territory_ids": [
+        "terr-atlanta-north",
+        "terr-atlanta-central",
+        "terr-atlanta-south"
+      ],
+      "preserved_territory_count": 11
+    },
+    "territory_count": 14,
+    "objective_summary": {
+      "metric": "annual_revenue"
+    },
+    "distribution_summary": {
+      "scope_balance_score": 86.2
+    }
+  }
+}

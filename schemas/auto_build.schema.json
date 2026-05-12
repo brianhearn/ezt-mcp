@@ -164,16 +164,7 @@
       ],
       "properties": {
         "metric": {
-          "oneOf": [
-            {
-              "type": "string",
-              "minLength": 1
-            },
-            {
-              "type": "string",
-              "const": "synthetic_account_count"
-            }
-          ]
+          "$ref": "common.schema.json#/$defs/nonEmptyString"
         },
         "workload_bias": {
           "type": "integer",

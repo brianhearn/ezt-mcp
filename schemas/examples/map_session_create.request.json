@@ -1,0 +1,19 @@
+{
+  "ts_handle": "tsh_existing_us_sales_2026_q2",
+  "expected_revision": 7,
+  "mode": "select",
+  "active_tal_id": "tal-current",
+  "presentation": {
+    "view_name": "workload",
+    "style_overrides": {
+      "territory_fill": "balance_score",
+      "show_labels": true
+    }
+  },
+  "expiry_seconds": 3600,
+  "interaction_flags": {
+    "allow_lasso_select": true,
+    "allow_click_select": true,
+    "allow_territory_filter": true
+  }
+}

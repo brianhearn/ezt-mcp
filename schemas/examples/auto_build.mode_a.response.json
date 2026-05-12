@@ -1,0 +1,29 @@
+{
+  "ok": true,
+  "result": {
+    "ts_handle": "tsh_us_sales_after_auto_mode_a",
+    "expires_at": "2026-05-12T20:40:00Z",
+    "ts_identity": {
+      "ts_id": "ts-us-sales-2026-q2",
+      "revision": 8,
+      "content_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "updated_at": "2026-05-12T19:40:00Z"
+    },
+    "tal_id": "tal-balanced-6",
+    "build_mode_summary": {
+      "mode": "fixed_territory_count",
+      "territory_count": 6
+    },
+    "territory_count": 6,
+    "objective_summary": {
+      "metric": "annual_revenue",
+      "workload_bias": 40,
+      "metric_bias": 60
+    },
+    "distribution_summary": {
+      "annual_revenue_min": 925000,
+      "annual_revenue_max": 1080000,
+      "balance_score": 91.4
+    }
+  }
+}

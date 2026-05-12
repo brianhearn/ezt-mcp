@@ -1,0 +1,19 @@
+{
+  "ts_handle": "tsh_existing_us_sales_2026_q2",
+  "expected_revision": 7,
+  "tal_id": "tal-current",
+  "part_layer": "us_zips",
+  "moves": [
+    {
+      "part_id": "30318",
+      "from_territory_id": "terr-atlanta-north",
+      "to_territory_id": "terr-atlanta-central"
+    },
+    {
+      "part_id": "30327",
+      "to_territory_id": "terr-atlanta-north"
+    }
+  ],
+  "repair_policy": "default",
+  "map_session_id": "msess_01hx_ezt_review"
+}

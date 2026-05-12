@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added (2026-05-12) — schema examples and validation
+- Added `schemas/examples/` test vectors for `direct_build` flat/hierarchical cases, `auto_build` Mode A/Mode B/Scoped Split, `realign`, `analyze`, and `map_session_create`
+- Added `schemas/validate_examples.py` to validate each example against its tool contract request/response definition
+- Tightened schema composition discovered by examples: `tsOutputRef` now permits tool-specific result fields, and `auto_build.objective.metric` is a single non-empty string definition
+
 ### Changed (2026-05-12) — DESIGN.md v0.2.0 and cross-links
 - Replaced the `DESIGN.md` scaffold with Benton's extracted EZT Designer V2 design-system contract: populated tokens, map-specific styling, hard rules, chrome variants, source surfaces, references, and open design questions
 - Tightened `README.md`, `FUNCTIONAL_SPEC.md`, `MAP_COMPONENT.md`, and `SDLC.md` cross-links so implementation agents treat `DESIGN.md` as the canonical visual source for the Map Component

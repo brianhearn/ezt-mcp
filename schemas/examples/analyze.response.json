@@ -1,0 +1,168 @@
+{
+  "ok": true,
+  "result": {
+    "ts_identity": {
+      "ts_id": "ts-us-sales-2026-q2",
+      "revision": 7,
+      "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "updated_at": "2026-05-12T19:40:00Z"
+    },
+    "tal_analyses": [
+      {
+        "tal_id": "tal-current",
+        "tal_label": "Current Territories",
+        "territory_count": 5,
+        "leaf_territory_count": 3,
+        "max_depth": 1,
+        "balance_scores": {
+          "annual_revenue": 78.4,
+          "account_count": 82.1
+        },
+        "territories": [
+          {
+            "territory_id": "terr-east",
+            "territory_label": "East",
+            "depth": 0,
+            "parent_territory_id": null,
+            "is_leaf": false,
+            "part_count": 12,
+            "account_count": 420,
+            "metric_totals": {
+              "annual_revenue": 12500000,
+              "account_count": 420
+            },
+            "workload_total": 515.5
+          },
+          {
+            "territory_id": "terr-atlanta-north",
+            "territory_label": "Atlanta North",
+            "depth": 1,
+            "parent_territory_id": "terr-east",
+            "is_leaf": true,
+            "part_count": 4,
+            "account_count": 132,
+            "metric_totals": {
+              "annual_revenue": 3900000,
+              "account_count": 132
+            },
+            "workload_total": 158.2
+          },
+          {
+            "territory_id": "terr-atlanta-central",
+            "territory_label": "Atlanta Central",
+            "depth": 1,
+            "parent_territory_id": "terr-east",
+            "is_leaf": true,
+            "part_count": 3,
+            "account_count": 148,
+            "metric_totals": {
+              "annual_revenue": 4450000,
+              "account_count": 148
+            },
+            "workload_total": 173.6
+          }
+        ],
+        "outliers": [
+          {
+            "territory_id": "terr-atlanta-central",
+            "metric": "annual_revenue",
+            "reason": "12% above TAL average"
+          }
+        ]
+      },
+      {
+        "tal_id": "tal-proposed",
+        "tal_label": "Proposed Territories",
+        "territory_count": 5,
+        "leaf_territory_count": 3,
+        "max_depth": 1,
+        "balance_scores": {
+          "annual_revenue": 86.9,
+          "account_count": 88.0
+        },
+        "territories": [
+          {
+            "territory_id": "terr-east-proposed",
+            "territory_label": "East",
+            "depth": 0,
+            "parent_territory_id": null,
+            "is_leaf": false,
+            "part_count": 12,
+            "account_count": 420,
+            "metric_totals": {
+              "annual_revenue": 12500000,
+              "account_count": 420
+            },
+            "workload_total": 515.5
+          }
+        ],
+        "outliers": []
+      }
+    ],
+    "scoped_aggregates": {
+      "part_count": 3,
+      "account_count": 84,
+      "metric_totals": {
+        "annual_revenue": 2480000,
+        "account_count": 84
+      },
+      "territory_breakdown": [
+        {
+          "territory_id": "terr-atlanta-north",
+          "territory_label": "Atlanta North",
+          "depth": 1,
+          "parent_territory_id": "terr-east",
+          "is_leaf": true,
+          "part_count": 2,
+          "account_count": 58,
+          "metric_totals": {
+            "annual_revenue": 1710000,
+            "account_count": 58
+          },
+          "workload_total": 67.5
+        }
+      ]
+    },
+    "cross_tal_comparison": {
+      "tal_ids": [
+        "tal-current",
+        "tal-proposed"
+      ],
+      "balance_delta": {
+        "annual_revenue": 8.5,
+        "account_count": 5.9
+      },
+      "notes": [
+        "Positive delta means proposed TAL is more balanced."
+      ]
+    },
+    "hypothetical_impact": {
+      "moves_evaluated": 1,
+      "affected_territories": [
+        {
+          "territory_id": "terr-atlanta-central",
+          "territory_label": "Atlanta Central",
+          "depth": 1,
+          "parent_territory_id": "terr-east",
+          "is_leaf": true,
+          "part_count": 4,
+          "account_count": 176,
+          "metric_totals": {
+            "annual_revenue": 5220000
+          },
+          "workload_total": 201.4
+        }
+      ],
+      "balance_delta": {
+        "annual_revenue": 2.1
+      },
+      "notes": [
+        "Move improves revenue balance but increases workload variance."
+      ]
+    },
+    "caveats": [
+      "Metrics reflect the supplied TS revision only."
+    ],
+    "presentation_guidance_uri": "ezt://guidance/analysis-presentation"
+  }
+}

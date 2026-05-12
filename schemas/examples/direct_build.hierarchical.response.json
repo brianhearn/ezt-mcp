@@ -1,0 +1,36 @@
+{
+  "ok": true,
+  "result": {
+    "ts_handle": "tsh_us_sales_after_direct_build_hierarchy",
+    "expires_at": "2026-05-12T20:40:00Z",
+    "ts_identity": {
+      "ts_id": "ts-us-sales-2026-q2",
+      "revision": 8,
+      "content_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "updated_at": "2026-05-12T19:40:00Z"
+    },
+    "tal_id": "tal-us-sales-hierarchy",
+    "territory_count": 10,
+    "assignment_summary": {
+      "assigned_part_count": 5,
+      "unassigned_part_count": 0
+    },
+    "hierarchy_summary": {
+      "max_depth": 2,
+      "leaf_territory_count": 5,
+      "rollup_territory_count": 5
+    },
+    "repair_summary": {
+      "holes_filled": 0,
+      "contiguity_repairs": 0,
+      "changed_part_ids": []
+    },
+    "invalid_parts": []
+  },
+  "warnings": [
+    {
+      "code": "ROLLUP_TERRITORIES_CREATED",
+      "message": "Created hierarchy rollup territories from territory_path values."
+    }
+  ]
+}
