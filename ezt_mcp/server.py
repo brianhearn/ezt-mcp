@@ -16,6 +16,7 @@ from starlette.routing import Mount, Route
 from .auth import APIKeyAuth
 from .config import ServerConfig
 from .db.part_layers import AsyncpgPartLayerRepository
+from .observability import RequestTimingMiddleware, timed_async_operation
 from .resources.part_layers import (
     UnknownPartLayerError,
     assert_no_forbidden_public_fields,
@@ -64,33 +65,37 @@ def create_mcp_server(state: AppState):
     @mcp.resource("ezt://part-layers")
     async def part_layers() -> str:
         """Available canonical part layers for territory construction."""
-        repo = _require_repo(state)
-        payload = await list_part_layers_resource(repo)
-        assert_no_forbidden_public_fields(payload)
-        return json.dumps(payload, indent=2)
+        async with timed_async_operation(logger, "mcp.resource.part_layers.list"):
+            repo = _require_repo(state)
+            payload = await list_part_layers_resource(repo)
+            assert_no_forbidden_public_fields(payload)
+            return json.dumps(payload, indent=2)
 
     @mcp.resource("ezt://part-layers/{part_layer}")
     async def part_layer_detail(part_layer: str) -> str:
         """Detailed metadata for one canonical part layer."""
-        repo = _require_repo(state)
-        try:
-            payload = await get_part_layer_resource(repo, part_layer)
-        except UnknownPartLayerError as exc:
-            return json.dumps(
-                {
-                    "ok": False,
-                    "error": {
-                        "code": exc.code,
-                        "message": str(exc),
-                        "details": {"part_layer": exc.part_layer},
-                        "retryable": False,
-                        "user_action_required": True,
+        async with timed_async_operation(
+            logger, "mcp.resource.part_layers.detail", part_layer=part_layer
+        ):
+            repo = _require_repo(state)
+            try:
+                payload = await get_part_layer_resource(repo, part_layer)
+            except UnknownPartLayerError as exc:
+                return json.dumps(
+                    {
+                        "ok": False,
+                        "error": {
+                            "code": exc.code,
+                            "message": str(exc),
+                            "details": {"part_layer": exc.part_layer},
+                            "retryable": False,
+                            "user_action_required": True,
+                        },
                     },
-                },
-                indent=2,
-            )
-        assert_no_forbidden_public_fields(payload)
-        return json.dumps(payload, indent=2)
+                    indent=2,
+                )
+            assert_no_forbidden_public_fields(payload)
+            return json.dumps(payload, indent=2)
 
     return mcp
 
@@ -106,9 +111,9 @@ def build_app(config: ServerConfig) -> Starlette:
     async def lifespan(app: Starlette):
         database_url = config.database_url
         if database_url:
-            logger.info("Opening PostgreSQL pool")
-            state.pool = await asyncpg.create_pool(database_url, min_size=1, max_size=5)
-            state.part_layers_repo = AsyncpgPartLayerRepository(state.pool)
+            async with timed_async_operation(logger, "startup.db_pool.open"):
+                state.pool = await asyncpg.create_pool(database_url, min_size=1, max_size=5)
+                state.part_layers_repo = AsyncpgPartLayerRepository(state.pool)
         else:
             logger.warning("DATABASE_URL not configured; DB-backed resources will be unavailable")
 
@@ -116,15 +121,17 @@ def build_app(config: ServerConfig) -> Starlette:
             yield
 
         if state.pool is not None:
-            await state.pool.close()
+            async with timed_async_operation(logger, "shutdown.db_pool.close"):
+                await state.pool.close()
 
     async def health(request: Request) -> JSONResponse:
         db: dict[str, Any] = {"configured": bool(config.database_url), "connected": False}
         if state.pool is not None:
             try:
-                async with state.pool.acquire() as conn:
-                    value = await conn.fetchval("select 1")
-                db["connected"] = value == 1
+                async with timed_async_operation(logger, "health.db_probe"):
+                    async with state.pool.acquire() as conn:
+                        value = await conn.fetchval("select 1")
+                    db["connected"] = value == 1
             except Exception as exc:  # noqa: BLE001
                 db["error"] = exc.__class__.__name__
         return JSONResponse(
@@ -140,35 +147,37 @@ def build_app(config: ServerConfig) -> Starlette:
         unauthorized = _unauthorized_if_needed(request, auth)
         if unauthorized is not None:
             return unauthorized
-        repo = _require_repo(state)
-        payload = await list_part_layers_resource(repo)
-        assert_no_forbidden_public_fields(payload)
-        return JSONResponse(payload)
+        async with timed_async_operation(logger, "http.part_layers.list"):
+            repo = _require_repo(state)
+            payload = await list_part_layers_resource(repo)
+            assert_no_forbidden_public_fields(payload)
+            return JSONResponse(payload)
 
     async def part_layer_http(request: Request) -> JSONResponse:
         unauthorized = _unauthorized_if_needed(request, auth)
         if unauthorized is not None:
             return unauthorized
-        repo = _require_repo(state)
         part_layer = request.path_params["part_layer"]
-        try:
-            payload = await get_part_layer_resource(repo, part_layer)
-        except UnknownPartLayerError as exc:
-            return JSONResponse(
-                {
-                    "ok": False,
-                    "error": {
-                        "code": exc.code,
-                        "message": str(exc),
-                        "details": {"part_layer": exc.part_layer},
-                        "retryable": False,
-                        "user_action_required": True,
+        async with timed_async_operation(logger, "http.part_layers.detail", part_layer=part_layer):
+            repo = _require_repo(state)
+            try:
+                payload = await get_part_layer_resource(repo, part_layer)
+            except UnknownPartLayerError as exc:
+                return JSONResponse(
+                    {
+                        "ok": False,
+                        "error": {
+                            "code": exc.code,
+                            "message": str(exc),
+                            "details": {"part_layer": exc.part_layer},
+                            "retryable": False,
+                            "user_action_required": True,
+                        },
                     },
-                },
-                status_code=404,
-            )
-        assert_no_forbidden_public_fields(payload)
-        return JSONResponse(payload)
+                    status_code=404,
+                )
+            assert_no_forbidden_public_fields(payload)
+            return JSONResponse(payload)
 
     routes = [
         Route("/health", health),
@@ -176,7 +185,9 @@ def build_app(config: ServerConfig) -> Starlette:
         Route("/part-layers/{part_layer}", part_layer_http),
         Mount("/", app=mcp_app),
     ]
-    return Starlette(routes=routes, lifespan=lifespan)
+    app = Starlette(routes=routes, lifespan=lifespan)
+    app.add_middleware(RequestTimingMiddleware)
+    return app
 
 
 def _require_repo(state: AppState) -> AsyncpgPartLayerRepository:

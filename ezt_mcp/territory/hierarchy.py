@@ -7,9 +7,14 @@ may either hold parts directly or have children, never both.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Mapping
+
+from ezt_mcp.observability import timed_operation
+
+logger = logging.getLogger(__name__)
 
 MAX_TERRITORY_DEPTH = 4
 MAX_PATH_LABELS = MAX_TERRITORY_DEPTH + 1
@@ -124,12 +129,27 @@ def materialize_assignment_tree(
     de-duplicated and a warning is returned. Conflicting duplicates fail with
     ``CLARIFICATION_REQUIRED``.
     """
+    assignment_rows = list(assignments)
     if not tal_id or not str(tal_id).strip():
         raise HierarchyValidationError(
             "CLARIFICATION_REQUIRED",
             "tal_id is required to materialize a territory hierarchy.",
         )
 
+    with timed_operation(
+        logger,
+        "territory.hierarchy.materialize",
+        tal_id=tal_id,
+        assignment_count=len(assignment_rows),
+    ):
+        return _materialize_assignment_tree(assignment_rows, tal_id=str(tal_id))
+
+
+def _materialize_assignment_tree(
+    assignments: list[Mapping[str, Any]],
+    *,
+    tal_id: str,
+) -> TerritoryHierarchy:
     roots: dict[str, TerritoryNode] = {}
     part_assignments: dict[str, tuple[str, ...]] = {}
     duplicate_rows: list[dict[str, Any]] = []
