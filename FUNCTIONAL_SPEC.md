@@ -6,7 +6,7 @@
 
 This document defines EZT MCP's externally observable behavior for agent/client implementers. It specifies MCP tools, resources, prompts, caller-visible state rules, validation behavior, and acceptance criteria independent of implementation internals.
 
-This spec must conform to [CONSTITUTION.md](CONSTITUTION.md). Workflow coverage comes from [SCENARIOS.md](SCENARIOS.md). Map Component UX concepts live in [MAP_COMPONENT.md](MAP_COMPONENT.md). Map Component product chrome and visual tokens live in [DESIGN.md](DESIGN.md). Internal implementation design belongs in the future `TECHNICAL_SPEC.md`.
+This spec must conform to [CONSTITUTION.md](CONSTITUTION.md). Workflow coverage comes from [SCENARIOS.md](SCENARIOS.md). Map Component UX concepts live in [MAP_COMPONENT.md](MAP_COMPONENT.md). Map Component product chrome and visual tokens live in [DESIGN.md](DESIGN.md). Internal implementation design belongs in [TECHNICAL_SPEC.md](TECHNICAL_SPEC.md).
 
 ---
 

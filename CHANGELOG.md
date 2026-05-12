@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added (2026-05-12) — Technical Spec implementation baseline
+- Added `TECHNICAL_SPEC.md` v0.1.0 covering runtime architecture, module boundaries, PostGIS/transient storage design, TS internal representation, common tool pipeline, territory computation pipeline, per-tool implementation designs, map sessions, security, observability, performance limits, testing strategy, deployment, and implementation sequence
+- Updated `README.md` lifecycle/status links and `FUNCTIONAL_SPEC.md` routing language to include the Technical Spec
+
 ### Added (2026-05-12) — schema examples and validation
 - Added `schemas/examples/` test vectors for `direct_build` flat/hierarchical cases, `auto_build` Mode A/Mode B/Scoped Split, `realign`, `analyze`, and `map_session_create`
 - Added `schemas/validate_examples.py` to validate each example against its tool contract request/response definition
