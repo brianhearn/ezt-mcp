@@ -44,6 +44,7 @@ def create_mcp_server(state: AppState):
             "EasyTerritory MCP server. Use resources such as ezt://part-layers "
             "to discover available geography before calling territory tools."
         ),
+        streamable_http_path="/",
         stateless_http=True,
     )
 
