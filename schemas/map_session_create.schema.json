@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.easyterritory.com/ezt-mcp/map_session_create.schema.json",
+  "title": "EZT MCP map_session_create Tool Contract",
+  "type": "object",
+  "$defs": {
+    "sessionMode": {
+      "type": "string",
+      "enum": ["view", "select"],
+      "description": "view — map review only, no selection commits. select — allows transient local selection and committed selection events."
+    },
+    "presentationContext": {
+      "title": "Optional Presentation View/Style Context",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "view_name": {
+          "type": "string",
+          "description": "Named presentation view, e.g. 'executive', 'heat_map', 'workload'."
+        },
+        "style_overrides": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Optional style hints forwarded to the MC renderer."
+        }
+      }
+    },
+    "interactionFlags": {
+      "title": "Allowed Interaction Flags for select Mode",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allow_lasso_select": {
+          "type": "boolean",
+          "default": true
+        },
+        "allow_click_select": {
+          "type": "boolean",
+          "default": true
+        },
+        "allow_territory_filter": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "request": {
+      "allOf": [
+        {
+          "$ref": "ts-reference.schema.json#/$defs/tsInputRef"
+        },
+        {
+          "type": "object",
+          "required": ["mode"],
+          "properties": {
+            "mode": {
+              "$ref": "#/$defs/sessionMode"
+            },
+            "active_tal_id": {
+              "type": "string",
+              "description": "TAL to display initially. Defaults to TS active_tal_id when present."
+            },
+            "presentation": {
+              "$ref": "#/$defs/presentationContext"
+            },
+            "expiry_seconds": {
+              "type": "integer",
+              "minimum": 60,
+              "maximum": 86400,
+              "description": "Requested session TTL in seconds. Server may cap at policy maximum."
+            },
+            "interaction_flags": {
+              "$ref": "#/$defs/interactionFlags",
+              "description": "Only meaningful in select mode."
+            }
+          }
+        }
+      ]
+    },
+    "talModeSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tal_id", "mode"],
+      "properties": {
+        "tal_id": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString"
+        },
+        "tal_label": {
+          "type": "string"
+        },
+        "mode": {
+          "$ref": "#/$defs/sessionMode"
+        },
+        "territory_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["map_session_id", "map_url", "state_resource_uri", "expires_at", "ts_identity", "active_tal_summary"],
+      "properties": {
+        "map_session_id": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString",
+          "description": "Opaque server-assigned session ID."
+        },
+        "map_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Browser-safe URL. Contains only a short-lived session token — never exposes the customer's MCP API key."
+        },
+        "selection_resource_uri": {
+          "type": "string",
+          "description": "MCP resource URI for committed selections, e.g. ezt://map-sessions/{id}/selection. Present only in select mode."
+        },
+        "state_resource_uri": {
+          "type": "string",
+          "description": "MCP resource URI for session state, e.g. ezt://map-sessions/{id}/state."
+        },
+        "expires_at": {
+          "$ref": "common.schema.json#/$defs/isoDateTime"
+        },
+        "ts_identity": {
+          "$ref": "ts-reference.schema.json#/$defs/tsIdentity"
+        },
+        "active_tal_summary": {
+          "$ref": "#/$defs/talModeSummary"
+        }
+      }
+    },
+    "response": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ok", "result"],
+          "properties": {
+            "ok": { "const": true },
+            "result": { "$ref": "#/$defs/result" },
+            "warnings": {
+              "type": "array",
+              "items": { "$ref": "common.schema.json#/$defs/warning" }
+            }
+          }
+        },
+        {
+          "$ref": "common.schema.json#/$defs/errorEnvelope"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,275 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.easyterritory.com/ezt-mcp/analyze.schema.json",
+  "title": "EZT MCP analyze Tool Contract",
+  "type": "object",
+  "$defs": {
+    "hypotheticalMove": {
+      "title": "Hypothetical Part-Move for Impact Analysis",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["part_id", "to_territory_id"],
+      "properties": {
+        "part_id": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString"
+        },
+        "from_territory_id": {
+          "type": "string"
+        },
+        "to_territory_id": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "analysisScope": {
+      "title": "Optional Scope Constraint",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "part_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "Restrict analysis to these part IDs, e.g. a map selection."
+        },
+        "territory_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "Restrict analysis to these territory IDs within each TAL."
+        }
+      }
+    },
+    "request": {
+      "allOf": [
+        {
+          "$ref": "ts-reference.schema.json#/$defs/tsInputRef"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "tal_ids": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+              "description": "TAL IDs to analyze. Defaults to the active TAL when unambiguous."
+            },
+            "part_layer": {
+              "type": "string",
+              "description": "Part layer name. Required when not inferable from the TAL(s)."
+            },
+            "metrics": {
+              "type": "array",
+              "items": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+              "description": "Data field names to aggregate per territory. If omitted, server returns all available metrics."
+            },
+            "scope": {
+              "$ref": "#/$defs/analysisScope",
+              "description": "Optional — restrict analysis to a subset of parts or territories."
+            },
+            "compare_tals": {
+              "type": "boolean",
+              "default": false,
+              "description": "When true and multiple tal_ids supplied, include a cross-TAL comparison section."
+            },
+            "hypothetical_moves": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/hypotheticalMove" },
+              "description": "Optional. Compute impact of these hypothetical part moves without persisting any change."
+            }
+          }
+        }
+      ]
+    },
+    "territoryMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["territory_id"],
+      "properties": {
+        "territory_id": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString"
+        },
+        "territory_label": {
+          "type": "string"
+        },
+        "part_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "account_count": {
+          "type": ["integer", "null"]
+        },
+        "metric_totals": {
+          "type": "object",
+          "additionalProperties": { "type": ["number", "null"] },
+          "description": "Keyed by requested metric field names."
+        },
+        "workload_total": {
+          "type": ["number", "null"]
+        }
+      }
+    },
+    "talAnalysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tal_id", "territory_count", "territories"],
+      "properties": {
+        "tal_id": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString"
+        },
+        "tal_label": {
+          "type": "string"
+        },
+        "territory_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "balance_scores": {
+          "type": "object",
+          "additionalProperties": { "type": "number" },
+          "description": "Balance score (0–100) per metric field. Higher = more balanced."
+        },
+        "territories": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/territoryMetrics" }
+        },
+        "outliers": {
+          "type": "array",
+          "description": "Territories flagged as significant outliers.",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["territory_id", "metric", "reason"],
+            "properties": {
+              "territory_id": { "type": "string" },
+              "metric": { "type": "string" },
+              "reason": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "scopedAggregates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["part_count"],
+      "properties": {
+        "part_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "account_count": {
+          "type": ["integer", "null"]
+        },
+        "metric_totals": {
+          "type": "object",
+          "additionalProperties": { "type": ["number", "null"] }
+        },
+        "territory_breakdown": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/territoryMetrics" },
+          "description": "Per-territory summary for parts in scope."
+        }
+      }
+    },
+    "crossTalComparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tal_ids"],
+      "properties": {
+        "tal_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "balance_delta": {
+          "type": "object",
+          "additionalProperties": { "type": "number" },
+          "description": "Balance score difference per metric between compared TALs."
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "hypotheticalImpact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["moves_evaluated"],
+      "properties": {
+        "moves_evaluated": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "affected_territories": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/territoryMetrics" }
+        },
+        "balance_delta": {
+          "type": "object",
+          "additionalProperties": { "type": "number" }
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ts_identity", "tal_analyses"],
+      "properties": {
+        "ts_identity": {
+          "$ref": "ts-reference.schema.json#/$defs/tsIdentity"
+        },
+        "tal_analyses": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/talAnalysis" }
+        },
+        "scoped_aggregates": {
+          "$ref": "#/$defs/scopedAggregates",
+          "description": "Present only when a scope was requested."
+        },
+        "cross_tal_comparison": {
+          "$ref": "#/$defs/crossTalComparison",
+          "description": "Present only when compare_tals=true and multiple tal_ids supplied."
+        },
+        "hypothetical_impact": {
+          "$ref": "#/$defs/hypotheticalImpact",
+          "description": "Present only when hypothetical_moves were supplied."
+        },
+        "caveats": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Missing metric notes, geography-only notices, stale data warnings, repair side-effect notes, etc."
+        },
+        "presentation_guidance_uri": {
+          "type": "string",
+          "description": "MCP resource URI for Analysis Presentation Guidance, e.g. ezt://guidance/analysis-presentation."
+        }
+      }
+    },
+    "response": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ok", "result"],
+          "properties": {
+            "ok": { "const": true },
+            "result": { "$ref": "#/$defs/result" },
+            "warnings": {
+              "type": "array",
+              "items": { "$ref": "common.schema.json#/$defs/warning" }
+            }
+          }
+        },
+        {
+          "$ref": "common.schema.json#/$defs/errorEnvelope"
+        }
+      ]
+    }
+  }
+}

@@ -12,6 +12,9 @@ These JSON Schemas define externally visible MCP request/response structures. Th
 | `ts-reference.schema.json` | TS identity plus `ts` / `ts_handle` reference conventions. |
 | `direct_build.schema.json` | `direct_build` request and response payloads. |
 | `auto_build.schema.json` | `auto_build` request and response payloads, including Mode A, Mode B, and Scoped Split. |
+| `realign.schema.json` | `realign` request and response payloads, including directed part-move operations and map session refresh. |
+| `analyze.schema.json` | `analyze` request and response payloads, including TAL analysis, scoped aggregates, cross-TAL comparison, and hypothetical impact. |
+| `map_session_create.schema.json` | `map_session_create` request and response payloads, including session mode, presentation context, and resource URIs. |
 
 ## Notes
 

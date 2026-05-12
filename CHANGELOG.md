@@ -11,6 +11,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Replaced the `DESIGN.md` scaffold with Benton's extracted EZT Designer V2 design-system contract: populated tokens, map-specific styling, hard rules, chrome variants, source surfaces, references, and open design questions
 - Tightened `README.md`, `FUNCTIONAL_SPEC.md`, `MAP_COMPONENT.md`, and `SDLC.md` cross-links so implementation agents treat `DESIGN.md` as the canonical visual source for the Map Component
 
+### Added (2026-05-12) — realign, analyze, map_session_create schemas
+- Added `schemas/realign.schema.json` — directed part-move operations, changed-territory summary, repair side effects, and optional MC session refresh notification
+- Added `schemas/analyze.schema.json` — TAL analysis, per-territory metric distributions, balance scores, outliers, scoped aggregates (map selection), cross-TAL comparison, hypothetical move impact, caveats, and presentation guidance URI
+- Added `schemas/map_session_create.schema.json` — session mode (view/select), presentation context, interaction flags, expiry, browser-safe `map_url`, selection and state resource URIs, and active TAL summary
+- Updated `schemas/README.md` to list all six schemas
+
 ### Added (2026-05-11) — initial schemas
 - Added `schemas/` with draft JSON Schema 2020-12 external contracts: common envelope/error types, TS references/identity, `direct_build`, and `auto_build` including Scoped Split
 - Linked `FUNCTIONAL_SPEC.md` to the new schema drafts
