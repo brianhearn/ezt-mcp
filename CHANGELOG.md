@@ -10,6 +10,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added (2026-05-12) — part-layer discovery resources
 - Added Functional Spec resources `ezt://part-layers` and `ezt://part-layers/{part_layer}` so agents can discover available canonical part layers before calling build/realign/analyze tools
 - Expanded Technical Spec part-layer metadata and resource implementation notes, including safe public fields, capability flags, and internal metadata redaction
+- Added first implementation slice for part-layer discovery: package scaffold, safe public metadata model, PostGIS-backed repository stub, resource helper functions, schema/examples, and unit tests
 
 ### Added (2026-05-12) — Technical Spec implementation baseline
 - Added `TECHNICAL_SPEC.md` v0.1.0 covering runtime architecture, module boundaries, PostGIS/transient storage design, TS internal representation, common tool pipeline, territory computation pipeline, per-tool implementation designs, map sessions, security, observability, performance limits, testing strategy, deployment, and implementation sequence

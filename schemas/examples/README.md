@@ -1,8 +1,8 @@
 # schemas/examples/ — Contract Test Vectors
 
-These files are schema-valid example payloads for the EZT MCP external tool contracts.
+These files are schema-valid example payloads for the EZT MCP external tool and resource contracts.
 
-Each `*.request.json` validates against the tool schema's `#/$defs/request` definition. Each `*.response.json` validates against `#/$defs/response`.
+Each tool `*.request.json` validates against the tool schema's `#/$defs/request` definition. Each tool `*.response.json` validates against `#/$defs/response`. Resource examples validate against their resource-specific definitions in `part_layers.schema.json`.
 
 ## Coverage
 
@@ -16,5 +16,7 @@ Each `*.request.json` validates against the tool schema's `#/$defs/request` defi
 | `realign` directed part moves | `realign.request.json` | `realign.response.json` |
 | `analyze` scoped + compare + hypothetical | `analyze.request.json` | `analyze.response.json` |
 | `map_session_create` select mode | `map_session_create.request.json` | `map_session_create.response.json` |
+| `ezt://part-layers` resource | — | `part_layers.list.response.json` |
+| `ezt://part-layers/{part_layer}` resource | — | `part_layers.detail.response.json` |
 
 `manifest.json` maps every example to the schema and definition it should validate against.

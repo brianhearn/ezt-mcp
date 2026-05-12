@@ -1,0 +1,51 @@
+{
+  "resource": "ezt://part-layers",
+  "generated_at": "2026-05-12T20:02:00Z",
+  "layers": [
+    {
+      "part_layer": "us_zips",
+      "label": "US ZIP Codes",
+      "description": "United States ZIP Code polygons for territory construction.",
+      "country_codes": ["US"],
+      "admin_levels": ["postal"],
+      "geometry_type": "MultiPolygon",
+      "srid": 4326,
+      "part_count": 33791,
+      "id_format": "5-digit ZIP Code string",
+      "example_part_ids": ["30301", "33101", "94105"],
+      "capabilities": {
+        "direct_build": true,
+        "account_build": true,
+        "auto_build": true,
+        "realign": true,
+        "analyze": true,
+        "map_selection": true
+      },
+      "data_version": "2026-05",
+      "updated_at": "2026-05-01T00:00:00Z"
+    },
+    {
+      "part_layer": "us_counties",
+      "label": "US Counties",
+      "description": "United States county polygons for territory construction.",
+      "country_codes": ["US"],
+      "admin_levels": ["county"],
+      "geometry_type": "MultiPolygon",
+      "srid": 4326,
+      "part_count": 3234,
+      "id_format": "County FIPS string",
+      "example_part_ids": ["12073", "13121", "06075"],
+      "capabilities": {
+        "direct_build": true,
+        "account_build": true,
+        "auto_build": true,
+        "realign": true,
+        "analyze": true,
+        "map_selection": true
+      },
+      "data_version": "2026-05",
+      "updated_at": "2026-05-01T00:00:00Z"
+    }
+  ],
+  "layer_count": 2
+}

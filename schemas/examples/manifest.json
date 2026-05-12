@@ -78,5 +78,15 @@
     "file": "realign.response.json",
     "schema": "realign.schema.json",
     "definition": "response"
+  },
+  {
+    "file": "part_layers.list.response.json",
+    "schema": "part_layers.schema.json",
+    "definition": "listResource"
+  },
+  {
+    "file": "part_layers.detail.response.json",
+    "schema": "part_layers.schema.json",
+    "definition": "detailResource"
   }
 ]

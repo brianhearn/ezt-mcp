@@ -1,0 +1,32 @@
+{
+  "resource": "ezt://part-layers/us_zips",
+  "generated_at": "2026-05-12T20:02:00Z",
+  "layer": {
+    "part_layer": "us_zips",
+    "label": "US ZIP Codes",
+    "description": "United States ZIP Code polygons for territory construction.",
+    "country_codes": ["US"],
+    "admin_levels": ["postal"],
+    "geometry_type": "MultiPolygon",
+    "srid": 4326,
+    "part_count": 33791,
+    "id_format": "5-digit ZIP Code string",
+    "example_part_ids": ["30301", "33101", "94105"],
+    "capabilities": {
+      "direct_build": true,
+      "account_build": true,
+      "auto_build": true,
+      "realign": true,
+      "analyze": true,
+      "map_selection": true
+    },
+    "data_version": "2026-05",
+    "updated_at": "2026-05-01T00:00:00Z",
+    "bbox": [-179.231086, 17.831509, -65.168107, 71.441059],
+    "supported_admin1": ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA"],
+    "aliases": ["ZIP", "ZIP Code", "postal code"],
+    "source_name": "EasyTerritory curated geography",
+    "source_vintage": "2026-05",
+    "id_format_notes": "IDs are zero-padded strings. Agents must preserve leading zeroes."
+  }
+}

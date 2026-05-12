@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.easyterritory.com/ezt-mcp/part_layers.schema.json",
+  "title": "EZT MCP Part Layer Discovery Resource Contracts",
+  "type": "object",
+  "$defs": {
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "direct_build": {
+          "type": "boolean"
+        },
+        "account_build": {
+          "type": "boolean"
+        },
+        "auto_build": {
+          "type": "boolean"
+        },
+        "realign": {
+          "type": "boolean"
+        },
+        "analyze": {
+          "type": "boolean"
+        },
+        "map_selection": {
+          "type": "boolean"
+        }
+      }
+    },
+    "partLayerSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "part_layer",
+        "label",
+        "geometry_type",
+        "srid",
+        "capabilities"
+      ],
+      "properties": {
+        "part_layer": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString"
+        },
+        "label": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString"
+        },
+        "description": {
+          "type": "string"
+        },
+        "country_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 2
+          }
+        },
+        "admin_levels": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/nonEmptyString"
+          }
+        },
+        "geometry_type": {
+          "type": "string",
+          "enum": [
+            "Polygon",
+            "MultiPolygon"
+          ]
+        },
+        "srid": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "part_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "id_format": {
+          "type": "string"
+        },
+        "example_part_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "capabilities": {
+          "$ref": "#/$defs/capabilities"
+        },
+        "data_version": {
+          "type": "string"
+        },
+        "updated_at": {
+          "$ref": "common.schema.json#/$defs/isoDateTime"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/warning"
+          }
+        }
+      }
+    },
+    "partLayerDetail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "part_layer",
+        "label",
+        "geometry_type",
+        "srid",
+        "capabilities"
+      ],
+      "properties": {
+        "part_layer": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString"
+        },
+        "label": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString"
+        },
+        "description": {
+          "type": "string"
+        },
+        "country_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 2
+          }
+        },
+        "admin_levels": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/nonEmptyString"
+          }
+        },
+        "geometry_type": {
+          "type": "string",
+          "enum": [
+            "Polygon",
+            "MultiPolygon"
+          ]
+        },
+        "srid": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "part_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "id_format": {
+          "type": "string"
+        },
+        "example_part_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "capabilities": {
+          "$ref": "#/$defs/capabilities"
+        },
+        "data_version": {
+          "type": "string"
+        },
+        "updated_at": {
+          "$ref": "common.schema.json#/$defs/isoDateTime"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/warning"
+          }
+        },
+        "bbox": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "number"
+          }
+        },
+        "supported_admin1": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_name": {
+          "type": "string"
+        },
+        "source_vintage": {
+          "type": "string"
+        },
+        "id_format_notes": {
+          "type": "string"
+        }
+      }
+    },
+    "listResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resource",
+        "generated_at",
+        "layers",
+        "layer_count"
+      ],
+      "properties": {
+        "resource": {
+          "const": "ezt://part-layers"
+        },
+        "generated_at": {
+          "$ref": "common.schema.json#/$defs/isoDateTime"
+        },
+        "layers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/partLayerSummary"
+          }
+        },
+        "layer_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "detailResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resource",
+        "generated_at",
+        "layer"
+      ],
+      "properties": {
+        "resource": {
+          "type": "string",
+          "pattern": "^ezt://part-layers/[^/]+$"
+        },
+        "generated_at": {
+          "$ref": "common.schema.json#/$defs/isoDateTime"
+        },
+        "layer": {
+          "$ref": "#/$defs/partLayerDetail"
+        }
+      }
+    }
+  }
+}
