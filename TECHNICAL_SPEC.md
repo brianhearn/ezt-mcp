@@ -77,6 +77,7 @@ ezt_mcp/
     analyze.py
     map_session_create.py
   resources/
+    part_layers.py             # available part-layer discovery resources
     map_sessions.py            # selection/state resources
     guidance.py                # analysis/design guidance resources
   prompts/
@@ -178,13 +179,23 @@ geo.part_layers (
   part_layer text primary key,
   table_name text not null,
   label text not null,
+  description text,
+  country_codes text[] not null default '{}',
+  admin_levels text[] not null default '{}',
   geometry_type text not null,
   srid integer not null default 4326,
   id_field text not null default 'part_id',
+  id_format text,
+  example_part_ids text[] not null default '{}',
+  part_count integer,
+  capabilities jsonb not null default '{}',
+  data_version text,
   is_active boolean not null default true,
   updated_at timestamptz not null
 )
 ```
+
+`geo.part_layers.table_name` is internal metadata and must not be exposed through MCP resources. Public discovery resources return the stable `part_layer` ID plus safe descriptive fields only.
 
 ### 3.3 Geocode cache
 
@@ -444,7 +455,23 @@ Unhandled exceptions become `PROVIDER_UNAVAILABLE` only for dependency outages, 
 
 Lookups should batch by part layer and use parameterized SQL. Unknown IDs are reported as structured validation failures before expensive geometry work.
 
-### 6.2 Territory tree materialization
+### 6.2 Part-layer discovery resources
+
+`resources.part_layers` exposes safe MCP resources backed by `geo.part_layers`:
+
+- `ezt://part-layers` lists active layers available to the caller.
+- `ezt://part-layers/{part_layer}` returns detailed metadata for one layer.
+
+Implementation rules:
+
+1. Query only active rows the caller is allowed to use.
+2. Return the stable `part_layer` ID and safe descriptive metadata.
+3. Never expose `table_name`, SQL, database hostnames, storage URLs, credentials, or internal index/function names.
+4. Include `capabilities` so agents know whether a layer can be used for build, realign, analyze, and map-selection workflows.
+5. Cache metadata in-process briefly if desired, but invalidate or refresh on deployment/config changes.
+6. Map unknown layers to `UNKNOWN_PART_LAYER`.
+
+### 6.3 Territory tree materialization
 
 `territory.hierarchy.materialize(paths)` converts Direct Build assignment rows into an internal tree.
 
@@ -468,7 +495,7 @@ Algorithm:
 
 Flat builds are just tries where every path has one segment; every node is a root leaf.
 
-### 6.3 Leaf geometry dissolve
+### 6.4 Leaf geometry dissolve
 
 For every leaf territory:
 
@@ -480,7 +507,7 @@ For every leaf territory:
 
 PostGIS `ST_UnaryUnion` may be used for large territory dissolves if profiling shows it is faster or less memory-heavy than in-process Shapely. The implementation should hide that behind `dissolve_leaf_territory()` so the backend can be swapped.
 
-### 6.4 Rollup geometry dissolve
+### 6.5 Rollup geometry dissolve
 
 For hierarchical TALs:
 
@@ -491,7 +518,7 @@ For hierarchical TALs:
 
 Rollup geometry is pre-dissolved and embedded so the Map Component can render without traversing part layers.
 
-### 6.5 Repair pipeline
+### 6.6 Repair pipeline
 
 Repair is internal and applies after initial leaf dissolution or directed moves.
 

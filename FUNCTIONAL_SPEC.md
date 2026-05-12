@@ -617,7 +617,75 @@ Acceptance criteria:
 
 ## 13. MCP Resources — v1 Draft Surface
 
-### 13.1 `ezt://map-sessions/{map_session_id}/selection`
+### 13.1 `ezt://part-layers`
+
+Represents the authenticated caller's available canonical part layers for building, realigning, analyzing, and rendering TALs.
+
+Agents should read this resource when they need to decide which `part_layer` value to pass to `direct_build`, `account_build`, `auto_build`, or `realign`.
+
+Functional behavior:
+
+- Returns only active part layers available to the authenticated caller.
+- Returns stable `part_layer` IDs exactly as they should be used in tool calls, e.g. `us_zips`, `us_counties`, `ca_fsa`.
+- Includes human-readable labels, geographic coverage, part-count summaries, ID-format hints, example part IDs, data version/update metadata, and capability flags.
+- Does not expose implementation table names, SQL details, storage locations, provider credentials, or internal infrastructure.
+- Is safe to cache briefly by agents, but agents should refresh it when a tool returns `UNKNOWN_PART_LAYER`.
+
+Expected data includes, per layer:
+
+- `part_layer`: stable tool-call identifier;
+- `label`: human-readable name;
+- `description`: short explanation of the geography;
+- `country_codes`: ISO country codes covered;
+- `admin_levels`: coarse administrative/geographic type hints, e.g. postal, county, state, province;
+- `geometry_type` and `srid`;
+- `part_count`;
+- `id_format`: user-facing description of expected part IDs;
+- `example_part_ids`;
+- `capabilities`: whether usable for Direct Build, Account Build, Auto Build, Realign, Analyze, and Map Component selection/rendering;
+- `data_version` and `updated_at`;
+- `warnings` or caveats when relevant.
+
+Example layer summary:
+
+```json
+{
+  "part_layer": "us_zips",
+  "label": "US ZIP Codes",
+  "description": "United States ZIP Code polygons for territory construction.",
+  "country_codes": ["US"],
+  "admin_levels": ["postal"],
+  "geometry_type": "MultiPolygon",
+  "srid": 4326,
+  "part_count": 33791,
+  "id_format": "5-digit ZIP Code string",
+  "example_part_ids": ["30301", "33101", "94105"],
+  "capabilities": {
+    "direct_build": true,
+    "account_build": true,
+    "auto_build": true,
+    "realign": true,
+    "analyze": true,
+    "map_selection": true
+  },
+  "data_version": "2026-05",
+  "updated_at": "2026-05-01T00:00:00Z"
+}
+```
+
+### 13.2 `ezt://part-layers/{part_layer}`
+
+Represents detailed metadata for one canonical part layer.
+
+Functional behavior:
+
+- Returns the same safe metadata as `ezt://part-layers`, plus optional detail useful for agents preparing data.
+- May include bounding box, supported countries/states/provinces, aliases/synonyms, known source vintage, and more detailed ID-format notes.
+- Unknown or unavailable layers return a structured `UNKNOWN_PART_LAYER` resource error.
+
+Agents should use this resource when a user names a geography ambiguously, e.g. “ZIPs,” “postal codes,” “counties,” or “FSAs,” and the agent needs to map that language to a stable `part_layer` ID before calling a build tool.
+
+### 13.3 `ezt://map-sessions/{map_session_id}/selection`
 
 Represents the latest committed selection from a select-mode MC session.
 
@@ -642,7 +710,7 @@ Expected data includes:
 
 The agent should call `analyze` for authoritative account counts, sales volume, workload, and move impact.
 
-### 13.2 `ezt://map-sessions/{map_session_id}/state`
+### 13.4 `ezt://map-sessions/{map_session_id}/state`
 
 Represents current transient map session state.
 
