@@ -27,16 +27,131 @@ function baseStyle(payload) {
       url: `pmtiles://${basemapUrl}`,
     };
     style.layers.push(
-      { id: "basemap-water", type: "fill", source: "basemap", "source-layer": "water", paint: { "fill-color": "#172532" } },
-      { id: "basemap-earth", type: "fill", source: "basemap", "source-layer": "earth", paint: { "fill-color": "#11181f" } },
-      { id: "basemap-landuse", type: "fill", source: "basemap", "source-layer": "landuse", paint: { "fill-color": "#15202a", "fill-opacity": 0.45 } },
-      { id: "basemap-roads", type: "line", source: "basemap", "source-layer": "roads", paint: { "line-color": "#2f3c4a", "line-width": 0.6, "line-opacity": 0.55 } },
-      { id: "basemap-places", type: "symbol", source: "basemap", "source-layer": "places", minzoom: 4, layout: { "text-field": ["coalesce", ["get", "name"], ""], "text-size": 11 }, paint: { "text-color": "#8fa1b6", "text-halo-color": "#101418", "text-halo-width": 1 } },
+      {
+        id: "basemap-earth",
+        type: "fill",
+        source: "basemap",
+        "source-layer": "earth",
+        paint: { "fill-color": "#11181f" },
+      },
+      {
+        id: "basemap-landcover",
+        type: "fill",
+        source: "basemap",
+        "source-layer": "landcover",
+        paint: { "fill-color": "#172318", "fill-opacity": 0.35 },
+      },
+      {
+        id: "basemap-landuse",
+        type: "fill",
+        source: "basemap",
+        "source-layer": "landuse",
+        paint: { "fill-color": "#15202a", "fill-opacity": 0.42 },
+      },
+      {
+        id: "basemap-water",
+        type: "fill",
+        source: "basemap",
+        "source-layer": "water",
+        paint: { "fill-color": "#172b3a" },
+      },
+      {
+        id: "basemap-boundaries",
+        type: "line",
+        source: "basemap",
+        "source-layer": "boundaries",
+        paint: { "line-color": "#3b4858", "line-width": 0.7, "line-opacity": 0.55 },
+      },
+      {
+        id: "basemap-roads-minor",
+        type: "line",
+        source: "basemap",
+        "source-layer": "roads",
+        minzoom: 8,
+        filter: ["!in", ["get", "kind"], ["literal", ["highway", "major_road"]]],
+        paint: {
+          "line-color": "#334252",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 8, 0.25, 12, 0.8, 15, 1.4],
+          "line-opacity": ["interpolate", ["linear"], ["zoom"], 8, 0.25, 12, 0.65],
+        },
+      },
+      {
+        id: "basemap-roads-major",
+        type: "line",
+        source: "basemap",
+        "source-layer": "roads",
+        filter: ["in", ["get", "kind"], ["literal", ["highway", "major_road"]]],
+        paint: {
+          "line-color": "#4d6176",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 3, 0.45, 8, 1.1, 12, 2.4],
+          "line-opacity": 0.72,
+        },
+      },
+      {
+        id: "basemap-buildings",
+        type: "fill",
+        source: "basemap",
+        "source-layer": "buildings",
+        minzoom: 11,
+        paint: {
+          "fill-color": "#2d3844",
+          "fill-opacity": ["interpolate", ["linear"], ["zoom"], 11, 0.2, 14, 0.55],
+          "fill-outline-color": "#465566",
+        },
+      },
+      {
+        id: "basemap-places",
+        type: "symbol",
+        source: "basemap",
+        "source-layer": "places",
+        minzoom: 4,
+        layout: {
+          "text-field": ["coalesce", ["get", "name"], ""],
+          "text-size": ["interpolate", ["linear"], ["zoom"], 4, 10, 10, 13],
+        },
+        paint: {
+          "text-color": "#9dafc3",
+          "text-halo-color": "#101418",
+          "text-halo-width": 1,
+        },
+      },
+      {
+        id: "basemap-road-labels",
+        type: "symbol",
+        source: "basemap",
+        "source-layer": "roads",
+        minzoom: 11,
+        layout: {
+          "symbol-placement": "line",
+          "text-field": ["coalesce", ["get", "name"], ["get", "ref"], ""],
+          "text-size": 10,
+        },
+        paint: {
+          "text-color": "#7f91a6",
+          "text-halo-color": "#101418",
+          "text-halo-width": 1,
+        },
+      },
+      {
+        id: "basemap-pois",
+        type: "symbol",
+        source: "basemap",
+        "source-layer": "pois",
+        minzoom: 13,
+        layout: {
+          "text-field": ["coalesce", ["get", "name"], ""],
+          "text-size": 10,
+        },
+        paint: {
+          "text-color": "#8fa1b6",
+          "text-halo-color": "#101418",
+          "text-halo-width": 1,
+        },
+      },
     );
   }
   return style;
 }
-
 function addTerritoryLayers(map, payload) {
   map.addSource("territories", { type: "geojson", data: payload.geojson });
   map.addLayer({
