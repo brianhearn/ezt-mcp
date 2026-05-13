@@ -7,6 +7,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-13) — map visualization as early v1 capability
+- Renamed the public map-session tool contract from `map_session_create` to `get_map_visualization` to reflect user/agent intent: get a browser-safe Map Component visualization for a TS/TAL
+- Added S004 / MC-000 visual verification scenarios: Brian/developers need read-only MC visualization early to validate Direct Build, Realign, Auto Build, Analyze, styling, labels, rollups, and repair effects
+- Updated Technical Spec implementation sequence to build a minimal read-only `get_map_visualization` loop before deeper compute/job infrastructure; select-mode resources and live refresh can layer on later
+- Renamed schema/example files to `get_map_visualization.schema.json` and `get_map_visualization.*.json`; existing map-session resources remain internal/session concepts
+
 ### Changed (2026-05-13) — async jobs and multi-tenant concurrency
 - `CONSTITUTION.md` v0.18.0 — locked all v1 customer-data compute tools (`geocode_address`, `ingest_accounts`, `direct_build`, `account_build`, `auto_build`, `realign`, `analyze`) as asynchronous job submissions; added authoritative pull progress/result with opportunistic MCP push progress; elevated multi-tenant job/cache/session isolation and fair concurrency controls to non-negotiables
 - `FUNCTIONAL_SPEC.md` v0.2.0 — added async job contract, job result semantics, customer-scoped polling/cancellation behavior, and clarified initial tool calls return job references instead of final compute results

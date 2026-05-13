@@ -1,0 +1,14 @@
+{
+  "ts_handle": "tsh_existing_us_sales_2026_q2",
+  "expected_revision": 7,
+  "mode": "view",
+  "active_tal_id": "tal-current",
+  "presentation": {
+    "view_name": "qa_verification",
+    "style_overrides": {
+      "show_labels": true,
+      "show_part_boundaries": true
+    }
+  },
+  "expiry_seconds": 3600
+}

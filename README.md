@@ -17,6 +17,7 @@ EZT MCP is an MCP server that gives AI agents the ability to build, balance, and
 - **Auto Build** — TS + metric + part layer + target territory count → augmented TS with balanced TAL
 - **Realign** — move parts between territories (or into a new territory) in an existing solution
 - **Analyze Territory Solution** — TS-embedded point layers + metrics → structured JSON analysis, paired with presentation guidance for agent-generated insight
+- **Get Map Visualization** — TS/TAL → browser-safe Map Component URL for read-only review, sharing, QA, and select-mode spatial workflows
 
 Output is a **Territory Solution (TS)** — standard GeoJSON and the only geometry-bearing file format used by EZT MCP. A TS supports 0-N point location layers and 0-N territory alignment layers (TALs). Geocode Address returns a TS with a point layer and no TAL; build tools append named TALs so agents and users can compare multiple alignment strategies side by side.
 
@@ -66,11 +67,11 @@ TS sharing is a flagship feature. EZT MCP should support upper-management consum
 
 ## Map Component
 
-EZT MCP is accompanied by an embedded **Map Component** — a unified TS viewing and spatial I/O component. In `view` mode it provides read-only sharing/verification. In `select` mode it emits part selections (click, lasso, box) back to the agent. Monica selects parts visually; the agent calls Realign with the selection. The component is stateless — the agent owns the TS between interactions.
+EZT MCP is accompanied by an embedded **Map Component** — a unified TS viewing and spatial I/O component. `get_map_visualization` is the public tool that opens this surface. In `view` mode it provides read-only sharing/verification. In `select` mode it emits part selections (click, lasso, box) back to the agent. Monica selects parts visually; the agent calls Realign with the selection. The component is stateless — the agent owns the TS between interactions.
 
 Interactive selection should use short-lived map sessions and MCP Resource Subscriptions: the agent creates a map session, opens or embeds the returned map URL, subscribes to the session's selection resource, and receives a notification when Monica clicks Done. The Map Component posts committed selections to EZT MCP over a browser-safe session channel; EZT MCP bridges those commits back to the agent as resource notifications.
 
-Primary embedding target: OpenClaw Canvas (agent chat interface). Secondary: Microsoft Teams meeting app. Technology candidates: MapLibre GL JS + PMTiles. See [MAP_COMPONENT.md](MAP_COMPONENT.md) for the full concept stub and [DESIGN.md](DESIGN.md) for the required visual system.
+Implement the minimal read-only visualization loop early: it is the development/QA feedback surface for validating Direct Build, Realign, Auto Build, Analyze, styling, labels, and hierarchy output. Primary embedding target: OpenClaw Canvas (agent chat interface). Secondary: Microsoft Teams meeting app. Technology candidates: MapLibre GL JS + PMTiles. See [MAP_COMPONENT.md](MAP_COMPONENT.md) for the full concept stub and [DESIGN.md](DESIGN.md) for the required visual system.
 
 ## Lineage
 

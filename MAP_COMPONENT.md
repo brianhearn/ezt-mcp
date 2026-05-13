@@ -1,14 +1,14 @@
 # MAP_COMPONENT.md — EZT MCP Map Component
 
-**Version:** 0.3.0 (stub)
-**Date:** 2026-05-11
+**Version:** 0.3.1 (stub)
+**Date:** 2026-05-13
 **Status:** Concept — not yet specced
 
 ---
 
 ## Role
 
-The Map Component is a companion component to EZT MCP. It is not part of the MCP server itself. It has two flagship roles: **read-only TS sharing** for human stakeholders and **spatial I/O** for agent-assisted territory work.
+The Map Component is a companion component to EZT MCP. It is not part of the MCP server itself. It has three flagship roles: **read-only TS sharing** for human stakeholders, **visual verification** for development/QA of generated territory outputs, and **spatial I/O** for agent-assisted territory work.
 
 Monica (a territory designer working with an agent augmented by EZT MCP) cannot verbalize spatial selections. "Move the ZIP codes along the eastern border of Tom's territory" is ambiguous and error-prone as natural language. She needs to see the map, pan and zoom, identify the parts she cares about, select them, and then tell the agent what to do with that selection.
 
@@ -99,8 +99,8 @@ Iframe `postMessage` may still be useful inside OpenClaw Canvas or other host em
 
 The same component serves sharing and assisted design. Capabilities are enabled or disabled by context, customer licensing, and agent workflow.
 
-### `view` mode — read-only sharing
-Used for upper management and verification/testing. Users can pan, zoom, inspect territories, toggle point layers, view metrics/labels, and read summaries. No selections or edits are emitted. This is analogous to a read-only EZT Designer user: the TS is visible and explorable, but not modifiable.
+### `view` mode — read-only sharing and verification
+Used for upper management, Brian/developer verification, QA, and testing. Users can pan, zoom, inspect territories, toggle point layers, view metrics/labels, and read summaries. No selections or edits are emitted. This is analogous to a read-only EZT Designer user: the TS is visible and explorable, but not modifiable.
 
 ### `select` mode — agent-assisted spatial selection
 Used by Monica or another territory designer during an agent workflow. Includes all `view` capabilities plus part selection primitives. The component emits selected `part_ids[]` to the agent, and the agent decides what MCP tool call to make.
@@ -170,7 +170,7 @@ These match the interaction primitives already familiar to EZT Designer users.
 ## Embedding Targets
 
 ### Primary: Agent Host Canvas
-The component runs as an embedded panel inside the agent's chat interface. In OpenClaw this is the Canvas surface. Monica does not leave the conversation — the map appears inline, she views or selects parts depending on mode, and the agent continues.
+The component runs as an embedded panel inside the agent's chat interface. During implementation, this is also the primary visual test surface for generated TS/TAL outputs. In OpenClaw this is the Canvas surface. Monica does not leave the conversation — the map appears inline, she views or selects parts depending on mode, and the agent continues.
 
 ### Primary Sharing Surface
 Read-only TS sharing should use this same component in `view` mode. The agent can launch or embed a read-only view for executives, managers, or QA reviewers. This provides a flagship human-in-the-loop consumption path without creating a second viewer product.
@@ -182,6 +182,10 @@ This target is directionally aligned but not in scope for v1.
 
 ### Future: Standalone / Embeddable URL
 A hosted URL that can be embedded in other surfaces (Power Apps, Dynamics 365, external portals). Requires auth/token model to be defined. Not in scope for v1.
+
+### Development / QA visualization
+
+A minimal read-only MC should ship before deeper geometry tool implementation. The first useful version only needs to render a supplied TS/TAL, fit bounds, show default territory styling/labels, and open in OpenClaw Canvas or a browser. Selection, live refresh, and richer style controls can layer on after this basic verification loop works.
 
 ---
 
@@ -203,7 +207,7 @@ Basemap PMTiles should be treated separately from part-layer PMTiles. The prefer
 
 ## Open Questions
 
-1. **Map session API shape** — what exact MCP tool/resource names create and expose a map session? Candidate: `map_session_create` returning `map_url`, `map_session_id`, `selection_resource_uri`, and `state_resource_uri`.
+1. **Map session API shape** — what exact MCP tool/resource names create and expose a map session? Decision: public tool name is `get_map_visualization`, returning `map_url`, `map_session_id`, optional `selection_resource_uri`, and `state_resource_uri`.
 
 2. **Auth / TS delivery** — how does the component receive the TS securely? Options: EZT MCP serves a short-lived render payload from a TS cache handle, or the agent deposits a TS behind a short-lived signed URL the component fetches. Size of a TS with N point layers needs to be characterized.
 

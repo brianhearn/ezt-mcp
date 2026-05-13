@@ -15,7 +15,7 @@ Each tool `*.request.json` validates against the tool schema's `#/$defs/request`
 | `auto_build` Scoped Split | `auto_build.scoped_split.request.json` | `auto_build.scoped_split.response.json` |
 | `realign` directed part moves | `realign.request.json` | `realign.response.json` |
 | `analyze` scoped + compare + hypothetical | `analyze.request.json` | `analyze.response.json` |
-| `map_session_create` select mode | `map_session_create.request.json` | `map_session_create.response.json` |
+| `get_map_visualization` select mode | `get_map_visualization.request.json` | `get_map_visualization.response.json` |
 | `ezt://part-layers` resource | — | `part_layers.list.response.json` |
 | `ezt://part-layers/{part_layer}` resource | — | `part_layers.detail.response.json` |
 

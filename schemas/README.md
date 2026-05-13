@@ -14,12 +14,12 @@ These JSON Schemas define externally visible MCP request/response structures. Th
 | `auto_build.schema.json` | `auto_build` request and response payloads, including Mode A, Mode B, and Scoped Split. |
 | `realign.schema.json` | `realign` request and response payloads, including directed part-move operations and map session refresh. |
 | `analyze.schema.json` | `analyze` request and response payloads, including TAL analysis, scoped aggregates, cross-TAL comparison, and hypothetical impact. |
-| `map_session_create.schema.json` | `map_session_create` request and response payloads, including session mode, presentation context, and resource URIs. |
+| `get_map_visualization.schema.json` | `get_map_visualization` request and response payloads, including session mode, presentation context, and resource URIs. |
 | `part_layers.schema.json` | Part-layer discovery resource payloads for `ezt://part-layers` and `ezt://part-layers/{part_layer}`. |
 
 ## Test vectors
 
-Schema-valid example payloads live in [`examples/`](examples/). They cover request and success-response examples for `direct_build`, `auto_build`, `realign`, `analyze`, `map_session_create`, and part-layer discovery resources.
+Schema-valid example payloads live in [`examples/`](examples/). They cover request and success-response examples for `direct_build`, `auto_build`, `realign`, `analyze`, `get_map_visualization`, and part-layer discovery resources.
 
 Run validation from the repo root:
 

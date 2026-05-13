@@ -1,7 +1,7 @@
 # SCENARIOS.md — EZT MCP Workflow Scenarios
 
-**Version:** 0.9.2
-**Date:** 2026-05-12
+**Version:** 0.9.3
+**Date:** 2026-05-13
 **Status:** Lean scenario registry — draft
 
 This document is a compact registry of human/agent/EZT MCP workflows. It exists to validate that the product architecture still covers real scenarios as tool contracts and implementation details evolve.
@@ -39,13 +39,13 @@ Abbreviations used throughout this document. Full definitions in [CONSTITUTION.m
 8. EZT MCP updates the TS, repairs geometry if needed, and refreshes the live MC session.
 9. The agent persists the updated TS and summarizes the impact.
 
-Decision: `map_session_create` is v1; exact resource payload schemas move to `FUNCTIONAL_SPEC.md` and `schemas/`.
+Decision: `get_map_visualization` is v1; exact resource payload schemas move to `FUNCTIONAL_SPEC.md` and `schemas/`.
 
 ### S002 — Monica emails a read-only latest East Coast TS view to her boss
 
 1. Monica tells her agent: "Send my boss the latest East Coast territory view."
 2. The agent retrieves the latest East Coast TS from Monica/customer storage.
-3. The agent creates a read-only MC session for the active TAL.
+3. The agent calls `get_map_visualization` in read-only `view` mode for the active TAL.
 4. EZT MCP returns a secure temporary browser URL.
 5. The agent analyzes the TS and drafts a short executive summary.
 6. The agent sends the boss the read-only link and summary through Monica's approved email workflow.
@@ -67,6 +67,16 @@ Decision: V1 sharing is browser URL / OpenClaw Canvas plus Analyze-backed narrat
 10. Monica sees a side-by-side comparison and can switch between TALs in the MC.
 
 Decision: polished comparison presentation belongs in Analysis Presentation Guidance, not scenario prose.
+
+### S004 — Developer visually verifies a generated TAL during implementation
+
+1. Brian or an implementation agent runs a build/realign/analyze fixture that produces or references a TS.
+2. The agent calls `get_map_visualization` in `view` mode for the active TAL.
+3. EZT MCP returns a browser/OpenClaw Canvas URL.
+4. Brian visually checks territory geometry, rollups, labels, point overlays, active TAL, and obvious repair side effects.
+5. The development loop treats visual verification as a required gate for geometry-producing changes.
+
+Decision: minimal read-only MC visualization should be implemented before deeper build/realign/auto-build work, because JSON-only tests cannot reveal many spatial defects.
 
 ---
 
@@ -435,6 +445,13 @@ Decision: territory split is v1 via Auto Build Scoped Split, not Realign.
 ---
 
 ## Map Component / Sharing Scenarios
+
+### MC-000 — Brian gets a map visualization for development verification
+
+1. A test fixture or tool run produces a TS with one or more TALs.
+2. The agent calls `get_map_visualization` in `view` mode.
+3. EZT MCP returns a browser/OpenClaw Canvas URL.
+4. Brian verifies geometry and presentation visually before trusting downstream tool behavior.
 
 ### MC-001 — Monica opens a read-only map session in a browser
 

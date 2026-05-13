@@ -1,7 +1,7 @@
 # SDLC.md — EZT MCP Documentation Model
 
-**Version:** 0.1.0
-**Date:** 2026-05-11
+**Version:** 0.1.1
+**Date:** 2026-05-13
 **Status:** Draft — documentation governance
 
 This document defines the repository's SDLC documents and their boundaries. The goal is to keep each document useful, current, and non-redundant. When adding or editing docs, put information in the one document that owns it and link to that document from elsewhere instead of copying details.
@@ -62,6 +62,7 @@ This document defines the repository's SDLC documents and their boundaries. The 
 **Does not own:**
 - exact MCP tool input/output schemas
 - resource URI/event contracts
+- implementation priority except where visual verification is needed before downstream tool development
 - module layout
 - detailed security rules
 - test strategy
@@ -103,7 +104,7 @@ This document defines the repository's SDLC documents and their boundaries. The 
 - actors, starting state, intent, happy path
 - expected agent behavior
 - capabilities exercised
-- Map Component behavior
+- Map Component behavior, including visual verification loops
 - state/revision/identity concerns surfaced by scenarios
 - failure and edge cases
 - design conclusions and open questions discovered from scenarios
@@ -129,6 +130,7 @@ This document defines the repository's SDLC documents and their boundaries. The 
 - Map Component modes and external event behavior
 - errors, validation, permissions, and edge-case behavior
 - lifecycle/state-machine behavior for live sessions
+- visual verification behavior for geometry-producing workflows
 - examples sufficient for client/agent implementers
 - acceptance criteria at behavior level
 
@@ -339,14 +341,14 @@ Avoid creating overlapping alternatives such as `ARCHITECTURE.md`, `PRODUCT.md`,
 
 ## Current Guidance for Next Phase
 
-The immediate next step is to continue building `SCENARIOS.md`. Once enough scenarios exist, use them to draft `FUNCTIONAL_SPEC.md` around stable external contracts:
+The immediate next phase is implementation around the now-stable v1 contracts. Prioritize a minimal `get_map_visualization` loop early, because geometry-producing tools need visual verification on the MC before their outputs can be trusted. The external contracts to preserve are:
 
 - TS input/output behavior
-- `map_session_create` / possible `share_map_view`
+- `get_map_visualization` as the stable public tool name for read-only/share/select map visualization
 - selection/state resources
 - Analyze `scope`
 - Realign with optimistic concurrency and map refresh
 - sharing guidance prompts/resources
 - Power BI/export lane
 
-Do not over-spec implementation details until Functional Spec stabilizes.
+Do not create a parallel `share_map_view` tool unless a future scenario proves it needs a distinct contract; S002 should use `get_map_visualization` in `view` mode.

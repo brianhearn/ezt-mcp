@@ -76,7 +76,7 @@ ezt_mcp/
     auto_build.py
     realign.py
     analyze.py
-    map_session_create.py
+    get_map_visualization.py
   resources/
     part_layers.py             # available part-layer discovery resources
     map_sessions.py            # selection/state resources
@@ -824,7 +824,9 @@ Pipeline:
 
 Geography-only analysis is valid. In that case point-derived metrics are null/omitted but part counts, territory counts, hierarchy summaries, and topology caveats can still be returned.
 
-### 7.8 `map_session_create`
+### 7.8 `get_map_visualization`
+
+`get_map_visualization` is the first-class visual validation surface for all TS/TAL-producing work. Implement it early so Direct Build, Realign, Auto Build, and Analyze outputs can be inspected on the MC during development rather than validated only from JSON.
 
 Pipeline:
 
@@ -836,6 +838,17 @@ Pipeline:
 6. Return MC URL and resource URIs.
 
 Browser-facing endpoints validate the session token, never the MCP API key. Select-mode commits write `map_session_events` and update latest selection state. Resource subscriptions notify the agent when selection/state changes.
+
+Implementation minimum for the development loop:
+
+- render supplied TS polygon features for the active TAL;
+- fit map bounds to visible TS geometry;
+- show labels/basic territory style from TS presentation metadata or defaults;
+- support `view` mode first;
+- return a URL embeddable in OpenClaw Canvas or directly openable in a browser;
+- expose enough state to confirm TS identity, active TAL, feature count, and expiry.
+
+`select` mode, committed selection resources, and Realign refresh events can layer on after the read-only visualization loop is usable.
 
 ---
 
@@ -1120,22 +1133,23 @@ Recommended implementation order:
 2. Project scaffold and CI gates.
 3. Shared models: TS parse/serialize, identity, structured errors.
 4. Schema/example validation in CI.
-5. DB pool and repositories for part layers, transient cache, async jobs/progress/results, audit log.
-6. Job submission/status/result/cancel control plane with customer isolation tests.
-7. Direct Build flat path.
-8. Direct Build hierarchical path and rollup geometry.
-9. Analyze for Direct Build outputs.
-10. Realign for leaf moves.
-11. Map session create + selection/state resources.
-12. Ingest Accounts + geocoder cache/provider mocks.
-13. Account Build.
-14. Auto Build Mode A.
-15. Auto Build Mode B.
-16. Auto Build Scoped Split.
-17. Analysis presentation guidance resources/prompts.
-18. Production hardening: auth, Key Vault, observability, limits, deployment manifests.
+5. Minimal `get_map_visualization` read-only loop for TS/TAL visual verification.
+6. DB pool and repositories for part layers, transient cache, async jobs/progress/results, audit log.
+7. Job submission/status/result/cancel control plane with customer isolation tests.
+8. Direct Build flat path.
+9. Direct Build hierarchical path and rollup geometry.
+10. Analyze for Direct Build outputs.
+11. Realign for leaf moves.
+12. `get_map_visualization` select-mode selection/state resources.
+13. Ingest Accounts + geocoder cache/provider mocks.
+14. Account Build.
+15. Auto Build Mode A.
+16. Auto Build Mode B.
+17. Auto Build Scoped Split.
+18. Analysis presentation guidance resources/prompts.
+19. Production hardening: auth, Key Vault, observability, limits, deployment manifests.
 
-This sequence intentionally starts with Direct Build because it exercises the TS/TAL/hierarchy core without requiring account ingestion, geocoding, or optimization algorithms.
+This sequence intentionally implements a minimal map visualization loop before deeper compute work because visual inspection is the fastest way to catch bad geometry, styling, hierarchy, labels, active TAL selection, and repair side effects. Direct Build remains the first compute path because it exercises the TS/TAL/hierarchy core without requiring account ingestion, geocoding, or optimization algorithms.
 
 ---
 

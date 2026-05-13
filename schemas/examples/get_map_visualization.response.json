@@ -3,7 +3,6 @@
   "result": {
     "map_session_id": "msess_01hx_ezt_review",
     "map_url": "https://maps.easyterritory.com/mcp/sessions/msess_01hx_ezt_review?token=short_lived_browser_token",
-    "selection_resource_uri": "ezt://map-sessions/msess_01hx_ezt_review/selection",
     "state_resource_uri": "ezt://map-sessions/msess_01hx_ezt_review/state",
     "expires_at": "2026-05-12T20:40:00Z",
     "ts_identity": {
@@ -15,7 +14,7 @@
     "active_tal_summary": {
       "tal_id": "tal-current",
       "tal_label": "Current Territories",
-      "mode": "select",
+      "mode": "view",
       "territory_count": 12
     }
   }

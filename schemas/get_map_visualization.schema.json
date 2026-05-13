@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.easyterritory.com/ezt-mcp/map_session_create.schema.json",
-  "title": "EZT MCP map_session_create Tool Contract",
+  "$id": "https://schemas.easyterritory.com/ezt-mcp/get_map_visualization.schema.json",
+  "title": "EZT MCP get_map_visualization Tool Contract",
   "type": "object",
   "$defs": {
     "sessionMode": {
       "type": "string",
       "enum": ["view", "select"],
-      "description": "view — map review only, no selection commits. select — allows transient local selection and committed selection events."
+      "description": "view — read-only map review/share/verification, no selection commits. select — allows transient local selection and committed selection events."
     },
     "presentationContext": {
       "title": "Optional Presentation View/Style Context",
@@ -16,7 +16,7 @@
       "properties": {
         "view_name": {
           "type": "string",
-          "description": "Named presentation view, e.g. 'executive', 'heat_map', 'workload'."
+          "description": "Named presentation view, e.g. 'executive', 'qa_verification', 'heat_map', 'workload'."
         },
         "style_overrides": {
           "type": "object",
@@ -109,7 +109,7 @@
         "map_url": {
           "type": "string",
           "format": "uri",
-          "description": "Browser-safe URL. Contains only a short-lived session token — never exposes the customer's MCP API key."
+          "description": "Browser-safe Map Component visualization URL. Contains only a short-lived session token — never exposes the customer's MCP API key."
         },
         "selection_resource_uri": {
           "type": "string",

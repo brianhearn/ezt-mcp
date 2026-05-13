@@ -166,7 +166,7 @@ Common error codes include:
 | `auto_build` | Build a balanced TAL from point layers, workload rules, and optional metric; includes scoped territory-split builds. | AB-001 to AB-016, RL-002, S003 |
 | `realign` | Move parts within a specific TAL and return an updated TS. | RL-001, RL-003 to RL-005, S001, MC-004 |
 | `analyze` | Return structured analysis facts for one or more TALs or scopes. | AN-001 to AN-005, S001, S003 |
-| `map_session_create` | Create a transient read-only or select-mode Map Component session. | MC-001 to MC-004, S001, S002 |
+| `get_map_visualization` | Return a browser-safe Map Component visualization URL for a TS/TAL in read-only `view` or interactive `select` mode. | MC-001 to MC-004, S001, S002, verification |
 
 V1 TS cache behavior is implicit. Public tools may accept and return TS handles, but `ts_cache_put` is not a public v1 MCP tool.
 
@@ -575,11 +575,11 @@ Returns structured analysis sections as applicable:
 
 ---
 
-## 11. Tool Contract: `map_session_create`
+## 11. Tool Contract: `get_map_visualization`
 
 ### 11.1 User intent
 
-Use when an agent needs a temporary MC URL for read-only review, executive sharing, or assisted spatial selection.
+Use when an agent or developer needs to see a TS/TAL on the Map Component: read-only review, executive sharing, QA/verification of tool outputs, or assisted spatial selection. This is the primary visual feedback loop for developing and validating all geometry-producing tools.
 
 ### 11.2 Functional input
 
@@ -594,14 +594,15 @@ The tool accepts:
 
 ### 11.3 Functional behavior
 
-1. Create a short-lived, customer-scoped map session.
+1. Create a short-lived, customer-scoped map session for the supplied TS/TAL.
 2. Return a browser-safe URL containing only a short-lived map session token or exchange code.
-3. Never expose the customer's MCP API key to the browser.
-4. In `view` mode, allow map review but no selection commits.
-5. In `select` mode, allow local transient selection and committed selection events.
-6. Expose subscribable selection and state resources.
-7. Support live refresh events after successful Realign when connected.
-8. Expire sessions predictably and report expiration through state/resource behavior.
+3. Make the visualization usable for human verification of generated TAL geometry, labels, styling, and point overlays.
+4. Never expose the customer's MCP API key to the browser.
+5. In `view` mode, allow map review but no selection commits.
+6. In `select` mode, allow local transient selection and committed selection events.
+7. Expose subscribable selection and state resources.
+8. Support live refresh events after successful Realign when connected.
+9. Expire sessions predictably and report expiration through state/resource behavior.
 
 ### 11.4 Functional output
 
@@ -623,8 +624,9 @@ Returns:
 
 ### 11.6 Acceptance criteria
 
-- Covers MC-001 through MC-004, S001, and S002.
+- Covers MC-001 through MC-004, S001, S002, and development/QA verification of every geometry-producing tool.
 - Map sessions are transient coordination objects, not durable TS storage.
+- This capability should be implemented before deeper build/realign/auto-build work because visual validation is required to test those outputs effectively.
 
 ---
 
@@ -791,7 +793,7 @@ Functional behavior:
 
 1. **Territory split is v1 via Auto Build.** Customer requests like “split this oversized territory” are common and belong in v1. The contract is `auto_build` Scoped Split: derive a new TAL from the source TAL, replace one source territory with two or more optimized territories, and preserve the rest of the source TAL. It is not part of `realign` v1.
 2. **TS cache is implicit.** Public tools may accept/return TS handles, but `ts_cache_put` is not a public v1 MCP tool. Cache miss is expected and recoverable by resending the full TS.
-3. **Map sessions are v1.** `map_session_create` is part of the public v1 MCP tool set with `view` and `select` modes. Browser URL / OpenClaw Canvas is v1; Teams and Power BI embedding are post-MVP.
+3. **Map visualization is v1 and early.** `get_map_visualization` is part of the public v1 MCP tool set with `view` and `select` modes. Browser URL / OpenClaw Canvas is v1; Teams and Power BI embedding are post-MVP. This capability is also the required development/QA visualization loop for validating generated TS/TAL outputs.
 4. **Schemas start before implementation.** Add `schemas/` after this functional surface stabilizes and before implementation begins. JSON Schema owns exact structure; this Functional Spec owns behavior.
 5. **Exports and Power BI are post-MVP.** V1 sharing is read-only MC browser URL plus Analyze-backed narrative. Formal Power BI/export contracts are deferred.
 6. **Point Location Update is post-MVP.** PLU-001 remains a future scenario. Phase 1 handles corrected locations through re-ingestion or point-layer replacement by the agent workflow.
@@ -802,8 +804,8 @@ Functional behavior:
 
 | Scenario group | Covered by |
 |---|---|
-| S001 | `map_session_create`, selection resource, `analyze`, `realign` |
-| S002 | `map_session_create`, `analyze`, presentation guidance |
+| S001 | `get_map_visualization`, selection resource, `analyze`, `realign` |
+| S002 | `get_map_visualization`, `analyze`, presentation guidance |
 | S003 | `ingest_accounts`, `auto_build`, `analyze`, MC TAL switching |
 | GC-001 to GC-003 | `geocode_address`, `ingest_accounts` |
 | IA-001 to IA-005 | `ingest_accounts` |
@@ -813,7 +815,7 @@ Functional behavior:
 | RL-001, RL-003 to RL-005 | `realign` |
 | RL-002 | `auto_build` Scoped Split |
 | AN-001 to AN-005 | `analyze`, presentation guidance |
-| MC-001 to MC-004 | `map_session_create`, resources |
+| MC-001 to MC-004 | `get_map_visualization`, resources |
 | MC-005 | `analyze`, presentation guidance |
 | CH-001 to CH-002 | Implicit TS handles / cache behavior |
 | PLU-001 | Future tool, not Phase 1 |

@@ -70,13 +70,13 @@
     "definition": "response"
   },
   {
-    "file": "map_session_create.request.json",
-    "schema": "map_session_create.schema.json",
+    "file": "get_map_visualization.request.json",
+    "schema": "get_map_visualization.schema.json",
     "definition": "request"
   },
   {
-    "file": "map_session_create.response.json",
-    "schema": "map_session_create.schema.json",
+    "file": "get_map_visualization.response.json",
+    "schema": "get_map_visualization.schema.json",
     "definition": "response"
   },
   {
