@@ -1,0 +1,7 @@
+{
+  "part_layer": "us_zips",
+  "filter": {
+    "state_abbr": "FL"
+  },
+  "max_results": 50
+}

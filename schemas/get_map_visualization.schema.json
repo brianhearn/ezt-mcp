@@ -100,7 +100,7 @@
     "result": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["map_session_id", "map_url", "state_resource_uri", "expires_at", "ts_identity", "active_tal_summary"],
+      "required": ["map_session_id", "map_url", "state_resource_uri", "expires_at", "ts_identity", "active_tal_summary", "session_exists"],
       "properties": {
         "map_session_id": {
           "$ref": "common.schema.json#/$defs/nonEmptyString",
@@ -109,7 +109,7 @@
         "map_url": {
           "type": "string",
           "format": "uri",
-          "description": "Browser-safe Map Component visualization URL. Contains only a short-lived session token — never exposes the customer's MCP API key."
+          "description": "Browser-safe Map Component visualization URL. Contains only a short-lived session token — never exposes the customer's MCP API key. Persistent per-user workspace; returns existing if one is active for the user."
         },
         "selection_resource_uri": {
           "type": "string",
@@ -127,6 +127,10 @@
         },
         "active_tal_summary": {
           "$ref": "#/$defs/talModeSummary"
+        },
+        "session_exists": {
+          "type": "boolean",
+          "description": "True if returning an existing persistent session for the user; false if newly created."
         }
       }
     },

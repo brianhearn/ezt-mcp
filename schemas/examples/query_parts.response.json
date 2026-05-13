@@ -1,0 +1,17 @@
+{
+  "parts": [
+    {
+      "part_id": "32301",
+      "attributes": {
+        "state_abbr": "FL",
+        "county_name": "Leon",
+        "population": 28000,
+        "land_area_sqmi": 12.3
+      }
+    }
+  ],
+  "total_count": 923,
+  "next_page_token": "eyJ...",
+  "part_layer": "us_zips",
+  "warnings": []
+}

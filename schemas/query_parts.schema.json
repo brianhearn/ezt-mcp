@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.easyterritory.com/ezt-mcp/query_parts.schema.json",
+  "title": "EZT MCP query_parts Tool Contract",
+  "description": "Query part metadata by filter predicate or explicit part ID list. Returns attribute bags only. No geometry is ever returned.",
+  "type": "object",
+  "$defs": {
+    "filterPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "Generic key-value attribute predicates. Values can be string, number, boolean, or array for IN semantics.",
+      "properties": {
+        "state_abbr": { "type": ["string", "array"] },
+        "part_layer": { "type": "string" },
+        "county_name": { "type": ["string", "array"] },
+        "population": { "type": "number" }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["part_layer"],
+      "properties": {
+        "part_layer": {
+          "type": "string",
+          "description": "Required part layer identifier, e.g. 'us_zips'."
+        },
+        "filter": {
+          "$ref": "#/$defs/filterPredicate",
+          "description": "Attribute-based filter (generic key-value predicates). Mutually exclusive with part_ids."
+        },
+        "part_ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "Explicit list of part IDs. Mutually exclusive with filter. Useful for validation or enrichment."
+        },
+        "page_token": {
+          "type": "string",
+          "description": "Pagination token from a previous response."
+        },
+        "max_results": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "default": 100,
+          "description": "Maximum results per page. Server may enforce lower limits."
+        }
+      },
+      "oneOf": [
+        { "required": ["filter"] },
+        { "required": ["part_ids"] }
+      ]
+    },
+    "part": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["part_id", "attributes"],
+      "properties": {
+        "part_id": {
+          "type": "string"
+        },
+        "attributes": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Full generic attribute bag from the part layer (no geometry ever included)."
+        }
+      }
+    },
+    "response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parts", "total_count", "part_layer"],
+      "properties": {
+        "parts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/part" }
+        },
+        "total_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "next_page_token": {
+          "type": "string",
+          "description": "Token for next page if results were truncated."
+        },
+        "part_layer": {
+          "type": "string"
+        },
+        "warnings": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/warning" }
+        }
+      }
+    },
+    "submissionResponse": {
+      "$ref": "job.schema.json#/$defs/submissionResponse"
+    },
+    "toolResponse": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ok", "result"],
+          "properties": {
+            "ok": { "const": true },
+            "result": { "$ref": "#/$defs/response" },
+            "warnings": {
+              "type": "array",
+              "items": { "$ref": "common.schema.json#/$defs/warning" }
+            }
+          }
+        },
+        {
+          "$ref": "common.schema.json#/$defs/errorEnvelope"
+        }
+      ]
+    }
+  }
+}

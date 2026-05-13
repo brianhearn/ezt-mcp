@@ -16,6 +16,7 @@
       "tal_label": "Current Territories",
       "mode": "view",
       "territory_count": 12
-    }
+    },
+    "session_exists": false
   }
 }

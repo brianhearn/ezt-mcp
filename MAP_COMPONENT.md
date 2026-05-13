@@ -1,6 +1,6 @@
 # MAP_COMPONENT.md — EZT MCP Map Component
 
-**Version:** 0.3.1 (stub)
+**Version:** 0.4.0
 **Date:** 2026-05-13
 **Status:** Concept — not yet specced
 
@@ -16,9 +16,9 @@ The Map Component provides that capability. It renders a Territory Solution and,
 
 ---
 
-## Interaction Model
+## Interaction Model (persistent workspace)
 
-The component is stateless. The agent owns the Territory Solution between interactions.
+The Map Component is now backed by a **persistent per-user workspace** (ONE active MC session per `user_id`, enforced server-side). `get_map_visualization` is idempotent — it returns the existing session URL if one exists for the user. The MC stays open across multiple operations, workflows, and agent turns. The agent no longer needs to re-send the full TS on every interaction.
 
 ```
 Agent → (sends TS) → Map Component renders TAL + point layers
@@ -35,9 +35,14 @@ The communication contract is simple:
 
 The agent session drives all territory operations. The component is a read/select surface only — it does not call EZT MCP tools directly.
 
-## Live Agent/MCP Communication Model
+## Live Agent/MCP Communication Model (SSE push + HTTP POST)
 
-The Map Component should be treated as a live spatial I/O surface attached to an agent/MCP session. It is not an MCP client and should not receive the customer's MCP API key. Instead, the agent asks EZT MCP to create a short-lived map session for a TS, and EZT MCP returns a map URL plus MCP resource URIs that the agent can subscribe to.
+- **Persistent session** per user (idempotent `get_map_visualization`).
+- **SSE** for server → MC push (mode_changed, tal_updated, job_progress, selection_prompt, session_expired, etc.).
+- **HTTP POST** for MC → server events (selection_committed with part_ids, user confirmations, etc.).
+- Jobs drive routine state automatically via SSE (no extra agent call for progress or AWAITING_USER_SELECTION transitions).
+- Agent calls (`set_map_state`, `get_map_selection`) are reserved for deliberate high-level control.
+- Part layers rendered from static **PMTiles** (one per layer: us_zips.pmtiles, us_counties.pmtiles, etc.). Zoom-gated (centroids ~7-9, full polygons >9). Attributes carried in PMTiles; geometry **never** leaves server in MCP payloads.
 
 Recommended flow:
 
@@ -110,13 +115,13 @@ Potential future mode for richer map interactions, still mediated by the agent a
 
 ---
 
-## Rendering Requirements
+## Part Layer Rendering: PMTiles (new section added above; existing rendering requirements updated below to reference)
 
 Rendering must follow the visual contract in [`DESIGN.md`](DESIGN.md), especially the map-specific tokens for basemap choice, territory fill/stroke opacity, hover/selected states, selected halos, dissolved seams, labels, drawing tools, zoom pill, popups, legends, and z-index ordering.
 
 - Territory polygons — rendered as colored/labeled polygons with visible boundaries using `tokens.map.territory`; default colors come from `tokens.colors.map_territory_palette` unless TS presentation metadata overrides them
 - Point layers — rendered as named overlays (e.g., accounts as dots, colored by territory assignment)
-- Part boundaries — rendered as a lighter layer beneath territories so individual ZIPs/counties are selectable
+- Part boundaries/layers — rendered from **static PMTiles** (zoom-gated as described in dedicated Part Layer Rendering section). Selection operates directly on the overlaid part layer (no separate MCP data fetch for geometry).
 - Selection state — selected parts highlighted; count and territory assignment shown using the selected/hover conventions from `DESIGN.md`
 - Pan / zoom — standard map navigation plus the sanctioned zoom pill / controls for the chosen chrome variant
 - Basemap — default to the `DESIGN.md` dark/light basemap guidance; exact Azure Maps style literals remain a design open question
@@ -205,19 +210,25 @@ Basemap PMTiles should be treated separately from part-layer PMTiles. The prefer
 
 ---
 
-## Open Questions
+## SSE Command Channel (new)
 
-1. **Map session API shape** — what exact MCP tool/resource names create and expose a map session? Decision: public tool name is `get_map_visualization`, returning `map_url`, `map_session_id`, optional `selection_resource_uri`, and `state_resource_uri`.
+Server pushes via SSE (one connection per active persistent MC session):
+- `mode_changed` (e.g. `select_parts`, `job_progress`, `view_tal`)
+- `tal_updated` (with new `tal_id`, TS identity)
+- `job_progress` / `job_complete` / `job_failed`
+- `selection_prompt` (for AWAITING_USER_SELECTION jobs)
+- `session_expired` / `revoked`
 
-2. **Auth / TS delivery** — how does the component receive the TS securely? Options: EZT MCP serves a short-lived render payload from a TS cache handle, or the agent deposits a TS behind a short-lived signed URL the component fetches. Size of a TS with N point layers needs to be characterized.
+## MC→server Event POSTs (new)
 
-3. **PMTiles pipeline** — who owns generation and hosting of part layer PMTiles? Likely Matt Root / infra, but needs to be defined. Tile precision (zoom levels) affects both file size and selection granularity.
+- `selection_committed` : {part_ids: [...], selection_method: "lasso", timestamp}
+- Other user actions (confirmation, cancel, etc.).
 
-4. **Part boundary visibility** — at what zoom level do part boundaries appear? At country zoom, individual ZIP boundaries are noise. Needs a zoom-threshold design.
+These drive automatic job advancement (AWAITING_USER_SELECTION → RUNNING) and SSE feedback.
 
-5. **Teams integration depth** — meeting app vs. tab vs. shared stage. The shared stage scenario (Monica shares the map to all meeting participants) is compelling but requires Teams Live Share or equivalent. Out of scope for v1 but worth noting.
+## Selection UX (updated)
 
-6. **v1 scope** — which embedding target ships first? OpenClaw Canvas is the most tractable (no external platform dependency). Recommend v1 = Canvas only, Teams as v2.
+Parts rendered from PMTiles layer overlaid on (dimmed) TAL. User can pan/zoom freely, click/lasso/box on visible parts. "Done" button triggers POST of committed part_ids. Open questions resolved where possible (zoom thresholds defined in Part Layer Rendering; geometry never in MCP payloads). Remaining open: exact SSE payload shapes, Teams v2 details.
 
 ---
 

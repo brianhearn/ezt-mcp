@@ -98,5 +98,20 @@
     "file": "part_layers.detail.response.json",
     "schema": "part_layers.schema.json",
     "definition": "detailResource"
+  },
+  {
+    "file": "query_parts_filter.json",
+    "schema": "query_parts.schema.json",
+    "definition": "request"
+  },
+  {
+    "file": "query_parts_ids.json",
+    "schema": "query_parts.schema.json",
+    "definition": "request"
+  },
+  {
+    "file": "query_parts.response.json",
+    "schema": "query_parts.schema.json",
+    "definition": "response"
   }
 ]

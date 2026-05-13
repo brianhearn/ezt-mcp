@@ -1,6 +1,6 @@
 # FUNCTIONAL_SPEC.md — EZT MCP Functional Contract
 
-**Version:** 0.2.0
+**Version:** 0.3.0
 **Date:** 2026-05-13
 **Status:** Draft — open questions resolved for v1 surface
 
@@ -67,7 +67,7 @@ Mutation job submissions that operate on an existing TS should accept expected i
 
 If the expected identity does not match the supplied/current TS, the tool returns `STALE_TS_REVISION` and does not mutate the TS.
 
-### 2.4 Part layers
+### 2.4 Part layers (PMTiles for MC + server-side geometry for jobs)
 
 Build and realign operations that work from geographic parts require a `part_layer`, such as `us_zips`, `us_counties`, or `ca_fsa`.
 
@@ -91,7 +91,7 @@ Submission and result responses should use a consistent envelope shape at the fu
 
 Exact JSON Schema will live beside this spec once `schemas/` exists.
 
-### 2.7 Async job contract
+### 2.7 Async job contract (with AWAITING_USER_SELECTION)
 
 The following v1 tools always run as asynchronous jobs:
 
@@ -115,7 +115,7 @@ The initial tool call returns a job reference, not the final compute result. A j
 - `poll_interval_ms`;
 - `created_at` and `expires_at`.
 
-Agents should poll status until the job reaches a terminal status: `completed`, `failed`, `cancelled`, or `expired`. If MCP Tasks are negotiated by the client/server, the native MCP task ID may wrap the same internal EZT job. If MCP progress notifications are available, they are advisory and mirror persisted job progress; polling remains authoritative.
+Agents should poll status until the job reaches a terminal status: `completed`, `failed`, `cancelled`, or `expired`. `awaiting_user_selection` is a valid non-terminal state: the job blocks in this state until the Map Component commits a selection. The server automatically advances the job to `running` when a valid selection is received via POST from the MC. If MCP Tasks are negotiated by the client/server, the native MCP task ID may wrap the same internal EZT job. If MCP progress notifications are available, they are advisory and mirror persisted job progress; polling remains authoritative.
 
 Job status, progress, result, and cancellation are customer/API-key scoped. A caller cannot read, cancel, infer, or retrieve another customer's jobs or results. Job results are short-lived transport artifacts, not durable customer storage.
 
@@ -166,7 +166,10 @@ Common error codes include:
 | `auto_build` | Build a balanced TAL from point layers, workload rules, and optional metric; includes scoped territory-split builds. | AB-001 to AB-016, RL-002, S003 |
 | `realign` | Move parts within a specific TAL and return an updated TS. | RL-001, RL-003 to RL-005, S001, MC-004 |
 | `analyze` | Return structured analysis facts for one or more TALs or scopes. | AN-001 to AN-005, S001, S003 |
-| `get_map_visualization` | Return a browser-safe Map Component visualization URL for a TS/TAL in read-only `view` or interactive `select` mode. | MC-001 to MC-004, S001, S002, verification |
+| `get_map_visualization` | Idempotent: open/return persistent per-user MC workspace URL (creates if none exists for user_id; returns existing otherwise). | MC-001 to MC-004, S001, S002, verification |
+| `query_parts` | Find parts by attribute filter predicate or explicit ID list; returns part_id + generic attribute bag only (no geometry). Paginated. | metadata enrichment, direct-build list construction, validation |
+| `set_map_state` | Deliberate agent-driven MC transitions (e.g. load different TAL, switch mode). Not used for routine job progress. | explicit workflow control |
+| `get_map_selection` | Read committed part selection (IDs + awareness metadata) from current user's persistent MC session. | post-selection analysis |
 
 V1 TS cache behavior is implicit. Public tools may accept and return TS handles, but `ts_cache_put` is not a public v1 MCP tool.
 
@@ -575,7 +578,7 @@ Returns structured analysis sections as applicable:
 
 ---
 
-## 11. Tool Contract: `get_map_visualization`
+## 11. Tool Contract: `get_map_visualization` (persistent per-user workspace — idempotent)
 
 ### 11.1 User intent
 
@@ -594,7 +597,7 @@ The tool accepts:
 
 ### 11.3 Functional behavior
 
-1. Create a short-lived, customer-scoped map session for the supplied TS/TAL.
+1. **Idempotent per `user_id` (server-enforced)**: ONE active persistent MC workspace per user. Return existing session URL if one already exists for the caller; create only on first call. MC stays open across workflows (workspace model).
 2. Return a browser-safe URL containing only a short-lived map session token or exchange code.
 3. Make the visualization usable for human verification of generated TAL geometry, labels, styling, and point overlays.
 4. Never expose the customer's MCP API key to the browser.
@@ -625,7 +628,7 @@ Returns:
 ### 11.6 Acceptance criteria
 
 - Covers MC-001 through MC-004, S001, S002, and development/QA verification of every geometry-producing tool.
-- Map sessions are transient coordination objects, not durable TS storage.
+- Map sessions are now persistent per-user workspaces (one active MC per `user_id`, server-enforced). Sessions stay open across multiple operations/workflows. `get_map_visualization` is idempotent. Remove language implying new session per operation. Use SSE for server→MC push (mode_changed, tal_updated, job_progress, session_expired, etc.) and HTTP POST for MC→server events (selection_committed, etc.).
 - This capability should be implemented before deeper build/realign/auto-build work because visual validation is required to test those outputs effectively.
 
 ---
@@ -720,7 +723,7 @@ Functional behavior:
 
 Agents should use this resource when a user names a geography ambiguously, e.g. “ZIPs,” “postal codes,” “counties,” or “FSAs,” and the agent needs to map that language to a stable `part_layer` ID before calling a build tool.
 
-### 13.3 `ezt://map-sessions/{map_session_id}/selection`
+### 13.3 `ezt://map-sessions/{map_session_id}/selection` (updated for persistent workspace)
 
 Represents the latest committed selection from a select-mode MC session.
 
@@ -745,7 +748,7 @@ Expected data includes:
 
 The agent should call `analyze` for authoritative account counts, sales volume, workload, and move impact.
 
-### 13.4 `ezt://map-sessions/{map_session_id}/state`
+### 13.4 `ezt://map-sessions/{map_session_id}/state` (persistent per-user workspace model)
 
 Represents current transient map session state.
 
@@ -789,7 +792,7 @@ Functional behavior:
 
 ---
 
-## 15. Resolved v1 Scope Decisions
+## 15. Resolved v1 Scope Decisions (v0.3.0)
 
 1. **Territory split is v1 via Auto Build.** Customer requests like “split this oversized territory” are common and belong in v1. The contract is `auto_build` Scoped Split: derive a new TAL from the source TAL, replace one source territory with two or more optimized territories, and preserve the rest of the source TAL. It is not part of `realign` v1.
 2. **TS cache is implicit.** Public tools may accept/return TS handles, but `ts_cache_put` is not a public v1 MCP tool. Cache miss is expected and recoverable by resending the full TS.
@@ -815,7 +818,7 @@ Functional behavior:
 | RL-001, RL-003 to RL-005 | `realign` |
 | RL-002 | `auto_build` Scoped Split |
 | AN-001 to AN-005 | `analyze`, presentation guidance |
-| MC-001 to MC-004 | `get_map_visualization`, resources |
+| MC-001 to MC-004 | `get_map_visualization` (persistent), `set_map_state`, `query_parts`, `get_map_selection`, SSE/POST comms, AWAITING_USER_SELECTION |
 | MC-005 | `analyze`, presentation guidance |
 | CH-001 to CH-002 | Implicit TS handles / cache behavior |
 | PLU-001 | Future tool, not Phase 1 |

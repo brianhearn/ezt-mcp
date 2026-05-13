@@ -1,6 +1,6 @@
 # TECHNICAL_SPEC.md — EZT MCP Implementation Design
 
-**Version:** 0.2.0
+**Version:** 0.3.0
 **Date:** 2026-05-13
 **Status:** Draft — implementation architecture baseline
 
@@ -77,6 +77,9 @@ ezt_mcp/
     realign.py
     analyze.py
     get_map_visualization.py
+    query_parts.py
+    set_map_state.py
+    get_map_selection.py
   resources/
     part_layers.py             # available part-layer discovery resources
     map_sessions.py            # selection/state resources
@@ -101,7 +104,9 @@ ezt_mcp/
     azure_maps.py
     service.py                 # provider routing/fallback
   map_component/
-    sessions.py                # session lifecycle, tokens, refresh events
+    sessions.py                # persistent session lifecycle, tokens
+    session_store.py           # Postgres backing for mc_sessions table, events, selection_commits, state machine
+    sse.py                     # SSE command channel for server-push events (mode_changed, tal_updated, job_progress, etc.)
     assets.py                  # URL/signing helpers for hosted MC assets
   db/
     pool.py
@@ -351,7 +356,7 @@ Rules:
 - Job/result TTLs are short-lived transport conveniences, not durable customer storage.
 - Workers claim jobs with row locking / leases (`FOR UPDATE SKIP LOCKED`) and heartbeat progress; expired leases can be retried according to per-tool idempotency rules.
 
-### 3.8 Map sessions
+### 3.8 Map sessions (persistent per-user workspace + SSE)
 
 ```sql
 transient.map_sessions (
@@ -528,7 +533,7 @@ Status payloads include at minimum:
 
 - `job_id`;
 - `tool_name`;
-- `status`: `queued`, `running`, `input_required`, `completed`, `failed`, `cancelled`, or `expired`;
+- `status`: `queued`, `running`, `input_required`, `awaiting_user_selection`, `completed`, `failed`, `cancelled`, or `expired`;
 - `phase`;
 - `progress` and optional `total`;
 - human-readable `status_message`;
