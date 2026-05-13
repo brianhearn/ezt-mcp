@@ -65,11 +65,14 @@ class MapVisualizationRoutes:
 
     async def static_asset(self, request: Request) -> Response:
         asset_name = request.path_params["asset_name"]
-        if asset_name not in {"map-viewer.css", "map-viewer.js"}:
+        asset_map = {
+            "map-viewer-css": ("map-viewer.css", "text/css"),
+            "map-viewer-js": ("map-viewer.js", "application/javascript"),
+        }
+        if asset_name not in asset_map:
             return Response("Not found", status_code=404)
-        content = _static_text(asset_name)
-        media_type = "text/css" if asset_name.endswith(".css") else "application/javascript"
-        return Response(content, media_type=media_type)
+        file_name, media_type = asset_map[asset_name]
+        return Response(_static_text(file_name), media_type=media_type)
 
     async def pmtiles_asset(self, request: Request) -> Response:
         tile_path = _static_path("tiles/us-basemap.pmtiles")
