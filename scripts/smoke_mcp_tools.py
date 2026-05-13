@@ -166,11 +166,12 @@ def print_human(summary: dict[str, Any]) -> None:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     summary = anyio.run(
-        smoke,
-        args.url,
-        args.api_key,
-        call_query_parts=args.query_parts,
-        call_map_visualization=args.map_visualization,
+        lambda: smoke(
+            args.url,
+            args.api_key,
+            call_query_parts=args.query_parts,
+            call_map_visualization=args.map_visualization,
+        )
     )
     if args.json:
         print(json.dumps(summary, indent=2))
