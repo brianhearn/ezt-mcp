@@ -13,6 +13,9 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
+from .map_component.routes import MapVisualizationRoutes
+from .map_component.sessions import InMemoryMapSessionStore
+
 from .auth import APIKeyAuth
 from .config import ServerConfig
 from .db.part_layers import AsyncpgPartLayerRepository
@@ -33,6 +36,7 @@ class AppState:
     def __init__(self) -> None:
         self.pool: asyncpg.Pool | None = None
         self.part_layers_repo: AsyncpgPartLayerRepository | None = None
+        self.map_sessions = InMemoryMapSessionStore()
 
 
 def create_mcp_server(state: AppState):
@@ -106,6 +110,10 @@ def build_app(config: ServerConfig) -> Starlette:
     auth = APIKeyAuth(config.auth.api_keys)
     mcp = create_mcp_server(state)
     mcp_app = mcp.streamable_http_app()
+    map_routes = MapVisualizationRoutes(
+        state.map_sessions,
+        public_base_url=config.map_visualization.public_base_url,
+    )
 
     @asynccontextmanager
     async def lifespan(app: Starlette):
@@ -183,6 +191,12 @@ def build_app(config: ServerConfig) -> Starlette:
         Route("/health", health),
         Route("/part-layers", part_layers_http),
         Route("/part-layers/{part_layer}", part_layer_http),
+        Route("/get-map-visualization", map_routes.create_visualization, methods=["POST"]),
+        Route("/maps/session/{map_session_id}", map_routes.viewer),
+        Route("/maps/session/{map_session_id}/render-payload", map_routes.render_payload),
+        Route("/maps/session/{map_session_id}/state", map_routes.state),
+        Route("/static/{asset_name}", map_routes.static_asset),
+        Route("/assets/tiles/us-basemap.pmtiles", map_routes.missing_pmtiles),
         Mount("/", app=mcp_app),
     ]
     app = Starlette(routes=routes, lifespan=lifespan)

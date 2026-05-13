@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EasyTerritory Map Visualization</title>
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.11.0/dist/maplibre-gl.css" />
+    <link rel="stylesheet" href="__PUBLIC_BASE_URL__/static/map-viewer.css" />
+  </head>
+  <body>
+    <div id="map"></div>
+    <aside id="panel">
+      <div class="eyebrow">EasyTerritory MCP</div>
+      <h1 id="title">Map Visualization</h1>
+      <div id="subtitle">Loading…</div>
+      <dl>
+        <dt>Mode</dt><dd id="mode">view</dd>
+        <dt>Territories</dt><dd id="territory-count">—</dd>
+        <dt>TS Revision</dt><dd id="revision">—</dd>
+        <dt>Expires</dt><dd id="expires">—</dd>
+      </dl>
+      <div id="status" role="status">Initializing map…</div>
+    </aside>
+    <script>
+      window.EZT_MCP_BASE_URL = "__PUBLIC_BASE_URL__";
+    </script>
+    <script src="https://unpkg.com/maplibre-gl@5.11.0/dist/maplibre-gl.js"></script>
+    <script src="https://unpkg.com/pmtiles@4.3.0/dist/pmtiles.js"></script>
+    <script src="__PUBLIC_BASE_URL__/static/map-viewer.js"></script>
+  </body>
+</html>

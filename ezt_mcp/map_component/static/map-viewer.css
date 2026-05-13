@@ -1,0 +1,79 @@
+html,
+body,
+#map {
+  height: 100%;
+  margin: 0;
+  width: 100%;
+}
+
+body {
+  background: #101418;
+  color: #f6f8fb;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  overflow: hidden;
+}
+
+#panel {
+  backdrop-filter: blur(14px);
+  background: rgba(15, 23, 32, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.38);
+  left: 16px;
+  max-width: 340px;
+  padding: 16px;
+  position: absolute;
+  top: 16px;
+  z-index: 2;
+}
+
+.eyebrow {
+  color: #6ee7f9;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+h1 {
+  font-size: 18px;
+  line-height: 1.25;
+  margin: 6px 0 4px;
+}
+
+#subtitle,
+#status {
+  color: #b8c4d4;
+  font-size: 13px;
+}
+
+dl {
+  display: grid;
+  font-size: 12px;
+  gap: 6px 14px;
+  grid-template-columns: auto 1fr;
+  margin: 14px 0;
+}
+
+dt {
+  color: #8fa1b6;
+}
+
+dd {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.maplibregl-popup-content {
+  background: #101820;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 10px;
+  color: #f6f8fb;
+  font: 12px Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.maplibregl-popup-tip {
+  border-top-color: #101820 !important;
+}

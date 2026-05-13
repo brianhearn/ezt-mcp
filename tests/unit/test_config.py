@@ -14,6 +14,8 @@ server:
   port: 8100
 database:
   url: postgresql://example/db
+map_visualization:
+  public_base_url: https://example.com/mcp
 """.strip()
     )
     monkeypatch.setenv("EZT_MCP_API_KEY", "dev-key")
@@ -24,3 +26,14 @@ database:
     assert config.port == 8100
     assert config.database_url == "postgresql://example/db"
     assert config.auth.api_keys == ["dev-key"]
+    assert config.map_visualization.public_base_url == "https://example.com/mcp"
+
+
+def test_load_config_public_base_url_env_override(tmp_path: Path, monkeypatch):
+    path = tmp_path / "config.yaml"
+    path.write_text("server: {}")
+    monkeypatch.setenv("EZT_MCP_PUBLIC_BASE_URL", "https://expertpack.ai/mcp")
+
+    config = load_config(path)
+
+    assert config.map_visualization.public_base_url == "https://expertpack.ai/mcp"

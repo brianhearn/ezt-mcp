@@ -21,6 +21,12 @@ class AuthConfig(BaseModel):
     api_keys: list[str] = Field(default_factory=list)
 
 
+class MapVisualizationConfig(BaseModel):
+    """Browser-facing Map Component configuration."""
+
+    public_base_url: str = "http://127.0.0.1:8000"
+
+
 class ServerConfig(BaseModel):
     """Top-level server configuration."""
 
@@ -29,6 +35,7 @@ class ServerConfig(BaseModel):
     log_level: str = "info"
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
+    map_visualization: MapVisualizationConfig = Field(default_factory=MapVisualizationConfig)
 
     @property
     def database_url(self) -> str | None:
@@ -52,6 +59,7 @@ def load_config(config_path: str | Path) -> ServerConfig:
     server_raw = raw.get("server", {}) or {}
     database_raw = raw.get("database", {}) or {}
     auth_raw = raw.get("auth", {}) or {}
+    map_visualization_raw = raw.get("map_visualization", {}) or {}
 
     env_api_key = os.environ.get("EZT_MCP_API_KEY")
     api_keys = list(auth_raw.get("api_keys") or [])
@@ -64,4 +72,9 @@ def load_config(config_path: str | Path) -> ServerConfig:
         log_level=server_raw.get("log_level", "info"),
         database=DatabaseConfig(url=database_raw.get("url")),
         auth=AuthConfig(api_keys=api_keys),
+        map_visualization=MapVisualizationConfig(
+            public_base_url=os.environ.get("EZT_MCP_PUBLIC_BASE_URL")
+            or map_visualization_raw.get("public_base_url")
+            or "http://127.0.0.1:8000"
+        ),
     )
