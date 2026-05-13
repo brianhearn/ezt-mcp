@@ -196,7 +196,7 @@ def build_app(config: ServerConfig) -> Starlette:
         Route("/maps/session/{map_session_id}/render-payload", map_routes.render_payload),
         Route("/maps/session/{map_session_id}/state", map_routes.state),
         Route("/static/{asset_name}", map_routes.static_asset),
-        Route("/assets/tiles/us-basemap.pmtiles", map_routes.missing_pmtiles),
+        Route("/assets/tiles/us-basemap.pmtiles", map_routes.pmtiles_asset),
         Mount("/", app=mcp_app),
     ]
     app = Starlette(routes=routes, lifespan=lifespan)

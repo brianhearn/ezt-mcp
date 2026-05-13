@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 from importlib import resources
+from pathlib import Path
 from typing import Any, Mapping
 
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, Response
+from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 from .sessions import InMemoryMapSessionStore, MapVisualizationError
 
@@ -70,24 +71,31 @@ class MapVisualizationRoutes:
         media_type = "text/css" if asset_name.endswith(".css") else "application/javascript"
         return Response(content, media_type=media_type)
 
-    async def missing_pmtiles(self, request: Request) -> JSONResponse:
-        return JSONResponse(
-            {
-                "ok": False,
-                "error": {
-                    "code": "UNSUPPORTED_OPERATION",
-                    "message": "US basemap PMTiles is not installed on this dev server yet.",
-                    "details": {
-                        "expected_path": "/assets/tiles/us-basemap.pmtiles",
-                        "next_step": (
-                            "Install a US-only PMTiles basemap or configure static tile hosting."
-                        ),
+    async def pmtiles_asset(self, request: Request) -> Response:
+        tile_path = _static_path("tiles/us-basemap.pmtiles")
+        if not tile_path.exists():
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": {
+                        "code": "UNSUPPORTED_OPERATION",
+                        "message": "US basemap PMTiles is not installed on this dev server yet.",
+                        "details": {
+                            "expected_path": "/assets/tiles/us-basemap.pmtiles",
+                            "next_step": (
+                                "Install a US-only PMTiles basemap or configure static tile hosting."
+                            ),
+                        },
+                        "retryable": False,
+                        "user_action_required": True,
                     },
-                    "retryable": False,
-                    "user_action_required": True,
                 },
-            },
-            status_code=404,
+                status_code=404,
+            )
+        return FileResponse(
+            tile_path,
+            media_type="application/octet-stream",
+            filename="us-basemap.pmtiles",
         )
 
     def _session_from_request(self, request: Request):
@@ -97,11 +105,12 @@ class MapVisualizationRoutes:
 
 
 def _static_text(asset_name: str) -> str:
-    return (
-        resources.files("ezt_mcp.map_component.static")
-        .joinpath(asset_name)
-        .read_text(encoding="utf-8")
-    )
+    return _static_path(asset_name).read_text(encoding="utf-8")
+
+
+def _static_path(asset_name: str) -> Path:
+    root = resources.files("ezt_mcp.map_component.static")
+    return Path(str(root.joinpath(asset_name)))
 
 
 def _error_response(exc: MapVisualizationError, *, status_code: int) -> JSONResponse:
