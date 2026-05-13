@@ -19,6 +19,7 @@ from .map_component.sessions import InMemoryMapSessionStore
 from .auth import APIKeyAuth
 from .config import ServerConfig
 from .db.part_layers import AsyncpgPartLayerRepository
+from .db.parts import AsyncpgPartsRepository
 from .observability import RequestTimingMiddleware, timed_async_operation
 from .resources.part_layers import (
     UnknownPartLayerError,
@@ -26,6 +27,7 @@ from .resources.part_layers import (
     get_part_layer_resource,
     list_part_layers_resource,
 )
+from .tools.query_parts import query_parts_tool
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,7 @@ class AppState:
     def __init__(self) -> None:
         self.pool: asyncpg.Pool | None = None
         self.part_layers_repo: AsyncpgPartLayerRepository | None = None
+        self.parts_repo: AsyncpgPartsRepository | None = None
         self.map_sessions = InMemoryMapSessionStore()
 
 
@@ -101,6 +104,32 @@ def create_mcp_server(state: AppState):
             assert_no_forbidden_public_fields(payload)
             return json.dumps(payload, indent=2)
 
+    @mcp.tool(
+        name="query_parts",
+        description=(
+            "Query part metadata by attribute filter or explicit part IDs. "
+            "Returns part_id plus generic attributes only; geometry is never returned."
+        ),
+        structured_output=True,
+    )
+    async def query_parts(
+        part_layer: str,
+        filter: dict[str, Any] | None = None,
+        part_ids: list[str] | None = None,
+        page_token: str | None = None,
+        max_results: int = 100,
+    ) -> dict[str, Any]:
+        """Find parts by filter predicate or explicit ID list."""
+        payload: dict[str, Any] = {"part_layer": part_layer, "max_results": max_results}
+        if filter is not None:
+            payload["filter"] = filter
+        if part_ids is not None:
+            payload["part_ids"] = part_ids
+        if page_token is not None:
+            payload["page_token"] = page_token
+        async with timed_async_operation(logger, "mcp.tool.query_parts"):
+            return await query_parts_tool(_require_parts_repo(state), payload)
+
     return mcp
 
 
@@ -122,6 +151,7 @@ def build_app(config: ServerConfig) -> Starlette:
             async with timed_async_operation(logger, "startup.db_pool.open"):
                 state.pool = await asyncpg.create_pool(database_url, min_size=1, max_size=5)
                 state.part_layers_repo = AsyncpgPartLayerRepository(state.pool)
+                state.parts_repo = AsyncpgPartsRepository(state.pool)
         else:
             logger.warning("DATABASE_URL not configured; DB-backed resources will be unavailable")
 
@@ -187,10 +217,23 @@ def build_app(config: ServerConfig) -> Starlette:
             assert_no_forbidden_public_fields(payload)
             return JSONResponse(payload)
 
+    async def query_parts_http(request: Request) -> JSONResponse:
+        unauthorized = _unauthorized_if_needed(request, auth)
+        if unauthorized is not None:
+            return unauthorized
+        body = await request.json()
+        if not isinstance(body, dict):
+            body = {}
+        async with timed_async_operation(logger, "http.query_parts"):
+            payload = await query_parts_tool(_require_parts_repo(state), body)
+            status_code = 200 if payload.get("ok") is True else _status_for_tool_error(payload)
+            return JSONResponse(payload, status_code=status_code)
+
     routes = [
         Route("/health", health),
         Route("/part-layers", part_layers_http),
         Route("/part-layers/{part_layer}", part_layer_http),
+        Route("/query-parts", query_parts_http, methods=["POST"]),
         Route("/get-map-visualization", map_routes.create_visualization, methods=["POST"]),
         Route("/maps/session/{map_session_id}/{token}", map_routes.viewer),
         Route("/maps/session/{map_session_id}/{token}/render-payload", map_routes.render_payload),
@@ -211,6 +254,22 @@ def _require_repo(state: AppState) -> AsyncpgPartLayerRepository:
     if state.part_layers_repo is None:
         raise RuntimeError("Database repository is not configured")
     return state.part_layers_repo
+
+
+def _require_parts_repo(state: AppState) -> AsyncpgPartsRepository:
+    if state.parts_repo is None:
+        raise RuntimeError("Database repository is not configured")
+    return state.parts_repo
+
+
+def _status_for_tool_error(payload: dict[str, Any]) -> int:
+    error = payload.get("error") if isinstance(payload, dict) else None
+    code = error.get("code") if isinstance(error, dict) else None
+    if code in {"INVALID_REQUEST", "INVALID_PAGE_TOKEN", "UNSUPPORTED_FILTER"}:
+        return 400
+    if code == "UNKNOWN_PART_LAYER":
+        return 404
+    return 500
 
 
 def _unauthorized_if_needed(request: Request, auth: APIKeyAuth) -> JSONResponse | None:
