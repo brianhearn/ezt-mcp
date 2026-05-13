@@ -157,7 +157,7 @@ class InMemoryMapSessionStore:
 
     def get_session(self, map_session_id: str, token: str) -> MapVisualizationSession:
         session = self._sessions.get(map_session_id)
-        if session is None or not secrets.compare_digest(session.token, token):
+        if session is None or not _safe_token_equal(session.token, token):
             raise MapVisualizationError(
                 "INVALID_TS_HANDLE",
                 "Map visualization session was not found or the token is invalid.",
@@ -296,6 +296,12 @@ def _ts_identity(properties: Mapping[str, Any]) -> dict[str, Any]:
         ),
         "updated_at": str(properties.get("updated_at") or _isoformat_z(datetime.now(tz=UTC))),
     }
+
+
+def _safe_token_equal(expected: str, actual: str) -> bool:
+    if not actual or not actual.isascii():
+        return False
+    return secrets.compare_digest(expected, actual)
 
 
 def _bounded_ttl(value: Any) -> int:

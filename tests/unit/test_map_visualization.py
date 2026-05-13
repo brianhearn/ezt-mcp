@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from shapely.geometry import Polygon, mapping
 
-from ezt_mcp.map_component.sessions import InMemoryMapSessionStore, build_render_payload
+import pytest
+
+from ezt_mcp.map_component.sessions import (
+    InMemoryMapSessionStore,
+    MapVisualizationError,
+    build_render_payload,
+)
 
 
 def square_feature(tal_id: str, territory_id: str, label: str, x: float, y: float):
@@ -84,3 +90,16 @@ def test_session_store_returns_new_tab_response_and_validates_token():
     }
     assert result["active_tal_summary"]["territory_count"] == 2
     assert store.get_session(session.map_session_id, session.token) is session
+
+
+def test_session_store_rejects_truncated_unicode_token_without_type_error():
+    store = InMemoryMapSessionStore()
+    session = store.create_session(
+        {"ts": sample_ts(), "mode": "view", "active_tal_id": "tal-current"},
+        public_base_url="https://expertpack.ai/mcp",
+    )
+
+    with pytest.raises(MapVisualizationError) as exc:
+        store.get_session(session.map_session_id, "abc…def")
+
+    assert exc.value.code == "INVALID_TS_HANDLE"
