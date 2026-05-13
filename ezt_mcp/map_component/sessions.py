@@ -135,7 +135,11 @@ class InMemoryMapSessionStore:
         )
         ttl_seconds = _bounded_ttl(request.get("expiry_seconds"))
         map_session_id = f"msess_{secrets.token_urlsafe(16)}"
-        token = secrets.token_urlsafe(32)
+        # Keep the browser token short enough that chat/control UIs do not
+        # redact it with an ellipsis when sharing a dev/test map URL. 9 random
+        # bytes is ~72 bits of entropy, acceptable for this short-lived viewer
+        # token while the durable production token model is still being built.
+        token = secrets.token_urlsafe(9)
         selection_uri = None
         if mode == "select":
             selection_uri = f"ezt://map-sessions/{map_session_id}/selection"
