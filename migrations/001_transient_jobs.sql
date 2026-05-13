@@ -84,3 +84,8 @@ create index if not exists idx_transient_job_results_job
 
 create index if not exists idx_transient_job_results_expiry
   on transient.job_results (expires_at);
+
+-- Runtime app permissions. The staging/prod app role should not need DDL
+-- privileges, but it does need to submit/update/read transient jobs.
+grant usage on schema transient to ezt_mcp_app;
+grant select, insert, update, delete on all tables in schema transient to ezt_mcp_app;
