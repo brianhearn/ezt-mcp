@@ -5,8 +5,8 @@ function setStatus(message) {
 }
 
 function sessionParts() {
-  const match = window.location.pathname.match(/\/maps\/session\/([^/]+)/);
-  const token = new URLSearchParams(window.location.search).get("token") || "";
+  const match = window.location.pathname.match(/\/maps\/session\/([^/]+)(?:\/([^/]+))?/);
+  const token = (match && match[2]) || new URLSearchParams(window.location.search).get("token") || "";
   return { sessionId: match ? match[1] : "", token };
 }
 
@@ -115,7 +115,7 @@ async function main() {
     return;
   }
 
-  const payloadUrl = `${appBaseUrl()}/maps/session/${encodeURIComponent(sessionId)}/render-payload?token=${encodeURIComponent(token)}`;
+  const payloadUrl = `${appBaseUrl()}/maps/session/${encodeURIComponent(sessionId)}/${encodeURIComponent(token)}/render-payload`;
   const response = await fetch(payloadUrl);
   if (!response.ok) {
     setStatus(`Failed to load render payload (${response.status}).`);

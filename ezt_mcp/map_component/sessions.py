@@ -54,7 +54,7 @@ class MapVisualizationSession:
     def response_result(self, *, public_base_url: str) -> dict[str, Any]:
         map_url = (
             f"{public_base_url.rstrip('/')}/maps/session/"
-            f"{self.map_session_id}?token={self.token}"
+            f"{self.map_session_id}/{self.token}"
         )
         result = {
             "map_session_id": self.map_session_id,

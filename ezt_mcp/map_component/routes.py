@@ -102,7 +102,7 @@ class MapVisualizationRoutes:
         )
 
     def _session_from_request(self, request: Request):
-        token = request.query_params.get("token", "")
+        token = request.path_params.get("token") or request.query_params.get("token", "")
         session_id = request.path_params["map_session_id"]
         return self.store.get_session(session_id, token)
 
