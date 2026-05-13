@@ -88,6 +88,7 @@ def test_session_store_returns_new_tab_response_and_validates_token():
         "embed_status": "experimental",
         "open_in_new_tab_recommended": True,
     }
+    assert result["session_exists"] is False
     assert result["active_tal_summary"]["territory_count"] == 2
     assert store.get_session(session.map_session_id, session.token) is session
 

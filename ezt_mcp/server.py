@@ -14,7 +14,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
 from .map_component.routes import MapVisualizationRoutes
-from .map_component.sessions import InMemoryMapSessionStore
+from .map_component.sessions import InMemoryMapSessionStore, MapVisualizationError
 
 from .auth import APIKeyAuth
 from .config import ServerConfig
@@ -42,7 +42,7 @@ class AppState:
         self.map_sessions = InMemoryMapSessionStore()
 
 
-def create_mcp_server(state: AppState):
+def create_mcp_server(state: AppState, *, public_base_url: str):
     """Create the FastMCP server and register EZT resources."""
     from mcp.server.fastmcp import FastMCP
     from mcp.server.fastmcp.server import TransportSecuritySettings
@@ -105,6 +105,39 @@ def create_mcp_server(state: AppState):
             return json.dumps(payload, indent=2)
 
     @mcp.tool(
+        name="get_map_visualization",
+        description=(
+            "Create a short-lived browser-safe Map Component URL for a TS/TAL. "
+            "The URL token is carried in the path; no MCP API key or geometry is returned in the tool payload."
+        ),
+        structured_output=True,
+    )
+    async def get_map_visualization(
+        ts: dict[str, Any],
+        mode: str = "view",
+        active_tal_id: str | None = None,
+        presentation: dict[str, Any] | None = None,
+        expiry_seconds: int | None = None,
+        interaction_flags: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Return a browser-safe map visualization URL for a TS/TAL."""
+        request: dict[str, Any] = {"ts": ts, "mode": mode}
+        if active_tal_id is not None:
+            request["active_tal_id"] = active_tal_id
+        if presentation is not None:
+            request["presentation"] = presentation
+        if expiry_seconds is not None:
+            request["expiry_seconds"] = expiry_seconds
+        if interaction_flags is not None:
+            request["interaction_flags"] = interaction_flags
+        async with timed_async_operation(logger, "mcp.tool.get_map_visualization"):
+            return _create_map_visualization_tool_result(
+                state,
+                request,
+                public_base_url=public_base_url,
+            )
+
+    @mcp.tool(
         name="query_parts",
         description=(
             "Query part metadata by attribute filter or explicit part IDs. "
@@ -137,7 +170,7 @@ def build_app(config: ServerConfig) -> Starlette:
     """Build the Starlette ASGI app with health/debug routes and MCP mount."""
     state = AppState()
     auth = APIKeyAuth(config.auth.api_keys)
-    mcp = create_mcp_server(state)
+    mcp = create_mcp_server(state, public_base_url=config.map_visualization.public_base_url)
     mcp_app = mcp.streamable_http_app()
     map_routes = MapVisualizationRoutes(
         state.map_sessions,
@@ -260,6 +293,16 @@ def _require_parts_repo(state: AppState) -> AsyncpgPartsRepository:
     if state.parts_repo is None:
         raise RuntimeError("Database repository is not configured")
     return state.parts_repo
+
+
+def _create_map_visualization_tool_result(
+    state: AppState, request: dict[str, Any], *, public_base_url: str
+) -> dict[str, Any]:
+    try:
+        session = state.map_sessions.create_session(request, public_base_url=public_base_url)
+    except MapVisualizationError as exc:
+        return {"ok": False, "error": exc.to_error()}
+    return {"ok": True, "result": session.response_result(public_base_url=public_base_url)}
 
 
 def _status_for_tool_error(payload: dict[str, Any]) -> int:

@@ -68,6 +68,7 @@ class MapVisualizationSession:
                 "mode": self.mode,
                 "territory_count": self.territory_count,
             },
+            "session_exists": False,
             "presentation": {
                 "preferred_open": "new_tab",
                 "embed_status": "experimental",
