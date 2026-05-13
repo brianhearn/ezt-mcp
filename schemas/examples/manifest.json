@@ -45,6 +45,16 @@
     "definition": "request"
   },
   {
+    "file": "direct_build.flat.submission.response.json",
+    "schema": "direct_build.schema.json",
+    "definition": "submissionResponse"
+  },
+  {
+    "file": "job.status.running.json",
+    "schema": "job.schema.json",
+    "definition": "jobStatusResource"
+  },
+  {
     "file": "direct_build.flat.response.json",
     "schema": "direct_build.schema.json",
     "definition": "response"

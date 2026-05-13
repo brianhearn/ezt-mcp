@@ -1,7 +1,7 @@
 # CONSTITUTION.md — EZT MCP Non-Negotiables
 
-**Version:** 0.17.0
-**Date:** 2026-05-12
+**Version:** 0.18.0
+**Date:** 2026-05-13
 **Status:** Draft
 
 These are the architectural, security, stack, and convention decisions that are locked for the life of the project. Deviations require explicit revision of this document with justification. All downstream specs and implementation must conform.
@@ -32,7 +32,7 @@ These are the architectural, security, stack, and convention decisions that are 
 ## 2. Architecture Non-Negotiables
 
 ### 2.1 Stateless MCP Tier
-The EZT MCP application container is **durably stateless**. It holds no persistent customer data, no durable territory solutions, and no mutable customer state that must survive restart. The Resource Server holds only shared reference data and shared spatial infrastructure (part layers, geocode cache, spatial indexes/functions). Container restarts and horizontal scaling are transparent to clients except for optional short-lived cache misses.
+The EZT MCP application container is **durably stateless**. It holds no persistent customer data, no durable territory solutions, and no mutable customer state that must survive restart. The Resource Server holds only shared reference data and shared spatial infrastructure (part layers, geocode cache, spatial indexes/functions) plus short-lived, customer-scoped job/cache/session coordination records. Container restarts and horizontal scaling are transparent to clients except for optional short-lived cache or job-result misses after TTL expiry.
 
 ### 2.2 No Per-Customer State in EZT MCP
 EZT MCP does not persist territory solutions, account data, or any customer-specific data as a system of record. Every tool call supports the fully stateless path: the agent passes the current TS in, EZT MCP computes, the updated TS comes back out. For efficiency, the agent may use short-lived cache handles instead of repeatedly transmitting the same multi-MB TS. The agent is responsible for persisting outputs and for retrieving account data from the customer's source systems (CRM, spreadsheets, databases) before embedding it as a point layer.
@@ -187,6 +187,20 @@ Curated part layers are canonical in `geo` PostGIS tables. Part-layer PMTiles ma
 
 Customer-specific TS data is not baked into PMTiles for v1. The Map Component renders agent-supplied TS GeoJSON for active territory solutions, overlaid on static basemap and part-layer PMTiles.
 
+### 2.16 Async Jobs for Compute Tools
+All v1 customer-data computation tools are **asynchronous job submissions**, not long-running synchronous tool calls. This includes `geocode_address`, `ingest_accounts`, `direct_build`, `account_build`, `auto_build`, `realign`, and `analyze`. These operations can take seconds to minutes because they may geocode large batches, fetch part geometries, run spatial joins, dissolve/repair territories, or compute point-in-polygon analysis.
+
+The initial MCP tool call validates/authenticates the request, creates a short-lived customer-scoped job, enqueues work, and returns a job/task reference immediately. Final tool output is retrieved through the job/task result path. Lightweight control-plane actions such as part-layer resources and simple map-session creation may remain synchronous only when they do not perform heavy customer-data computation.
+
+Progress is dual-channel:
+- **Pull is authoritative:** job state, phase, progress, summary counts, terminal status, and result handles are persisted in customer-scoped transient storage and are available through status/result reads.
+- **Push is opportunistic:** MCP `notifications/progress` should be emitted when the caller supplies a progress token and the client supports it, but correctness must never depend on an open long-running connection.
+
+### 2.17 Multi-Tenant Isolation and Fairness
+EZT MCP is always multi-tenant. Every API key resolves to a customer context, and every transient customer object — jobs, progress events, TS handles, map sessions, audit entries, and result handles — is scoped by `customer_id` and authorized on every read/write. A customer must never be able to observe, infer, cancel, prioritize, or retrieve another customer's jobs, progress, payloads, map sessions, cache handles, or audit summaries.
+
+Concurrency controls are required at both global and per-customer levels. The scheduler must enforce fair sharing across tenants with separate limits for spatial CPU work, geocoding/provider calls, database/PostGIS reads, queued jobs, active jobs, and transient payload size. One customer's large geocode or TAL build must not starve other customers or exhaust shared provider/database capacity.
+
 ---
 
 ## 3. Security Non-Negotiables
@@ -244,6 +258,8 @@ Short-lived cache entries are still customer data and must be treated accordingl
 | **Analysis Presentation Guidance** | Versioned guidance exposed to agents as resources/prompts or markdown, instructing them how to present Analyze output in executive, designer, sales manager, and QA contexts. |
 | **TS Identity** | Metadata carried by a TS: stable `ts_id`, current `revision`, deterministic `content_hash`, and `updated_at` timestamp. |
 | **TS Handle** | Short-lived, customer-scoped, non-guessable cache reference that lets a tool call refer to a cached TS payload instead of retransmitting it. Not durable storage. |
+| **Job** | Short-lived, customer-scoped execution record for an async compute tool. Carries status, phase, progress, cancellation state, and result handles. Not durable storage or a system of record. |
+| **Progress Event** | Customer-scoped status update for a job phase/batch. Persisted for authoritative polling and optionally mirrored through MCP progress notifications. Contains safe counts/summaries only. |
 | **Presentation Metadata** | Declarative styling and visualization metadata carried in a TS or referenced from EZT MCP style templates: visibility, colors, labels, classifications, symbols, legends, named views, and the `active_tal_id` controlling which TAL the Map Component renders by default. |
 | **DESIGN.md** | Repo-level design-system file for AI coding agents, combining machine-readable design tokens with human-readable guidance derived from EZT Designer V2. |
 

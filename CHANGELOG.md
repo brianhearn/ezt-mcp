@@ -7,6 +7,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-13) — async jobs and multi-tenant concurrency
+- `CONSTITUTION.md` v0.18.0 — locked all v1 customer-data compute tools (`geocode_address`, `ingest_accounts`, `direct_build`, `account_build`, `auto_build`, `realign`, `analyze`) as asynchronous job submissions; added authoritative pull progress/result with opportunistic MCP push progress; elevated multi-tenant job/cache/session isolation and fair concurrency controls to non-negotiables
+- `FUNCTIONAL_SPEC.md` v0.2.0 — added async job contract, job result semantics, customer-scoped polling/cancellation behavior, and clarified initial tool calls return job references instead of final compute results
+- `TECHNICAL_SPEC.md` v0.2.0 — added transient job/progress/result storage, submission vs worker execution pipeline, progress phases, cooperative cancellation, workload-specific execution pools, and per-customer/global fairness controls
+- Added `schemas/job.schema.json`, a Direct Build submission response example, and a running job status resource example; existing tool response schemas now distinguish initial submission response from completed job result payloads
+
 ### Changed (2026-05-12) — deploy target and EP MCP lineage clarified
 - Clarified that EZT MCP deploy/test uses the ExpertPack droplet `165.245.136.51` / `expertpack.ai`, reusing the `/mcp` reverse-proxy path unless a separate path is intentionally introduced later
 - Clarified implementation lineage: EZT MCP is forked/derived from EP MCP and should reuse the proven FastMCP/Starlette/service/deploy shape

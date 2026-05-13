@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.easyterritory.com/ezt-mcp/job.schema.json",
+  "title": "EZT MCP Async Job Contract",
+  "type": "object",
+  "$defs": {
+    "jobStatus": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "running",
+        "input_required",
+        "completed",
+        "failed",
+        "cancelled",
+        "expired"
+      ]
+    },
+    "jobReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "job_id",
+        "tool_name",
+        "status",
+        "phase",
+        "progress",
+        "status_resource_uri",
+        "result_resource_uri",
+        "poll_interval_ms",
+        "created_at",
+        "expires_at"
+      ],
+      "properties": {
+        "job_id": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString"
+        },
+        "tool_name": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString"
+        },
+        "status": {
+          "$ref": "#/$defs/jobStatus"
+        },
+        "phase": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString"
+        },
+        "progress": {
+          "type": "number",
+          "minimum": 0
+        },
+        "total": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "status_message": {
+          "type": "string"
+        },
+        "status_resource_uri": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString",
+          "description": "MCP resource URI for authoritative job status, e.g. ezt://jobs/{job_id}/status."
+        },
+        "result_resource_uri": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString",
+          "description": "MCP resource URI for terminal job result, e.g. ezt://jobs/{job_id}/result."
+        },
+        "cancel_resource_uri": {
+          "type": "string",
+          "description": "Optional resource/action URI for cooperative cancellation."
+        },
+        "poll_interval_ms": {
+          "type": "integer",
+          "minimum": 250
+        },
+        "created_at": {
+          "$ref": "common.schema.json#/$defs/isoDateTime"
+        },
+        "expires_at": {
+          "$ref": "common.schema.json#/$defs/isoDateTime"
+        }
+      }
+    },
+    "jobStatusResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "job_id",
+        "tool_name",
+        "status",
+        "phase",
+        "progress",
+        "poll_interval_ms",
+        "created_at",
+        "last_progress_at",
+        "expires_at"
+      ],
+      "properties": {
+        "job_id": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "tool_name": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "status": { "$ref": "#/$defs/jobStatus" },
+        "phase": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "progress": { "type": "number", "minimum": 0 },
+        "total": { "type": ["number", "null"], "minimum": 0 },
+        "status_message": { "type": "string" },
+        "counts": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Safe count/summary progress details only; no raw customer rows or payloads."
+        },
+        "poll_interval_ms": { "type": "integer", "minimum": 250 },
+        "result_resource_uri": { "type": "string" },
+        "error": { "$ref": "common.schema.json#/$defs/structuredError" },
+        "created_at": { "$ref": "common.schema.json#/$defs/isoDateTime" },
+        "started_at": { "$ref": "common.schema.json#/$defs/isoDateTime" },
+        "last_progress_at": { "$ref": "common.schema.json#/$defs/isoDateTime" },
+        "completed_at": { "$ref": "common.schema.json#/$defs/isoDateTime" },
+        "expires_at": { "$ref": "common.schema.json#/$defs/isoDateTime" }
+      }
+    },
+    "submissionResponse": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ok", "result"],
+          "properties": {
+            "ok": { "const": true },
+            "result": { "$ref": "#/$defs/jobReference" },
+            "warnings": {
+              "type": "array",
+              "items": { "$ref": "common.schema.json#/$defs/warning" }
+            }
+          }
+        },
+        {
+          "$ref": "common.schema.json#/$defs/errorEnvelope"
+        }
+      ]
+    }
+  }
+}

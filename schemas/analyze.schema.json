@@ -282,7 +282,11 @@
         }
       }
     },
+    "submissionResponse": {
+      "$ref": "job.schema.json#/$defs/submissionResponse"
+    },
     "response": {
+      "description": "Completed job result payload returned from the job result path, not from the initial tool submission.",
       "oneOf": [
         {
           "type": "object",

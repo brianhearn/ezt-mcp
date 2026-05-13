@@ -1,7 +1,7 @@
 # FUNCTIONAL_SPEC.md — EZT MCP Functional Contract
 
-**Version:** 0.1.2
-**Date:** 2026-05-12
+**Version:** 0.2.0
+**Date:** 2026-05-13
 **Status:** Draft — open questions resolved for v1 surface
 
 This document defines EZT MCP's externally observable behavior for agent/client implementers. It specifies MCP tools, resources, prompts, caller-visible state rules, validation behavior, and acceptance criteria independent of implementation internals.
@@ -18,8 +18,9 @@ This spec must conform to [CONSTITUTION.md](CONSTITUTION.md). Workflow coverage 
 4. **Realign modifies one named TAL.** Realign requires an explicit `tal_id` whenever a TS contains more than one TAL.
 5. **Analyze returns facts, not prose.** Analyze returns structured JSON facts and caveats. Presentation guidance is exposed separately for agents to produce human-facing narratives.
 6. **Map sessions are transient coordination.** Map sessions and TS cache handles are short-lived transport/session conveniences, not durable storage.
-7. **Failures are structured.** Tools return actionable error codes, row/part-level failure details where practical, and safe user-facing messages. Unhandled exceptions are never exposed as client behavior.
-8. **Caller intent stays explicit.** Ambiguous territory, metric, workload, mode, or grouping requests should be surfaced to the agent as clarification-required errors or warnings rather than guessed silently.
+7. **Compute tools are async jobs.** Customer-data compute tools return a customer-scoped job/task reference immediately. Agents retrieve authoritative status/progress/result through job/task reads; MCP progress notifications are optional UX only.
+8. **Failures are structured.** Tools return actionable error codes, row/part-level failure details where practical, and safe user-facing messages. Unhandled exceptions are never exposed as client behavior.
+9. **Caller intent stays explicit.** Ambiguous territory, metric, workload, mode, or grouping requests should be surfaced to the agent as clarification-required errors or warnings rather than guessed silently.
 
 ---
 
@@ -37,7 +38,7 @@ Functional tool/resource contracts should reference mode, selection, and session
 
 ### 2.1 Territory Solution references
 
-Tools that operate on an existing TS accept one of:
+Compute job submissions that operate on an existing TS accept one of:
 
 - a full `ts` payload; or
 - a `ts_handle` previously returned by EZT MCP.
@@ -48,18 +49,18 @@ A valid `ts_handle` is customer/API-key scoped, non-guessable, TTL-bound, and sa
 
 ### 2.2 TS identity
 
-Every returned TS or TS handle should include identity metadata:
+Every returned TS or TS handle in a completed job result should include identity metadata:
 
 - `ts_id`
 - `revision`
 - `content_hash`
 - `updated_at`
 
-Tools that modify a TS increment or otherwise update the revision and return a new content hash.
+Completed jobs that modify a TS increment or otherwise update the revision and return a new content hash.
 
 ### 2.3 Optimistic concurrency
 
-Mutation tools that operate on an existing TS should accept expected identity fields:
+Mutation job submissions that operate on an existing TS should accept expected identity fields:
 
 - `expected_revision`
 - `expected_content_hash`
@@ -80,17 +81,49 @@ Point layers may declare metric fields for downstream analysis and build behavio
 
 ### 2.6 Common output envelope
 
-Tool responses should use a consistent shape at the functional level:
+Submission and result responses should use a consistent envelope shape at the functional level:
 
 - `ok`: boolean
-- `result`: tool-specific success payload when `ok=true`
+- `result`: job reference for initial submissions, or tool-specific success payload for completed job results when `ok=true`
 - `error`: structured error payload when `ok=false`
 - `warnings`: zero or more non-fatal warnings
 - `ts_identity`: returned when a TS is produced, modified, cached, or referenced
 
 Exact JSON Schema will live beside this spec once `schemas/` exists.
 
-### 2.7 Common structured error fields
+### 2.7 Async job contract
+
+The following v1 tools always run as asynchronous jobs:
+
+- `geocode_address`
+- `ingest_accounts`
+- `direct_build`
+- `account_build`
+- `auto_build`
+- `realign`
+- `analyze`
+
+The initial tool call returns a job reference, not the final compute result. A job reference includes:
+
+- `job_id`;
+- `status_resource_uri`, e.g. `ezt://jobs/{job_id}/status`;
+- `result_resource_uri`, e.g. `ezt://jobs/{job_id}/result`;
+- optional `cancel_resource_uri`, e.g. `ezt://jobs/{job_id}/cancel`;
+- `status`;
+- `phase`;
+- `progress` and optional `total`;
+- `poll_interval_ms`;
+- `created_at` and `expires_at`.
+
+Agents should poll status until the job reaches a terminal status: `completed`, `failed`, `cancelled`, or `expired`. If MCP Tasks are negotiated by the client/server, the native MCP task ID may wrap the same internal EZT job. If MCP progress notifications are available, they are advisory and mirror persisted job progress; polling remains authoritative.
+
+Job status, progress, result, and cancellation are customer/API-key scoped. A caller cannot read, cancel, infer, or retrieve another customer's jobs or results. Job results are short-lived transport artifacts, not durable customer storage.
+
+### 2.8 Job result shape
+
+When a job completes, its result payload uses the same tool-specific `result` fields described below, but is retrieved from the job result path rather than returned by the initial submission call. Large geometry-bearing results should return a `ts_handle` plus `ts_identity` instead of inline TS whenever they exceed response-size policy.
+
+### 2.9 Common structured error fields
 
 Errors should include:
 

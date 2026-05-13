@@ -1,7 +1,7 @@
 # TECHNICAL_SPEC.md — EZT MCP Implementation Design
 
-**Version:** 0.1.0
-**Date:** 2026-05-12
+**Version:** 0.2.0
+**Date:** 2026-05-13
 **Status:** Draft — implementation architecture baseline
 
 This document defines how EZT MCP implements the external behavior in [FUNCTIONAL_SPEC.md](FUNCTIONAL_SPEC.md) while obeying the non-negotiables in [CONSTITUTION.md](CONSTITUTION.md). It owns internal architecture, data flow, storage choices, algorithm design, testing strategy, observability, and deployment mechanics.
@@ -17,7 +17,7 @@ Executable request/response contracts live in [`schemas/`](schemas/). This docum
 3. **TS is the canonical work product.** Internal models may be typed Python objects, GeoDataFrames, or SQL rows, but tool boundaries always translate back to TS/TS handle output.
 4. **Shared data stays shared.** PostgreSQL/PostGIS stores canonical part layers, geocode cache, spatial indexes/functions, audit logs, API key metadata, and map-session/cache coordination tables only. It is not customer storage.
 5. **Small deterministic kernels.** Spatial operations are implemented as explicit pipeline steps with unit-testable functions: validate, materialize, assign, dissolve, repair, summarize, serialize.
-6. **Async at service edges; bounded CPU work inside workers.** MCP and web handlers are async. CPU-heavy spatial work runs in bounded worker pools so request handlers do not block the event loop.
+6. **Async jobs for customer-data compute.** Customer-data compute tools are submitted as jobs and return immediately with a job/task reference. Request handlers never run long geocoding, spatial join, dissolve, repair, or analysis work inline.
 7. **Explainability beats cleverness.** Build and repair outputs include enough summaries, warnings, and lineage for agents to explain what changed.
 8. **Example payloads are first-class tests.** `schemas/examples/` are contract fixtures and must stay valid as schemas evolve.
 
@@ -43,7 +43,7 @@ PostgreSQL/PostGIS Resource Server
 Object/blob storage + CDN
 ```
 
-The MCP container is horizontally scalable. Any instance can handle any stateless tool call when the caller supplies a full TS. Short-lived handles and map sessions are stored in a shared transient store so they work across instances.
+The MCP container is horizontally scalable. Any instance can accept a tool submission, status read, result read, or cancellation request when the caller is authorized. Short-lived handles, jobs, progress events, results, and map sessions are stored in shared transient/customer-scoped storage so they work across instances.
 
 ### 2.2 Process layout
 
@@ -52,7 +52,8 @@ The application runs one Starlette/Uvicorn process hosting FastMCP and browser-f
 - `uvicorn` workers: sized by CPU and memory budget.
 - async DB pool per process.
 - bounded process/thread pool for GeoPandas/Shapely CPU work.
-- request-level timeouts and maximum payload sizes.
+- background workers that claim queued jobs from shared transient storage.
+- request-level timeouts and maximum payload sizes for submission/status/result calls.
 - health endpoints for container readiness/liveness.
 
 ### 2.3 Module layout
@@ -110,6 +111,7 @@ ezt_mcp/
       geocode_cache.py
       api_keys.py
       audit_log.py
+      jobs.py                      # async job state/progress/result records
       transient_cache.py
       map_sessions.py
   auth/
@@ -140,7 +142,7 @@ Recommended database schemas:
 | `geocode_cache` | Shared normalized-address geocode cache. | No customer identifiers |
 | `auth` | Hashed API keys and customer metadata. | Customer/account metadata only |
 | `audit` | Append-only tool-call audit events. | Metadata only; no TS payloads |
-| `transient` | TTL cache handles and map-session coordination. | Short-lived customer data allowed |
+| `transient` | TTL jobs, progress events, result handles, cache handles, and map-session coordination. | Short-lived customer data allowed |
 | `ops` | Migrations, app metadata, health/maintenance state. | No |
 
 Only `geo`, `geocode_cache`, `auth`, `audit`, and `transient` are required for v1. `ops` is optional but useful for migrations and operational checks.
@@ -283,7 +285,73 @@ Rules:
 - cache miss is normal and maps to `INVALID_TS_HANDLE`.
 - mutations return a new handle and do not overwrite old handles in place.
 
-### 3.7 Map sessions
+### 3.7 Async jobs and progress
+
+All customer-data compute tools create short-lived, customer-scoped jobs. PostgreSQL is acceptable for v1 queue/state storage; the schema may later move to a dedicated queue without changing the external job contract.
+
+```sql
+transient.jobs (
+  job_id text primary key,
+  customer_id uuid not null,
+  key_id uuid,
+  tool_name text not null,
+  status text not null, -- queued|running|input_required|completed|failed|cancelled|expired
+  phase text not null,
+  status_message text,
+  progress double precision not null default 0,
+  total double precision,
+  poll_interval_ms integer not null default 2000,
+  priority integer not null default 100,
+  idempotency_key text,
+  request_summary jsonb not null default '{}',
+  result_summary jsonb not null default '{}',
+  result_handle text,
+  error jsonb,
+  cancel_requested boolean not null default false,
+  leased_by text,
+  lease_expires_at timestamptz,
+  created_at timestamptz not null,
+  started_at timestamptz,
+  last_progress_at timestamptz not null,
+  completed_at timestamptz,
+  expires_at timestamptz not null
+)
+
+transient.job_events (
+  event_id text primary key,
+  job_id text not null references transient.jobs(job_id),
+  customer_id uuid not null,
+  sequence integer not null,
+  event_type text not null, -- progress|warning|phase|result|error|cancel
+  phase text,
+  progress double precision,
+  total double precision,
+  message text,
+  details jsonb not null default '{}',
+  created_at timestamptz not null
+)
+
+transient.job_results (
+  result_handle text primary key,
+  job_id text not null references transient.jobs(job_id),
+  customer_id uuid not null,
+  content_type text not null,
+  payload_compressed bytea not null,
+  payload_bytes integer not null,
+  created_at timestamptz not null,
+  expires_at timestamptz not null
+)
+```
+
+Rules:
+
+- `customer_id` is part of every authorization check for job status, progress, result, cancellation, and cleanup.
+- Request summaries, progress details, and result summaries must contain counts/status only, never full TS payloads, account rows, full address lists, API keys, browser tokens, or raw customer files.
+- Results that include a TS should normally return a `ts_handle`; inline result payloads are allowed only under the configured size threshold.
+- Job/result TTLs are short-lived transport conveniences, not durable customer storage.
+- Workers claim jobs with row locking / leases (`FOR UPDATE SKIP LOCKED`) and heartbeat progress; expired leases can be retried according to per-tool idempotency rules.
+
+### 3.8 Map sessions
 
 ```sql
 transient.map_sessions (
@@ -400,19 +468,31 @@ If feature ordering is intentionally user-visible in a future surface, do not so
 
 ## 5. Common Tool Execution Pipeline
 
-Every tool handler follows the same skeleton:
+V1 customer-data compute tools are job submissions. The MCP request handler is a short control-plane operation; heavy work happens in background workers.
+
+Submission handler skeleton:
 
 1. Authenticate API key and create `CustomerContext`.
 2. Parse request and validate against typed model/schema equivalent.
-3. Resolve TS input:
-   - use full `ts` when supplied;
-   - otherwise load `ts_handle` from transient cache scoped to customer.
-4. Validate optimistic concurrency if expected revision/hash is supplied.
-5. Execute tool-specific pipeline.
-6. Produce TS/result summaries and warnings.
-7. Serialize updated TS or store it in transient cache and return `ts_handle` according to response-size policy.
-8. Write audit log summary.
-9. Map exceptions to structured errors.
+3. Validate request size and per-customer queue/active-job limits.
+4. Store any large supplied TS payload in customer-scoped transient cache, or verify that supplied `ts_handle` exists and belongs to the customer.
+5. Create a `transient.jobs` row with safe request summary, initial phase, TTL, and optional idempotency key.
+6. Enqueue or leave queued for workers to claim.
+7. Write audit log summary for job submission.
+8. Return a job/task reference immediately with status/resource/result URIs and recommended poll interval.
+
+Worker execution skeleton:
+
+1. Claim a queued job with a lease using customer/global fairness rules.
+2. Resolve TS input from customer-scoped cache or embedded job payload reference.
+3. Validate optimistic concurrency if expected revision/hash is supplied.
+4. Execute tool-specific pipeline in explicit phases, writing progress events after each phase/batch.
+5. Serialize updated TS or store it in transient cache and return `ts_handle` according to response-size policy.
+6. Store terminal result summary/result handle and mark job `completed`, `failed`, or `cancelled`.
+7. Write audit log completion summary.
+8. Map exceptions to structured errors without leaking internals.
+
+Job status/result/cancel handlers are also control-plane operations and must authorize by `customer_id` on every access.
 
 ### 5.1 Response-size policy
 
@@ -439,6 +519,57 @@ Use internal exception classes that map exactly to common error codes:
 - `ClarificationRequiredError` → `CLARIFICATION_REQUIRED`
 
 Unhandled exceptions become `PROVIDER_UNAVAILABLE` only for dependency outages, otherwise a generic retryable=false structured failure with no stack trace in the response.
+
+### 5.3 Job progress contract
+
+Every job reports progress using durable phases and monotonic progress values. Pull status is authoritative; push progress is best-effort.
+
+Status payloads include at minimum:
+
+- `job_id`;
+- `tool_name`;
+- `status`: `queued`, `running`, `input_required`, `completed`, `failed`, `cancelled`, or `expired`;
+- `phase`;
+- `progress` and optional `total`;
+- human-readable `status_message`;
+- safe `counts`/summary fields;
+- `created_at`, `last_progress_at`, and optional terminal timestamp;
+- `poll_interval_ms`;
+- `result_resource_uri` when terminal success has a result.
+
+When the MCP caller supplies `_meta.progressToken`, the server should also send `notifications/progress` for important phase/batch updates. Those notifications must mirror persisted job events and must stop after terminal status.
+
+Recommended phase names:
+
+- Common: `accepted`, `queued`, `resolving_ts`, `validating_request`, `writing_result`, `completed`, `failed`, `cancelled`.
+- Geocode/Ingest: `normalizing_rows`, `geocode_cache_lookup`, `provider_geocoding`, `provider_fallback`, `building_point_layer`.
+- Build/Realign: `validating_part_layer`, `fetching_part_geometries`, `spatial_join`, `materializing_hierarchy`, `dissolving_leaf_territories`, `dissolving_rollups`, `repairing_topology`, `updating_ts_identity`.
+- Analyze: `resolving_tals`, `spatially_assigning_points`, `aggregating_metrics`, `computing_rollups`, `computing_balance_scores`, `building_analysis_result`.
+
+### 5.4 Job cancellation
+
+Cancellation is cooperative. `job_cancel` or MCP `tasks/cancel` sets `cancel_requested=true`; workers check it between batches and expensive pipeline stages. A single GEOS/Shapely/PostGIS operation may not be interruptible once started, but no subsequent stage should begin after cancellation is observed. Cancelled jobs keep a safe terminal summary until TTL expiry.
+
+### 5.5 Concurrency and tenant fairness
+
+The scheduler enforces all of the following before starting work:
+
+- global max active jobs;
+- global max active spatial jobs;
+- global max active geocode/provider jobs;
+- DB pool and PostGIS query concurrency limits;
+- per-customer max active jobs and queued jobs;
+- per-customer max active spatial/geocode jobs;
+- per-customer and provider geocoding rate limits;
+- max request/result/cache bytes per customer.
+
+Use separate execution pools for workload classes:
+
+- **Geocoding:** I/O-bound, provider-rate-limited, retry/backoff, higher concurrency but per-customer/provider throttled.
+- **Spatial build/realign/analyze:** CPU/memory/PostGIS-heavy, low concurrency, bounded process pool or PostGIS worker slots.
+- **Control plane:** submission/status/result/cancel, high concurrency, no heavy work.
+
+Fairness requirement: queue selection must prevent one customer's large batch from starving other customers. A simple v1 policy can round-robin eligible customers, then claim oldest eligible job per customer with `FOR UPDATE SKIP LOCKED`.
 
 ---
 
@@ -867,7 +998,7 @@ Initial configurable limits:
 | max geocode batch size | protect providers |
 | max concurrent spatial jobs | protect CPU/memory |
 
-Large jobs should fail fast with structured guidance or move to an async job pattern in a future version. V1 tools can be synchronous if limits are reasonable.
+All customer-data compute tools are asynchronous jobs in v1. Limits protect submission size, queue depth, worker concurrency, transient storage, provider usage, and per-customer fairness. Requests that exceed configured limits fail fast before a job is accepted, with structured guidance where possible.
 
 ### 12.1 Geometry performance strategy
 
@@ -989,19 +1120,20 @@ Recommended implementation order:
 2. Project scaffold and CI gates.
 3. Shared models: TS parse/serialize, identity, structured errors.
 4. Schema/example validation in CI.
-5. DB pool and repositories for part layers, transient cache, audit log.
-6. Direct Build flat path.
-7. Direct Build hierarchical path and rollup geometry.
-8. Analyze for Direct Build outputs.
-9. Realign for leaf moves.
-10. Map session create + selection/state resources.
-11. Ingest Accounts + geocoder cache/provider mocks.
-12. Account Build.
-13. Auto Build Mode A.
-14. Auto Build Mode B.
-15. Auto Build Scoped Split.
-16. Analysis presentation guidance resources/prompts.
-17. Production hardening: auth, Key Vault, observability, limits, deployment manifests.
+5. DB pool and repositories for part layers, transient cache, async jobs/progress/results, audit log.
+6. Job submission/status/result/cancel control plane with customer isolation tests.
+7. Direct Build flat path.
+8. Direct Build hierarchical path and rollup geometry.
+9. Analyze for Direct Build outputs.
+10. Realign for leaf moves.
+11. Map session create + selection/state resources.
+12. Ingest Accounts + geocoder cache/provider mocks.
+13. Account Build.
+14. Auto Build Mode A.
+15. Auto Build Mode B.
+16. Auto Build Scoped Split.
+17. Analysis presentation guidance resources/prompts.
+18. Production hardening: auth, Key Vault, observability, limits, deployment manifests.
 
 This sequence intentionally starts with Direct Build because it exercises the TS/TAL/hierarchy core without requiring account ingestion, geocoding, or optimization algorithms.
 
@@ -1015,7 +1147,7 @@ These are implementation questions, not product-contract blockers:
 2. **Geometry backend threshold:** when should dissolve/repair run in Shapely vs PostGIS?
 3. **Auto-build optimizer baseline:** which initial heuristic gives the best balance of quality, explainability, and implementation speed?
 4. **Map Component asset hosting:** serve from MCP container for v1 or from blob/CDN from the start?
-5. **Async job model:** are synchronous tool calls sufficient for expected v1 row/part counts, or should large builds return job resources?
+5. **MCP Tasks adoption timing:** expose native MCP Tasks immediately where client/server support is mature, or ship EZT job resources first and map MCP Tasks onto the same internal job table later?
 6. **Dedicated TS JSON Schema:** when to promote implementation TS conventions into an executable schema stricter than the current permissive placeholder?
 
 None of these should change the v1 external contracts unless later evidence proves a contract is infeasible.
