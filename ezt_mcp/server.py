@@ -394,8 +394,8 @@ def create_mcp_server(state: AppState, *, public_base_url: str):
     @mcp.tool(
         name="set_map_state",
         description=(
-            "Update deterministic Map Component session state, such as mode and "
-            "pending job reference. "
+            "Update deterministic Map Component session state, such as mode, "
+            "active TAL, and pending job reference. "
             "Selection-driven job advancement is intentionally handled separately."
         ),
         structured_output=True,
@@ -403,6 +403,7 @@ def create_mcp_server(state: AppState, *, public_base_url: str):
     async def set_map_state(
         map_session_id: str,
         mode: str | None = None,
+        active_tal_id: str | None = None,
         pending_job_reference: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         async with timed_async_operation(
@@ -412,6 +413,7 @@ def create_mcp_server(state: AppState, *, public_base_url: str):
                 result = state.map_sessions.set_state(
                     map_session_id,
                     mode=mode,
+                    active_tal_id=active_tal_id,
                     pending_job_reference=pending_job_reference,
                 )
             except MapVisualizationError as exc:
@@ -623,6 +625,11 @@ def build_app(config: ServerConfig) -> Starlette:
         Route("/maps/session/{map_session_id}/{token}", map_routes.viewer),
         Route("/maps/session/{map_session_id}/{token}/render-payload", map_routes.render_payload),
         Route("/maps/session/{map_session_id}/{token}/state", map_routes.state),
+        Route(
+            "/maps/session/{map_session_id}/{token}/active-tal",
+            map_routes.set_active_tal,
+            methods=["POST"],
+        ),
         Route("/maps/session/{map_session_id}/{token}/events", map_routes.events),
         Route(
             "/maps/session/{map_session_id}/{token}/selection",
@@ -632,6 +639,11 @@ def build_app(config: ServerConfig) -> Starlette:
         Route("/maps/session/{map_session_id}", map_routes.viewer),
         Route("/maps/session/{map_session_id}/render-payload", map_routes.render_payload),
         Route("/maps/session/{map_session_id}/state", map_routes.state),
+        Route(
+            "/maps/session/{map_session_id}/active-tal",
+            map_routes.set_active_tal,
+            methods=["POST"],
+        ),
         Route("/maps/session/{map_session_id}/events", map_routes.events),
         Route("/static/{asset_name}", map_routes.static_asset),
         Route("/assets/tiles/us-basemap.pmtiles", map_routes.pmtiles_asset),

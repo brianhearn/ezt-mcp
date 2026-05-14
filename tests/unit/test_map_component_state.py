@@ -63,3 +63,28 @@ def test_set_state_and_commit_selection_are_explicit_primitives():
     }
     assert selection["part_ids"] == ["32301", "32303"]
     assert store.get_selection(created.session.map_session_id) == selection
+
+
+def test_set_state_can_switch_active_tal_and_publish_tal_update():
+    store = InMemoryMapSessionStore()
+    created = store.create_or_update_session(
+        {"ts": sample_ts(), "mode": "view", "active_tal_id": "tal-current"},
+        public_base_url="https://expertpack.ai/mcp",
+        user_id="monica",
+    )
+    queue = store.subscribe(created.session.map_session_id)
+
+    state = store.set_state(created.session.map_session_id, active_tal_id="tal-other")
+
+    assert state["active_tal_id"] == "tal-other"
+    assert created.session.render_payload["active_tal"]["tal_id"] == "tal-other"
+    assert created.session.render_payload["reference_tals"] == [
+        {
+            "tal_id": "tal-current",
+            "tal_label": "Current Territories",
+            "territory_count": 2,
+            "render_role": "reference",
+        }
+    ]
+    events = [queue.get_nowait()["type"], queue.get_nowait()["type"]]
+    assert events == ["connected", "tal_updated"]

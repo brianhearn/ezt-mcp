@@ -1,6 +1,8 @@
 const statusEl = document.getElementById("status");
 const debugEl = document.getElementById("debug");
 const debugMessages = [];
+let currentPayload = null;
+let currentMap = null;
 
 function byId(id) {
   return document.getElementById(id);
@@ -36,7 +38,6 @@ function errorDetails(error) {
   }
 }
 
-
 function styleOverrides(payload) {
   const presentation = payload.presentation || {};
   return presentation.style_overrides || {};
@@ -68,6 +69,7 @@ function renderPanel(payload) {
   setText("panel-eyebrow", presentation.eyebrow || panelEyebrow(presentation.panel_template));
   setText("title", presentation.title || payload.active_tal.label || payload.active_tal.tal_id);
   setText("subtitle", presentation.subtitle || payload.active_tal.tal_id);
+  renderTalSwitcher(payload);
 
   const summaryItems = panelSummaryItems(payload);
   const summaryEl = byId("summary");
@@ -88,6 +90,22 @@ function panelEyebrow(templateName) {
   if (templateName === "qa_verification") return "QA Verification";
   if (templateName === "selection") return "Part Selection";
   return "Executive Review";
+}
+
+function renderTalSwitcher(payload) {
+  const wrapper = byId("tal-switcher");
+  const select = byId("tal-select");
+  if (!wrapper || !select) return;
+  const tals = Array.isArray(payload.available_tals) ? payload.available_tals : [];
+  wrapper.hidden = tals.length <= 1;
+  select.innerHTML = "";
+  for (const tal of tals) {
+    const option = document.createElement("option");
+    option.value = tal.tal_id;
+    option.textContent = tal.tal_label || tal.tal_id;
+    option.selected = tal.tal_id === payload.active_tal.tal_id;
+    select.append(option);
+  }
 }
 
 function panelSummaryItems(payload) {
@@ -156,7 +174,7 @@ function renderLegend(payload) {
   const presentation = payload.presentation || {};
   const legendItems = Array.isArray(presentation.legend_items)
     ? presentation.legend_items
-    : defaultLegendItems(payload.geojson);
+    : defaultLegendItems(payload);
   legendEl.hidden = !legendVisible(payload) || legendItems.length === 0;
   itemsEl.innerHTML = "";
   for (const item of legendItems) {
@@ -172,12 +190,25 @@ function renderLegend(payload) {
   }
 }
 
-function defaultLegendItems(geojson) {
+function defaultLegendItems(payload) {
+  const geojson = payload.geojson;
   if (!geojson || !Array.isArray(geojson.features)) return [];
-  return geojson.features.slice(0, 8).map((feature) => ({
+  const items = geojson.features.slice(0, 8).map((feature) => ({
     label: (feature.properties && (feature.properties._render_label || feature.properties.label)) || "Territory",
     color: (feature.properties && feature.properties._render_color) || "#2F80ED",
   }));
+  if (hasReferenceTals(payload)) {
+    items.push({ label: "Other TALs (dimmed)", color: "#94a3b8" });
+  }
+  return items;
+}
+
+function hasReferenceTals(payload) {
+  return Boolean(
+    payload.reference_geojson &&
+    Array.isArray(payload.reference_geojson.features) &&
+    payload.reference_geojson.features.length
+  );
 }
 
 function sessionParts() {
@@ -331,14 +362,37 @@ function baseStyle(payload) {
 
 function addTerritoryLayers(map, payload) {
   try {
+    map.addSource("reference-territories", {
+      type: "geojson",
+      data: referenceGeojson(payload),
+    });
     map.addSource("territories", { type: "geojson", data: payload.geojson });
+    map.addLayer({
+      id: "reference-territory-fill",
+      type: "fill",
+      source: "reference-territories",
+      paint: {
+        "fill-color": ["coalesce", ["get", "_render_color"], "#94a3b8"],
+        "fill-opacity": 0.12,
+      },
+    });
+    map.addLayer({
+      id: "reference-territory-outline",
+      type: "line",
+      source: "reference-territories",
+      paint: {
+        "line-color": "#94a3b8",
+        "line-width": 0.8,
+        "line-opacity": 0.32,
+      },
+    });
     map.addLayer({
       id: "territory-fill",
       type: "fill",
       source: "territories",
       paint: {
         "fill-color": ["coalesce", ["get", "_render_color"], "#2F80ED"],
-        "fill-opacity": 0.42,
+        "fill-opacity": 0.5,
       },
     });
     map.addLayer({
@@ -347,8 +401,8 @@ function addTerritoryLayers(map, payload) {
       source: "territories",
       paint: {
         "line-color": "#f6f8fb",
-        "line-width": 1.25,
-        "line-opacity": 0.85,
+        "line-width": 1.4,
+        "line-opacity": 0.9,
       },
     });
     map.addLayer({
@@ -392,6 +446,17 @@ function addTerritoryLayers(map, payload) {
   map.on("mouseleave", "territory-fill", () => { map.getCanvas().style.cursor = ""; });
 }
 
+function referenceGeojson(payload) {
+  return payload.reference_geojson || { type: "FeatureCollection", features: [] };
+}
+
+function updateTerritoryLayers(map, payload) {
+  const activeSource = map.getSource("territories");
+  const referenceSource = map.getSource("reference-territories");
+  if (activeSource) activeSource.setData(payload.geojson);
+  if (referenceSource) referenceSource.setData(referenceGeojson(payload));
+}
+
 function fitBounds(map, bounds) {
   if (!Array.isArray(bounds) || bounds.length !== 4) return;
   try {
@@ -409,6 +474,53 @@ function appBaseUrl() {
   return (window.EZT_MCP_BASE_URL || "").replace(/\/$/, "");
 }
 
+function sessionUrls() {
+  const { sessionId, token } = sessionParts();
+  const base = `${appBaseUrl()}/maps/session/${encodeURIComponent(sessionId)}/${encodeURIComponent(token)}`;
+  return {
+    sessionId,
+    token,
+    payload: `${base}/render-payload`,
+    activeTal: `${base}/active-tal`,
+  };
+}
+
+async function loadPayload() {
+  const urls = sessionUrls();
+  const response = await fetch(urls.payload);
+  if (!response.ok) {
+    throw new Error(`Failed to load render payload (${response.status}).`);
+  }
+  return response.json();
+}
+
+function applyPayload(payload, { refit = true } = {}) {
+  currentPayload = payload;
+  renderPanel(payload);
+  if (currentMap && currentMap.getSource("territories")) {
+    updateTerritoryLayers(currentMap, payload);
+    if (refit) fitBounds(currentMap, payload.bounds);
+  }
+}
+
+async function switchActiveTal(activeTalId) {
+  if (!activeTalId || !currentPayload || activeTalId === currentPayload.active_tal.tal_id) return;
+  const urls = sessionUrls();
+  setStatus("Switching active TAL…");
+  const response = await fetch(urls.activeTal, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ active_tal_id: activeTalId }),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to switch active TAL (${response.status}): ${text}`);
+  }
+  const payload = await loadPayload();
+  applyPayload(payload);
+  setStatus("Active TAL updated.");
+}
+
 async function main() {
   const { sessionId, token } = sessionParts();
   if (!sessionId || !token) {
@@ -416,15 +528,22 @@ async function main() {
     return;
   }
 
-  const payloadUrl = `${appBaseUrl()}/maps/session/${encodeURIComponent(sessionId)}/${encodeURIComponent(token)}/render-payload`;
-  const response = await fetch(payloadUrl);
-  if (!response.ok) {
-    setStatus(`Failed to load render payload (${response.status}).`);
-    return;
-  }
-  const payload = await response.json();
+  const payload = await loadPayload();
+  applyPayload(payload, { refit: false });
 
-  renderPanel(payload);
+  const select = byId("tal-select");
+  if (select) {
+    select.addEventListener("change", async (event) => {
+      try {
+        await switchActiveTal(event.target.value);
+      } catch (error) {
+        console.error(error);
+        debugMessage("Active TAL switch failed", errorDetails(error));
+        setStatus(error.message);
+        if (currentPayload) renderTalSwitcher(currentPayload);
+      }
+    });
+  }
 
   const protocol = new pmtiles.Protocol();
   maplibregl.addProtocol("pmtiles", protocol.tile);
@@ -437,22 +556,26 @@ async function main() {
     attributionControl: true,
     failIfMajorPerformanceCaveat: false,
   });
+  currentMap = map;
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
 
   map.on("load", () => {
-    if (debugEnabled(payload)) debugMessage("Map load event", `features=${payload.geojson && payload.geojson.features ? payload.geojson.features.length : 0}; bounds=${JSON.stringify(payload.bounds)}`);
+    if (debugEnabled(payload)) {
+      const features = payload.geojson && payload.geojson.features ? payload.geojson.features.length : 0;
+      debugMessage("Map load event", `features=${features}; bounds=${JSON.stringify(payload.bounds)}`);
+    }
     addTerritoryLayers(map, payload);
     fitBounds(map, payload.bounds);
-    setStatus("Loaded. Debug panel shows map events/errors if present.");
+    setStatus("Loaded. Use Active TAL to switch layers.");
   });
 
   map.on("styledata", () => {
-    if (debugEnabled(payload)) debugMessage("Style data loaded");
+    if (debugEnabled(currentPayload || payload)) debugMessage("Style data loaded");
   });
 
   map.on("sourcedata", (event) => {
     if (event && event.sourceId && event.isSourceLoaded) {
-      if (debugEnabled(payload)) debugMessage("Source loaded", event.sourceId);
+      if (debugEnabled(currentPayload || payload)) debugMessage("Source loaded", event.sourceId);
     }
   });
 

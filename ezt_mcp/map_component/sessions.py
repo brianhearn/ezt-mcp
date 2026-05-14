@@ -45,6 +45,9 @@ class MapVisualizationSession:
     active_tal_label: str | None
     ts_identity: dict[str, Any]
     render_payload: dict[str, Any]
+    ts: dict[str, Any]
+    presentation: dict[str, Any]
+    public_base_url: str
     created_at: datetime
     expires_at: datetime
     state_resource_uri: str
@@ -98,6 +101,7 @@ class MapVisualizationSession:
                 "status": "active" if datetime.now(tz=UTC) < self.expires_at else "expired",
                 "active_tal_id": self.active_tal_id,
                 "active_tal_label": self.active_tal_label,
+                "available_tals": self.render_payload.get("available_tals"),
                 "territory_count": self.territory_count,
                 "ts_identity": self.ts_identity,
                 "pending_job_reference": self.pending_job_reference,
@@ -141,6 +145,13 @@ class MapVisualizationSession:
         self.active_tal_label = render_payload["active_tal"].get("label")
         self.ts_identity = render_payload["ts_identity"]
         self.render_payload = render_payload
+        self.ts = copy.deepcopy(dict(ts))
+        self.presentation = (
+            dict(request.get("presentation"))
+            if isinstance(request.get("presentation"), Mapping)
+            else {}
+        )
+        self.public_base_url = public_base_url
         self.expires_at = now + timedelta(seconds=ttl_seconds)
         self.updated_at = now
         self.selection_resource_uri = (
@@ -259,6 +270,13 @@ class InMemoryMapSessionStore:
             active_tal_label=render_payload["active_tal"].get("label"),
             ts_identity=render_payload["ts_identity"],
             render_payload=render_payload,
+            ts=ts_copy,
+            presentation=(
+                dict(request.get("presentation"))
+                if isinstance(request.get("presentation"), Mapping)
+                else {}
+            ),
+            public_base_url=public_base_url,
             created_at=now,
             updated_at=now,
             expires_at=now + timedelta(seconds=ttl_seconds),
@@ -318,12 +336,14 @@ class InMemoryMapSessionStore:
         map_session_id: str,
         *,
         mode: str | None = None,
+        active_tal_id: str | None = None,
         pending_job_reference: Mapping[str, Any] | None = None,
         now: datetime | None = None,
     ) -> dict[str, Any]:
         now = now or datetime.now(tz=UTC)
         session = self.get_session(map_session_id)
         previous_mode = session.mode
+        previous_tal = session.active_tal_id
         if mode is not None:
             session.mode = _validated_mode(mode)
             session.render_payload["mode"] = session.mode
@@ -332,9 +352,22 @@ class InMemoryMapSessionStore:
                 if session.mode == "select"
                 else None
             )
+        if active_tal_id is not None:
+            self._set_active_tal(session, active_tal_id)
         if pending_job_reference is not None:
             session.pending_job_reference = dict(pending_job_reference)
         session.updated_at = now
+        if previous_tal != session.active_tal_id:
+            self.publish_event(
+                map_session_id,
+                {
+                    "type": "tal_updated",
+                    "map_session_id": map_session_id,
+                    "active_tal_id": session.active_tal_id,
+                    "ts_identity": session.ts_identity,
+                    "created_at": _isoformat_z(now),
+                },
+            )
         if previous_mode != session.mode:
             self.publish_event(
                 map_session_id,
@@ -345,7 +378,7 @@ class InMemoryMapSessionStore:
                     "created_at": _isoformat_z(now),
                 },
             )
-        else:
+        if previous_mode == session.mode and previous_tal == session.active_tal_id:
             self.publish_event(
                 map_session_id,
                 {
@@ -470,6 +503,25 @@ class InMemoryMapSessionStore:
                 # Drop stale clients rather than blocking server-side tool work.
                 self.unsubscribe(map_session_id, queue)
 
+    def _set_active_tal(self, session: MapVisualizationSession, active_tal_id: str) -> None:
+        requested_tal = str(active_tal_id or "").strip()
+        if not requested_tal:
+            raise MapVisualizationError(
+                "UNKNOWN_TAL_ID",
+                "active_tal_id is required to switch the active TAL.",
+            )
+        render_payload = build_render_payload(
+            copy.deepcopy(session.ts),
+            active_tal_id=requested_tal,
+            mode=session.mode,
+            presentation=session.presentation,
+            public_base_url=session.public_base_url,
+        )
+        session.active_tal_id = render_payload["active_tal"]["tal_id"]
+        session.active_tal_label = render_payload["active_tal"].get("label")
+        session.ts_identity = render_payload["ts_identity"]
+        session.render_payload = render_payload
+
     def _active_session_for_user(
         self, user_id: str, *, now: datetime
     ) -> MapVisualizationSession | None:
@@ -509,7 +561,7 @@ def build_render_payload(
             "active_tal_id is required when no single TAL can be inferred from the TS.",
         )
 
-    features = [
+    active_features = [
         feature
         for feature in ts["features"]
         if isinstance(feature, Mapping)
@@ -517,12 +569,21 @@ def build_render_payload(
         and feature["properties"].get("tal_id") == requested_tal
         and feature.get("geometry")
     ]
-    if not features:
+    if not active_features:
         raise MapVisualizationError(
             "UNKNOWN_TAL_ID",
             "No territory features were found for the requested TAL.",
             {"active_tal_id": requested_tal},
         )
+
+    reference_features = [
+        feature
+        for feature in ts["features"]
+        if isinstance(feature, Mapping)
+        and isinstance(feature.get("properties"), Mapping)
+        and feature["properties"].get("tal_id") != requested_tal
+        and feature.get("geometry")
+    ]
 
     presentation_payload = _presentation_payload(
         ts_properties=properties,
@@ -530,8 +591,15 @@ def build_render_payload(
         view_name=_view_name(presentation, mode=mode),
         mode=mode,
     )
-    clean_features = [_feature_for_render(feature, index) for index, feature in enumerate(features)]
-    bounds = _feature_collection_bounds(clean_features)
+    clean_active_features = [
+        _feature_for_render(feature, index, role="active")
+        for index, feature in enumerate(active_features)
+    ]
+    clean_reference_features = [
+        _feature_for_render(feature, index, role="reference")
+        for index, feature in enumerate(reference_features)
+    ]
+    bounds = _feature_collection_bounds(clean_active_features + clean_reference_features)
     tal_label = _tal_label(properties, requested_tal)
     return {
         "map_session_id": None,
@@ -544,13 +612,27 @@ def build_render_payload(
         "active_tal": {
             "tal_id": requested_tal,
             "label": tal_label,
-            "territory_count": len(clean_features),
+            "territory_count": len(clean_active_features),
         },
+        "available_tals": _available_tal_summaries(
+            properties,
+            clean_active_features + clean_reference_features,
+            active_tal_id=requested_tal,
+        ),
+        "reference_tals": _reference_tal_summaries(
+            properties,
+            clean_reference_features,
+            active_tal_id=requested_tal,
+        ),
         "bounds": bounds,
         "presentation": presentation_payload,
         "geojson": {
             "type": "FeatureCollection",
-            "features": clean_features,
+            "features": clean_active_features,
+        },
+        "reference_geojson": {
+            "type": "FeatureCollection",
+            "features": clean_reference_features,
         },
     }
 
@@ -640,13 +722,88 @@ def _deep_merge(base: Mapping[str, Any], override: Mapping[str, Any]) -> dict[st
     return merged
 
 
-def _feature_for_render(feature: Mapping[str, Any], index: int) -> dict[str, Any]:
+def _available_tal_summaries(
+    ts_properties: Mapping[str, Any],
+    features: list[Mapping[str, Any]],
+    *,
+    active_tal_id: str,
+) -> list[dict[str, Any]]:
+    counts = _tal_feature_counts(features)
+    metadata = _tal_metadata(ts_properties)
+    tal_ids = sorted(set(metadata) | set(counts))
+    return [
+        _drop_none(
+            {
+                "tal_id": tal_id,
+                "tal_label": metadata.get(tal_id) or _tal_label(ts_properties, tal_id),
+                "territory_count": counts.get(tal_id, 0),
+                "is_active": tal_id == active_tal_id,
+                "render_role": "active" if tal_id == active_tal_id else "reference",
+            }
+        )
+        for tal_id in tal_ids
+    ]
+
+
+def _reference_tal_summaries(
+    ts_properties: Mapping[str, Any],
+    features: list[Mapping[str, Any]],
+    *,
+    active_tal_id: str,
+) -> list[dict[str, Any]]:
+    return [
+        _drop_none(
+            {
+                "tal_id": item["tal_id"],
+                "tal_label": item.get("tal_label"),
+                "territory_count": item["territory_count"],
+                "render_role": "reference",
+            }
+        )
+        for item in _available_tal_summaries(
+            ts_properties,
+            features,
+            active_tal_id=active_tal_id,
+        )
+        if item["tal_id"] != active_tal_id
+    ]
+
+
+def _tal_feature_counts(features: list[Mapping[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for feature in features:
+        raw_properties = feature.get("properties")
+        properties = raw_properties if isinstance(raw_properties, Mapping) else {}
+        tal_id = properties.get("tal_id")
+        if tal_id is not None:
+            counts[str(tal_id)] = counts.get(str(tal_id), 0) + 1
+    return counts
+
+
+def _tal_metadata(ts_properties: Mapping[str, Any]) -> dict[str, str | None]:
+    metadata: dict[str, str | None] = {}
+    layers = ts_properties.get("territory_alignment_layers")
+    if isinstance(layers, list):
+        for layer in layers:
+            if isinstance(layer, Mapping) and layer.get("tal_id") is not None:
+                label = layer.get("label")
+                metadata[str(layer["tal_id"])] = str(label) if label is not None else None
+    return metadata
+
+
+def _feature_for_render(
+    feature: Mapping[str, Any],
+    index: int,
+    *,
+    role: str = "active",
+) -> dict[str, Any]:
     properties = dict(feature.get("properties") or {})
     properties.setdefault("_render_color", _palette_color(index))
     properties.setdefault(
         "_render_label",
         properties.get("label") or properties.get("territory_id"),
     )
+    properties["_render_tal_role"] = role
     return {
         "type": "Feature",
         "properties": _json_safe_properties(properties),

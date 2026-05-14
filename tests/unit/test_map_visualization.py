@@ -62,9 +62,20 @@ def test_build_render_payload_filters_active_tal_and_bounds():
         "label": "Current Territories",
         "territory_count": 2,
     }
-    assert payload["bounds"] == [-100.0, 35.0, -89.0, 37.0]
+    assert payload["bounds"] == [-100.0, 35.0, -79.0, 37.0]
     assert len(payload["geojson"]["features"]) == 2
+    assert len(payload["reference_geojson"]["features"]) == 1
+    assert payload["reference_tals"] == [
+        {
+            "tal_id": "tal-other",
+            "territory_count": 1,
+            "render_role": "reference",
+        }
+    ]
     assert payload["geojson"]["features"][0]["properties"]["_render_color"]
+    assert payload["geojson"]["features"][0]["properties"]["_render_tal_role"] == "active"
+    reference_role = payload["reference_geojson"]["features"][0]["properties"]["_render_tal_role"]
+    assert reference_role == "reference"
     assert payload["geojson"]["features"][0]["properties"]["part_ids"] == '["T-WEST"]'
     assert payload["basemap"]["url"] == "https://expertpack.ai/mcp/assets/tiles/us-basemap.pmtiles"
 

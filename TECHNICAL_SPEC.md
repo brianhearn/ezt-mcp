@@ -857,11 +857,13 @@ Browser-facing endpoints validate the session token, never the MCP API key. Sele
 Implementation minimum for the development loop:
 
 - render supplied TS polygon features for the active TAL;
-- fit map bounds to visible TS geometry;
+- when the TS has multiple TALs, include non-active TAL features in a separate reference overlay rendered below the active TAL with dimmed fill/stroke and no active labels;
+- fit map bounds to visible TS geometry, including dimmed reference TALs so reviewers see full TS context;
 - show labels/basic territory style from TS presentation metadata or defaults;
 - support `view` mode first;
 - return a URL embeddable in OpenClaw Canvas or directly openable in a browser;
-- expose enough state to confirm TS identity, active TAL, feature count, and expiry.
+- expose enough state to confirm TS identity, active TAL, available/reference TAL summaries, feature count, and expiry;
+- persist the source TS or TS handle in the map session so browser-side Active TAL switching can rebuild the render payload server-side.
 
 `select` mode, committed selection resources, and Realign refresh events can layer on after the read-only visualization loop is usable.
 

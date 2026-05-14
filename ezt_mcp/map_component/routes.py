@@ -84,6 +84,26 @@ class MapVisualizationRoutes:
             return _error_response(exc, status_code=_status_for_error(exc))
         return JSONResponse(session.state_payload())
 
+    async def set_active_tal(self, request: Request) -> JSONResponse:
+        try:
+            session = self._session_from_request(request)
+            body = await request.json()
+            if not isinstance(body, Mapping):
+                raise MapVisualizationError("INVALID_TS", "Request body must be a JSON object.")
+            active_tal_id = body.get("active_tal_id")
+            if not isinstance(active_tal_id, str) or not active_tal_id.strip():
+                raise MapVisualizationError(
+                    "UNKNOWN_TAL_ID",
+                    "active_tal_id is required to switch the active TAL.",
+                )
+            state = self.store.set_state(
+                session.map_session_id,
+                active_tal_id=active_tal_id,
+            )
+        except MapVisualizationError as exc:
+            return _error_response(exc, status_code=_status_for_error(exc))
+        return JSONResponse({"ok": True, "result": state})
+
     async def events(self, request: Request) -> StreamingResponse:
         try:
             session = self._session_from_request(request)
