@@ -1,7 +1,7 @@
 # MAP_COMPONENT.md — EZT MCP Map Component
 
-**Version:** 0.4.0
-**Date:** 2026-05-13
+**Version:** 0.5.0
+**Date:** 2026-05-14
 **Status:** Concept — not yet specced
 
 ---
@@ -41,7 +41,7 @@ The agent session drives all territory operations. The component is a read/selec
 - **SSE** for server → MC push (mode_changed, tal_updated, job_progress, selection_prompt, session_expired, etc.).
 - **HTTP POST** for MC → server events (selection_committed with part_ids, user confirmations, etc.).
 - Jobs drive routine state automatically via SSE (no extra agent call for progress or AWAITING_USER_SELECTION transitions).
-- Agent calls (`set_map_state`, `get_map_selection`) are reserved for deliberate high-level control.
+- Agent calls (`request_part_selection`, `get_part_selection`) are the primary first-class selection API. `set_map_state` is reserved for deliberate low-level control.
 - Part layers rendered from static **PMTiles** (one per layer: us_zips.pmtiles, us_counties.pmtiles, etc.). Zoom-gated (centroids ~7-9, full polygons >9). Attributes carried in PMTiles; geometry **never** leaves server in MCP payloads.
 
 Recommended flow:
@@ -63,7 +63,8 @@ For OpenClaw specifically, this aligns with MCP Resource Subscriptions: EZT MCP 
 
 A map session should be short-lived and customer/API-key scoped. Candidate MCP resources:
 
-- `ezt://map-sessions/{map_session_id}/selection` — latest committed selection from the Map Component
+- `ezt://part-selections/{selection_task_id}` — committed output of a first-class part-selection task
+- `ezt://map-sessions/{map_session_id}/selection` — backward-compatible latest committed selection from the Map Component
 - `ezt://map-sessions/{map_session_id}/state` — active TAL, mode, TS identity/revision/hash, expiry, and refresh status
 
 A selection resource update should carry awareness-level data, not full analysis:
@@ -85,7 +86,7 @@ A selection resource update should carry awareness-level data, not full analysis
 }
 ```
 
-The agent should call Analyze for authoritative sales volume, account counts, balance impact, and recommended guidance. Selection notifications should tell the agent what Monica selected, not try to replace analysis.
+The agent should call Analyze for authoritative sales volume, account counts, balance impact, and recommended guidance. Selection notifications should tell the agent what Monica selected, not try to replace analysis. For manual build, the agent should collect territory metadata and call a territory mutation tool such as `create_territory_from_parts`; the MC never creates territories directly.
 
 ### Canonical web channel
 
@@ -108,7 +109,7 @@ The same component serves sharing and assisted design. Capabilities are enabled 
 Used for upper management, Brian/developer verification, QA, and testing. Users can pan, zoom, inspect territories, toggle point layers, view metrics/labels, and read summaries. No selections or edits are emitted. This is analogous to a read-only EZT Designer user: the TS is visible and explorable, but not modifiable.
 
 ### `select` mode — agent-assisted spatial selection
-Used by Monica or another territory designer during an agent workflow. Includes all `view` capabilities plus part selection primitives. The component emits selected `part_ids[]` to the agent, and the agent decides what MCP tool call to make.
+Used by Monica or another territory designer during an agent workflow. Includes all `view` capabilities plus part selection primitives. The component emits selected `part_ids[]` to the agent, and the agent decides what MCP tool call to make. Select mode can be used with an existing TS/TAL for realign/analyze workflows, or with only a part layer for manual territory construction and list-return workflows.
 
 ### Future `edit` mode — richer direct manipulation
 Potential future mode for richer map interactions, still mediated by the agent and MCP tools. Not required for v1.

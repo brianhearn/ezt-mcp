@@ -1,7 +1,7 @@
 # TECHNICAL_SPEC.md — EZT MCP Implementation Design
 
-**Version:** 0.3.0
-**Date:** 2026-05-13
+**Version:** 0.4.0
+**Date:** 2026-05-14
 **Status:** Draft — implementation architecture baseline
 
 This document defines how EZT MCP implements the external behavior in [FUNCTIONAL_SPEC.md](FUNCTIONAL_SPEC.md) while obeying the non-negotiables in [CONSTITUTION.md](CONSTITUTION.md). It owns internal architecture, data flow, storage choices, algorithm design, testing strategy, observability, and deployment mechanics.
@@ -77,12 +77,16 @@ ezt_mcp/
     realign.py
     analyze.py
     get_map_visualization.py
+    request_part_selection.py
+    get_part_selection.py
+    create_territory_from_parts.py
     query_parts.py
     set_map_state.py
-    get_map_selection.py
+    get_map_selection.py              # compatibility/session-level helper
   resources/
     part_layers.py             # available part-layer discovery resources
-    map_sessions.py            # selection/state resources
+    map_sessions.py            # map state resources
+    part_selections.py         # first-class part-selection task resources
     guidance.py                # analysis/design guidance resources
   prompts/
     territory_design.py
@@ -105,7 +109,8 @@ ezt_mcp/
     service.py                 # provider routing/fallback
   map_component/
     sessions.py                # persistent session lifecycle, tokens
-    session_store.py           # Postgres backing for mc_sessions table, events, selection_commits, state machine
+    session_store.py           # Postgres backing for mc_sessions table, events, state machine
+    selection_store.py         # first-class selection tasks + committed part selections
     sse.py                     # SSE command channel for server-push events (mode_changed, tal_updated, job_progress, etc.)
     assets.py                  # URL/signing helpers for hosted MC assets
   db/

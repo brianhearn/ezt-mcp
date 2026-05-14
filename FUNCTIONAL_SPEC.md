@@ -1,7 +1,7 @@
 # FUNCTIONAL_SPEC.md — EZT MCP Functional Contract
 
-**Version:** 0.3.0
-**Date:** 2026-05-13
+**Version:** 0.4.0
+**Date:** 2026-05-14
 **Status:** Draft — open questions resolved for v1 surface
 
 This document defines EZT MCP's externally observable behavior for agent/client implementers. It specifies MCP tools, resources, prompts, caller-visible state rules, validation behavior, and acceptance criteria independent of implementation internals.
@@ -167,9 +167,12 @@ Common error codes include:
 | `realign` | Move parts within a specific TAL and return an updated TS. | RL-001, RL-003 to RL-005, S001, MC-004 |
 | `analyze` | Return structured analysis facts for one or more TALs or scopes. | AN-001 to AN-005, S001, S003 |
 | `get_map_visualization` | Idempotent: open/return persistent per-user MC workspace URL (creates if none exists for user_id; returns existing otherwise). | MC-001 to MC-004, S001, S002, verification |
+| `request_part_selection` | First-class human spatial input request: switch/open the MC on a part layer, prompt Monica to select parts, and return a selection task reference. | MC-004 to MC-006, S001 |
+| `get_part_selection` | Retrieve the committed part selection from a selection task, including part IDs and awareness metadata. | MC-004 to MC-006, post-selection analysis/list workflows |
+| `create_territory_from_parts` | Create or update one territory in a TAL from explicit selected part IDs plus agent-collected territory metadata. | MC-005, manual territory construction |
 | `query_parts` | Find parts by attribute filter predicate or explicit ID list; returns part_id + generic attribute bag only (no geometry). Paginated. | metadata enrichment, direct-build list construction, validation |
-| `set_map_state` | Deliberate agent-driven MC transitions (e.g. load different TAL, switch mode). Not used for routine job progress. | explicit workflow control |
-| `get_map_selection` | Read committed part selection (IDs + awareness metadata) from current user's persistent MC session. | post-selection analysis |
+| `set_map_state` | Deliberate low-level MC transitions (e.g. load different TAL, switch mode). Not used for routine job progress or as the primary selection API. | explicit workflow control |
+| `get_map_selection` | Backward-compatible/session-level alias for latest committed selection. Prefer `get_part_selection` for first-class selection workflows. | compatibility/helper |
 
 V1 TS cache behavior is implicit. Public tools may accept and return TS handles, but `ts_cache_put` is not a public v1 MCP tool.
 
@@ -633,7 +636,145 @@ Returns:
 
 ---
 
-## 12. TS Cache Behavior — implicit v1 surface
+## 12. Tool Contract: `request_part_selection`
+
+### 12.1 User intent
+
+Use when Monica needs to visually choose geographic parts before the agent decides what to do with them. Selection is a first-class human spatial input workflow, not merely incidental map-session state.
+
+Common purposes include:
+
+- `build_territory` — select parts that will become one new territory after the agent collects name/path metadata;
+- `realign` — select parts to move between existing territories;
+- `analyze` — select a spatial scope for analysis;
+- `return_list` — select parts and return the IDs/list without mutating a TS;
+- `generic` — collect part IDs for a caller-defined follow-up.
+
+### 12.2 Functional input
+
+The tool accepts:
+
+- `part_layer`, such as `us_zips`, `us_counties`, or `ca_fsa`;
+- optional `ts` or `ts_handle`;
+- optional `active_tal_id`;
+- `purpose`;
+- optional user-facing prompt/instructions to display in the MC;
+- optional constraints, such as restrict to unassigned parts, restrict to current territory, allow already-assigned parts, require contiguity, or maximum selected count;
+- optional expected TS identity when selection must be tied to a specific TS revision.
+
+### 12.3 Functional behavior
+
+1. Validate the requested `part_layer` and its map-selection capability.
+2. Open or reuse the caller's persistent MC workspace.
+3. Display the requested part layer in select mode. If a TS/TAL is supplied, render it as context under/over the selectable part layer.
+4. Create a short-lived `selection_task_id` scoped to the authenticated customer/user.
+5. Show the prompt/instructions in the MC.
+6. Allow Monica to click, ctrl-click, lasso, box, and clear a local transient selection.
+7. Commit only when Monica explicitly clicks Done.
+8. Notify subscribed agents/resources that the selection task has been committed.
+9. Do not mutate a TS/TAL. Follow-up mutation, analysis, or list-return behavior is performed by the agent through later tool calls.
+
+### 12.4 Functional output
+
+Initial response returns:
+
+- `selection_task_id`;
+- `status`, usually `awaiting_user_selection`;
+- `map_session_id`;
+- `map_url`;
+- `selection_resource_uri`, e.g. `ezt://part-selections/{selection_task_id}`;
+- `part_layer`;
+- `purpose`;
+- `expires_at`.
+
+Committed selection data includes:
+
+- `selection_task_id`;
+- `map_session_id`;
+- `event_id` and timestamp;
+- `part_layer`;
+- selected `part_ids`;
+- `selected_count`;
+- selection method summary, e.g. click/lasso/box/mixed;
+- TS identity and active TAL when applicable;
+- current assignment summary when cheaply available;
+- constraints/warnings, such as stale TS identity or parts already assigned.
+
+### 12.5 Failure behavior
+
+- Unknown or non-selectable part layer returns `UNKNOWN_PART_LAYER` or `UNSUPPORTED_OPERATION`.
+- Expired or missing selection task returns `INVALID_TS_HANDLE` or a more specific `UNKNOWN_SELECTION_TASK` once schemas add it.
+- Constraint violations are returned as structured errors or warnings and never silently ignored.
+
+### 12.6 Acceptance criteria
+
+- Covers MC-004, MC-005, MC-006, and S001.
+- Supports selection with no existing TAL/TS context for manual build and list-return workflows.
+- Does not perform territory mutation directly.
+
+---
+
+## 13. Tool Contract: `get_part_selection`
+
+### 13.1 User intent
+
+Use after `request_part_selection` when the agent needs the committed part IDs and awareness metadata.
+
+### 13.2 Functional input
+
+The tool accepts `selection_task_id`. It may also accept `map_session_id` for compatibility, but task ID is preferred.
+
+### 13.3 Functional behavior
+
+1. Return the latest committed selection for the task if Monica clicked Done.
+2. Return `awaiting_user_selection` if no commit exists yet.
+3. Return awareness metadata only; call `analyze` for authoritative metrics.
+4. Respect customer/user scoping.
+
+### 13.4 Acceptance criteria
+
+- Supports both build-from-selection and list-only workflows.
+- Does not expose geometry in the MCP payload.
+
+---
+
+## 14. Tool Contract: `create_territory_from_parts`
+
+### 14.1 User intent
+
+Use when the agent already has explicit part IDs — often from `request_part_selection` — and has collected the metadata needed to create or update one territory inside a TAL.
+
+### 14.2 Functional input
+
+The tool accepts:
+
+- `ts` or `ts_handle`;
+- target `tal_id`, or instructions to create a new TAL;
+- `part_layer`;
+- `part_ids`;
+- `territory_id` or server-generated ID policy;
+- `territory_label`;
+- optional `territory_path` for hierarchy, ordered root to leaf;
+- conflict policy for parts already assigned in the target TAL: reject, move, or replace;
+- expected TS identity for optimistic concurrency.
+
+### 14.3 Functional behavior
+
+1. Validate TS identity, target TAL, part layer, part IDs, and hierarchy depth.
+2. Fetch part geometries server-side; geometry is not returned in the request or intermediate selection payload.
+3. Create or update exactly one territory from the supplied parts.
+4. Recompute dissolved geometry and rollups for affected hierarchy nodes.
+5. Return an updated TS/TS handle and push a TAL refresh to the open MC when one is connected.
+6. Report assignment conflicts and repair side effects explicitly.
+
+### 14.4 Acceptance criteria
+
+- Covers manual territory construction in MC-005.
+- Keeps MC as a visual input surface only; the agent owns clarification and this tool owns TS/TAL mutation.
+
+---
+
+## 15. TS Cache Behavior — implicit v1 surface
 
 TS caching is a transport optimization, not a public v1 MCP tool. Agents should not need to manage cache lifecycle directly.
 
@@ -653,9 +794,9 @@ Acceptance criteria:
 
 ---
 
-## 13. MCP Resources — v1 Draft Surface
+## 16. MCP Resources — v1 Draft Surface
 
-### 13.1 `ezt://part-layers`
+### 16.1 `ezt://part-layers`
 
 Represents the authenticated caller's available canonical part layers for building, realigning, analyzing, and rendering TALs.
 
@@ -711,7 +852,7 @@ Example layer summary:
 }
 ```
 
-### 13.2 `ezt://part-layers/{part_layer}`
+### 16.2 `ezt://part-layers/{part_layer}`
 
 Represents detailed metadata for one canonical part layer.
 
@@ -723,9 +864,9 @@ Functional behavior:
 
 Agents should use this resource when a user names a geography ambiguously, e.g. “ZIPs,” “postal codes,” “counties,” or “FSAs,” and the agent needs to map that language to a stable `part_layer` ID before calling a build tool.
 
-### 13.3 `ezt://map-sessions/{map_session_id}/selection` (updated for persistent workspace)
+### 16.3 `ezt://part-selections/{selection_task_id}`
 
-Represents the latest committed selection from a select-mode MC session.
+Represents the committed output of a first-class part-selection task.
 
 Functional behavior:
 
@@ -736,6 +877,7 @@ Functional behavior:
 
 Expected data includes:
 
+- selection task ID;
 - map session ID;
 - event ID and timestamp;
 - TS identity at selection time;
@@ -748,7 +890,11 @@ Expected data includes:
 
 The agent should call `analyze` for authoritative account counts, sales volume, workload, and move impact.
 
-### 13.4 `ezt://map-sessions/{map_session_id}/state` (persistent per-user workspace model)
+### 16.4 `ezt://map-sessions/{map_session_id}/selection`
+
+Backward-compatible/session-level latest committed selection. Prefer `ezt://part-selections/{selection_task_id}` for first-class workflows.
+
+### 16.5 `ezt://map-sessions/{map_session_id}/state` (persistent per-user workspace model)
 
 Represents current transient map session state.
 
@@ -759,15 +905,16 @@ Expected data includes:
 - active TAL;
 - active TS identity;
 - expiry;
+- active selection task, if any;
 - last selection status;
 - last refresh status;
 - session state such as active, expired, or revoked.
 
 ---
 
-## 14. MCP Prompts / Guidance Resources — v1 Draft Surface
+## 17. MCP Prompts / Guidance Resources — v1 Draft Surface
 
-### 14.1 Analysis Presentation Guidance
+### 17.1 Analysis Presentation Guidance
 
 EZT MCP should expose versioned guidance that teaches agents how to turn `analyze` output into useful human-facing insight.
 
@@ -792,7 +939,7 @@ Functional behavior:
 
 ---
 
-## 15. Resolved v1 Scope Decisions (v0.3.0)
+## 18. Resolved v1 Scope Decisions (v0.4.0)
 
 1. **Territory split is v1 via Auto Build.** Customer requests like “split this oversized territory” are common and belong in v1. The contract is `auto_build` Scoped Split: derive a new TAL from the source TAL, replace one source territory with two or more optimized territories, and preserve the rest of the source TAL. It is not part of `realign` v1.
 2. **TS cache is implicit.** Public tools may accept/return TS handles, but `ts_cache_put` is not a public v1 MCP tool. Cache miss is expected and recoverable by resending the full TS.
@@ -803,11 +950,11 @@ Functional behavior:
 
 ---
 
-## 16. Acceptance Coverage Checklist
+## 19. Acceptance Coverage Checklist
 
 | Scenario group | Covered by |
 |---|---|
-| S001 | `get_map_visualization`, selection resource, `analyze`, `realign` |
+| S001 | `get_map_visualization`, `request_part_selection`, `get_part_selection`, `analyze`, `realign` |
 | S002 | `get_map_visualization`, `analyze`, presentation guidance |
 | S003 | `ingest_accounts`, `auto_build`, `analyze`, MC TAL switching |
 | GC-001 to GC-003 | `geocode_address`, `ingest_accounts` |
@@ -818,11 +965,12 @@ Functional behavior:
 | RL-001, RL-003 to RL-005 | `realign` |
 | RL-002 | `auto_build` Scoped Split |
 | AN-001 to AN-005 | `analyze`, presentation guidance |
-| MC-001 to MC-004 | `get_map_visualization` (persistent), `set_map_state`, `query_parts`, `get_map_selection`, SSE/POST comms, AWAITING_USER_SELECTION |
-| MC-005 | `analyze`, presentation guidance |
+| MC-001 to MC-004 | `get_map_visualization` (persistent), `request_part_selection`, `get_part_selection`, `set_map_state`, `query_parts`, SSE/POST comms |
+| MC-005 to MC-006 | `request_part_selection`, `get_part_selection`, `create_territory_from_parts`, `query_parts`, MC SSE refresh |
+| MC-007 | `analyze`, presentation guidance |
 | CH-001 to CH-002 | Implicit TS handles / cache behavior |
 | PLU-001 | Future tool, not Phase 1 |
 
 ---
 
-*This functional contract draft has the v1 public surface decisions resolved. Prefer moving next into executable schemas before implementation.*
+*This functional contract draft has the v1 public surface decisions resolved. Keep schemas and implementation aligned with the first-class Part Selection model.*

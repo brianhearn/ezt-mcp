@@ -1,7 +1,7 @@
 # SCENARIOS.md — EZT MCP Workflow Scenarios
 
-**Version:** 0.9.3
-**Date:** 2026-05-13
+**Version:** 0.9.4
+**Date:** 2026-05-14
 **Status:** Lean scenario registry — draft
 
 This document is a compact registry of human/agent/EZT MCP workflows. It exists to validate that the product architecture still covers real scenarios as tool contracts and implementation details evolve.
@@ -485,7 +485,33 @@ Decision: territory split is v1 via Auto Build Scoped Split, not Realign.
 4. The agent uses the selection in a Realign request after Monica confirms the target territory.
 5. The MC refreshes to show the updated TAL.
 
-### MC-005 — Agent creates a narrative executive brief from TS and Analyze output
+### MC-005 — Monica manually builds a new TAL by selecting ZIPs
+
+1. Monica says: "I want to build a new territory layer manually from US ZIP codes."
+2. The agent requests a first-class part-selection task for `us_zips` with purpose `build_territory`.
+3. EZT MCP opens or reuses Monica's persistent MC workspace, displays the ZIP part layer, and switches the MC to select mode.
+4. Monica ctrl-clicks, lassos, and boxes ZIPs until the first territory selection is ready.
+5. Monica clicks Done.
+6. EZT MCP commits the selected ZIP IDs and notifies the agent that the selection is available.
+7. The agent asks Monica for the territory name and, for hierarchical TALs, the parent path such as Region/District.
+8. Monica provides the territory metadata.
+9. The agent calls a territory-from-parts mutation tool to create the territory in the new TAL.
+10. EZT MCP updates the TS/TAL and pushes the refreshed TAL to the open MC.
+11. Monica repeats selection and naming for the second territory, third territory, and so on until the manual TAL is complete.
+
+Decision: Part selection is a first-class human spatial input workflow. The MC selects parts; the agent asks clarifying questions; EZT MCP mutation tools update the TS/TAL.
+
+### MC-006 — Monica selects ZIPs and only wants the list
+
+1. Monica says: "Let me select some ZIPs and give me the list when I'm done."
+2. The agent requests a first-class part-selection task for `us_zips` with purpose `return_list`.
+3. EZT MCP opens or reuses Monica's persistent MC workspace and switches the ZIP layer into select mode.
+4. Monica selects ZIPs visually and clicks Done.
+5. EZT MCP commits the selection and notifies the agent.
+6. The agent retrieves the committed part selection and returns the ZIP list, optionally with labels or lightweight attributes.
+7. No TS/TAL mutation is performed.
+
+### MC-007 — Agent creates a narrative executive brief from TS and Analyze output
 
 1. Monica says: "Summarize this plan for leadership."
 2. The agent calls Analyze on the relevant TALs.
