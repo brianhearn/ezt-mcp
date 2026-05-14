@@ -65,6 +65,7 @@ def test_build_render_payload_filters_active_tal_and_bounds():
     assert payload["bounds"] == [-100.0, 35.0, -89.0, 37.0]
     assert len(payload["geojson"]["features"]) == 2
     assert payload["geojson"]["features"][0]["properties"]["_render_color"]
+    assert payload["geojson"]["features"][0]["properties"]["part_ids"] == '["T-WEST"]'
     assert payload["basemap"]["url"] == "https://expertpack.ai/mcp/assets/tiles/us-basemap.pmtiles"
 
 

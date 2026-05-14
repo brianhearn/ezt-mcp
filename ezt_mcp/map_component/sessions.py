@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -557,9 +558,21 @@ def _feature_for_render(feature: Mapping[str, Any], index: int) -> dict[str, Any
     )
     return {
         "type": "Feature",
-        "properties": properties,
+        "properties": _json_safe_properties(properties),
         "geometry": feature.get("geometry"),
     }
+
+
+def _json_safe_properties(properties: Mapping[str, Any]) -> dict[str, Any]:
+    safe: dict[str, Any] = {}
+    for key, value in properties.items():
+        if value is None or isinstance(value, (str, int, float, bool)):
+            safe[key] = value
+        elif isinstance(value, (list, tuple, dict)):
+            safe[key] = json.dumps(value, separators=(",", ":"), sort_keys=True)
+        else:
+            safe[key] = str(value)
+    return safe
 
 
 def _feature_collection_bounds(features: list[Mapping[str, Any]]) -> list[float]:
