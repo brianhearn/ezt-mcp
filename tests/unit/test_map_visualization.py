@@ -69,6 +69,56 @@ def test_build_render_payload_filters_active_tal_and_bounds():
     assert payload["basemap"]["url"] == "https://expertpack.ai/mcp/assets/tiles/us-basemap.pmtiles"
 
 
+def test_build_render_payload_applies_presentation_template_and_overrides():
+    ts = sample_ts()
+    ts["properties"]["presentation"] = {
+        "views": {
+            "qa_verification": {
+                "title": "QA From TS",
+                "panel": {
+                    "summary_items": [{"label": "Source", "value": "TS"}]
+                },
+            }
+        }
+    }
+
+    payload = build_render_payload(
+        ts,
+        active_tal_id="tal-current",
+        mode="view",
+        presentation={
+            "view_name": "qa_verification",
+            "style_overrides": {
+                "debug_panel": False,
+                "panel": {
+                    "summary_items": [{"label": "Override", "value": "Request"}]
+                },
+            },
+        },
+        public_base_url="https://expertpack.ai/mcp",
+    )
+
+    assert payload["presentation"]["view_name"] == "qa_verification"
+    assert payload["presentation"]["panel_template"] == "qa_verification"
+    assert payload["presentation"]["title"] == "QA From TS"
+    assert payload["presentation"]["debug_panel"] is False
+    assert payload["presentation"]["panel"]["summary_items"] == [
+        {"label": "Override", "value": "Request"}
+    ]
+
+
+def test_build_render_payload_defaults_select_mode_to_selection_template():
+    payload = build_render_payload(
+        sample_ts(),
+        active_tal_id="tal-current",
+        mode="select",
+        public_base_url="https://expertpack.ai/mcp",
+    )
+
+    assert payload["presentation"]["panel_template"] == "selection"
+    assert payload["presentation"]["debug_panel"] is False
+
+
 def test_session_store_returns_new_tab_response_and_validates_token():
     store = InMemoryMapSessionStore()
     session = store.create_session(

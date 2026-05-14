@@ -524,6 +524,12 @@ def build_render_payload(
             {"active_tal_id": requested_tal},
         )
 
+    presentation_payload = _presentation_payload(
+        ts_properties=properties,
+        request_presentation=presentation or {},
+        view_name=_view_name(presentation, mode=mode),
+        mode=mode,
+    )
     clean_features = [_feature_for_render(feature, index) for index, feature in enumerate(features)]
     bounds = _feature_collection_bounds(clean_features)
     tal_label = _tal_label(properties, requested_tal)
@@ -541,12 +547,97 @@ def build_render_payload(
             "territory_count": len(clean_features),
         },
         "bounds": bounds,
-        "presentation": dict(presentation or {}),
+        "presentation": presentation_payload,
         "geojson": {
             "type": "FeatureCollection",
             "features": clean_features,
         },
     }
+
+
+PRESENTATION_TEMPLATES: dict[str, dict[str, Any]] = {
+    "qa_verification": {
+        "view_name": "qa_verification",
+        "panel_template": "qa_verification",
+        "show_panel": True,
+        "show_legend": True,
+        "debug_panel": True,
+        "title": "Territory QA Verification",
+        "subtitle": "Review generated geometry, counts, and map-render diagnostics.",
+    },
+    "executive_review": {
+        "view_name": "executive_review",
+        "panel_template": "executive_review",
+        "show_panel": True,
+        "show_legend": True,
+        "debug_panel": False,
+        "title": "Territory Review",
+        "subtitle": "Executive summary of the active territory alignment layer.",
+    },
+    "selection": {
+        "view_name": "selection",
+        "panel_template": "selection",
+        "show_panel": True,
+        "show_legend": True,
+        "debug_panel": False,
+        "title": "Select Geography",
+        "subtitle": "Choose parts on the map, then commit the selection.",
+    },
+}
+
+
+def _presentation_payload(
+    *,
+    ts_properties: Mapping[str, Any],
+    request_presentation: Mapping[str, Any],
+    view_name: str,
+    mode: str,
+) -> dict[str, Any]:
+    template = copy.deepcopy(PRESENTATION_TEMPLATES.get(view_name, {}))
+    if not template:
+        template = copy.deepcopy(
+            PRESENTATION_TEMPLATES["selection" if mode == "select" else "executive_review"]
+        )
+        template["view_name"] = view_name
+    ts_view = _ts_presentation_view(ts_properties, view_name)
+    overrides = request_presentation.get("style_overrides")
+    if not isinstance(overrides, Mapping):
+        overrides = {}
+    merged = _deep_merge(template, ts_view)
+    merged = _deep_merge(merged, dict(overrides))
+    merged["view_name"] = view_name
+    merged["style_overrides"] = dict(overrides)
+    return merged
+
+
+def _view_name(presentation: Mapping[str, Any] | None, *, mode: str) -> str:
+    if isinstance(presentation, Mapping) and isinstance(presentation.get("view_name"), str):
+        view_name = presentation["view_name"].strip()
+        if view_name:
+            return view_name
+    return "selection" if mode == "select" else "executive_review"
+
+
+def _ts_presentation_view(ts_properties: Mapping[str, Any], view_name: str) -> dict[str, Any]:
+    presentation = ts_properties.get("presentation")
+    if not isinstance(presentation, Mapping):
+        return {}
+    views = presentation.get("views")
+    if isinstance(views, Mapping) and isinstance(views.get(view_name), Mapping):
+        return dict(views[view_name])
+    if isinstance(presentation.get(view_name), Mapping):
+        return dict(presentation[view_name])
+    return {}
+
+
+def _deep_merge(base: Mapping[str, Any], override: Mapping[str, Any]) -> dict[str, Any]:
+    merged = copy.deepcopy(dict(base))
+    for key, value in override.items():
+        if isinstance(value, Mapping) and isinstance(merged.get(key), Mapping):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = copy.deepcopy(value)
+    return merged
 
 
 def _feature_for_render(feature: Mapping[str, Any], index: int) -> dict[str, Any]:

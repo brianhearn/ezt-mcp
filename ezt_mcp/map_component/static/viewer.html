@@ -10,15 +10,14 @@
   <body>
     <div id="map"></div>
     <aside id="panel">
-      <div class="eyebrow">EasyTerritory MCP</div>
+      <div class="eyebrow" id="panel-eyebrow">EasyTerritory MCP</div>
       <h1 id="title">Map Visualization</h1>
       <div id="subtitle">Loading…</div>
-      <dl>
-        <dt>Mode</dt><dd id="mode">view</dd>
-        <dt>Territories</dt><dd id="territory-count">—</dd>
-        <dt>TS Revision</dt><dd id="revision">—</dd>
-        <dt>Expires</dt><dd id="expires">—</dd>
-      </dl>
+      <dl id="summary"></dl>
+      <div id="legend" hidden>
+        <div class="section-title">Legend</div>
+        <div id="legend-items"></div>
+      </div>
       <div id="status" role="status">Initializing map…</div>
       <pre id="debug" hidden></pre>
     </aside>

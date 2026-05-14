@@ -10,8 +10,7 @@ function debugMessage(message, details) {
   const text = details ? `${message}: ${details}` : message;
   debugMessages.push(text);
   console.warn(text);
-  if (debugEl) {
-    debugEl.hidden = false;
+  if (debugEl && !debugEl.hidden) {
     debugEl.textContent = debugMessages.slice(-8).join("\n");
   }
 }
@@ -25,6 +24,149 @@ function errorDetails(error) {
   } catch (_) {
     return String(error);
   }
+}
+
+
+function styleOverrides(payload) {
+  const presentation = payload.presentation || {};
+  return presentation.style_overrides || {};
+}
+
+function debugEnabled(payload) {
+  const presentation = payload.presentation || {};
+  const overrides = styleOverrides(payload);
+  return Boolean(overrides.debug_panel ?? presentation.debug_panel);
+}
+
+function panelVisible(payload) {
+  const presentation = payload.presentation || {};
+  const overrides = styleOverrides(payload);
+  return overrides.show_panel ?? presentation.show_panel ?? true;
+}
+
+function legendVisible(payload) {
+  const presentation = payload.presentation || {};
+  const overrides = styleOverrides(payload);
+  return overrides.show_legend ?? presentation.show_legend ?? true;
+}
+
+function renderPanel(payload) {
+  const presentation = payload.presentation || {};
+  const panel = document.getElementById("panel");
+  if (panel) panel.hidden = !panelVisible(payload);
+
+  document.getElementById("panel-eyebrow").textContent = presentation.eyebrow || panelEyebrow(presentation.panel_template);
+  document.getElementById("title").textContent = presentation.title || payload.active_tal.label || payload.active_tal.tal_id;
+  document.getElementById("subtitle").textContent = presentation.subtitle || payload.active_tal.tal_id;
+
+  const summaryItems = panelSummaryItems(payload);
+  const summaryEl = document.getElementById("summary");
+  summaryEl.innerHTML = "";
+  for (const item of summaryItems) {
+    const dt = document.createElement("dt");
+    dt.textContent = item.label;
+    const dd = document.createElement("dd");
+    dd.textContent = item.value;
+    summaryEl.append(dt, dd);
+  }
+  renderLegend(payload);
+  if (debugEl) debugEl.hidden = !debugEnabled(payload);
+}
+
+function panelEyebrow(templateName) {
+  if (templateName === "qa_verification") return "QA Verification";
+  if (templateName === "selection") return "Part Selection";
+  return "Executive Review";
+}
+
+function panelSummaryItems(payload) {
+  const presentation = payload.presentation || {};
+  const panel = presentation.panel || {};
+  if (Array.isArray(panel.summary_items)) return panel.summary_items.map(normalizeSummaryItem);
+
+  const template = presentation.panel_template || "executive_review";
+  const featureCount = payload.geojson && payload.geojson.features ? payload.geojson.features.length : 0;
+  const partCount = totalPartCount(payload.geojson);
+  const base = [
+    { label: "Mode", value: payload.mode },
+    { label: "Territories", value: payload.active_tal.territory_count ?? featureCount },
+  ];
+  if (template === "qa_verification") {
+    return [
+      ...base,
+      { label: "Assigned Parts", value: partCount || "—" },
+      { label: "Bounds", value: shortBounds(payload.bounds) },
+      { label: "TS Revision", value: payload.ts_identity.revision },
+      { label: "Expires", value: new Date(payload.expires_at || Date.now()).toLocaleString() },
+    ];
+  }
+  if (template === "selection") {
+    return [
+      ...base,
+      { label: "Selected", value: "0" },
+      { label: "Layer", value: presentation.part_layer || "—" },
+      { label: "Expires", value: new Date(payload.expires_at || Date.now()).toLocaleString() },
+    ];
+  }
+  return [
+    ...base,
+    { label: "Assigned Parts", value: partCount || "—" },
+    { label: "TS Revision", value: payload.ts_identity.revision },
+  ];
+}
+
+function normalizeSummaryItem(item) {
+  if (Array.isArray(item)) return { label: String(item[0] || ""), value: String(item[1] ?? "") };
+  return { label: String(item.label || item.name || ""), value: String(item.value ?? "") };
+}
+
+function totalPartCount(geojson) {
+  if (!geojson || !Array.isArray(geojson.features)) return 0;
+  let total = 0;
+  for (const feature of geojson.features) {
+    const props = feature.properties || {};
+    try {
+      const partIds = typeof props.part_ids === "string" ? JSON.parse(props.part_ids) : props.part_ids;
+      if (Array.isArray(partIds)) total += partIds.length;
+    } catch (_) {}
+  }
+  return total;
+}
+
+function shortBounds(bounds) {
+  if (!Array.isArray(bounds) || bounds.length !== 4) return "—";
+  return bounds.map((value) => Number(value).toFixed(2)).join(", ");
+}
+
+function renderLegend(payload) {
+  const legendEl = document.getElementById("legend");
+  const itemsEl = document.getElementById("legend-items");
+  if (!legendEl || !itemsEl) return;
+  const presentation = payload.presentation || {};
+  const legendItems = Array.isArray(presentation.legend_items)
+    ? presentation.legend_items
+    : defaultLegendItems(payload.geojson);
+  legendEl.hidden = !legendVisible(payload) || legendItems.length === 0;
+  itemsEl.innerHTML = "";
+  for (const item of legendItems) {
+    const row = document.createElement("div");
+    row.className = "legend-item";
+    const swatch = document.createElement("span");
+    swatch.className = "legend-swatch";
+    swatch.style.background = item.color || "#2F80ED";
+    const label = document.createElement("span");
+    label.textContent = item.label || item.value || "Territory";
+    row.append(swatch, label);
+    itemsEl.append(row);
+  }
+}
+
+function defaultLegendItems(geojson) {
+  if (!geojson || !Array.isArray(geojson.features)) return [];
+  return geojson.features.slice(0, 8).map((feature) => ({
+    label: (feature.properties && (feature.properties._render_label || feature.properties.label)) || "Territory",
+    color: (feature.properties && feature.properties._render_color) || "#2F80ED",
+  }));
 }
 
 function sessionParts() {
@@ -271,12 +413,7 @@ async function main() {
   }
   const payload = await response.json();
 
-  document.getElementById("title").textContent = payload.active_tal.label || payload.active_tal.tal_id;
-  document.getElementById("subtitle").textContent = payload.active_tal.tal_id;
-  document.getElementById("mode").textContent = payload.mode;
-  document.getElementById("territory-count").textContent = payload.active_tal.territory_count;
-  document.getElementById("revision").textContent = payload.ts_identity.revision;
-  document.getElementById("expires").textContent = new Date(payload.expires_at || Date.now()).toLocaleString();
+  renderPanel(payload);
 
   const protocol = new pmtiles.Protocol();
   maplibregl.addProtocol("pmtiles", protocol.tile);
@@ -292,19 +429,19 @@ async function main() {
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
 
   map.on("load", () => {
-    debugMessage("Map load event", `features=${payload.geojson && payload.geojson.features ? payload.geojson.features.length : 0}; bounds=${JSON.stringify(payload.bounds)}`);
+    if (debugEnabled(payload)) debugMessage("Map load event", `features=${payload.geojson && payload.geojson.features ? payload.geojson.features.length : 0}; bounds=${JSON.stringify(payload.bounds)}`);
     addTerritoryLayers(map, payload);
     fitBounds(map, payload.bounds);
     setStatus("Loaded. Debug panel shows map events/errors if present.");
   });
 
   map.on("styledata", () => {
-    debugMessage("Style data loaded");
+    if (debugEnabled(payload)) debugMessage("Style data loaded");
   });
 
   map.on("sourcedata", (event) => {
     if (event && event.sourceId && event.isSourceLoaded) {
-      debugMessage("Source loaded", event.sourceId);
+      if (debugEnabled(payload)) debugMessage("Source loaded", event.sourceId);
     }
   });
 

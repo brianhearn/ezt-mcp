@@ -47,6 +47,32 @@ h1 {
   font-size: 13px;
 }
 
+.section-title {
+  color: #8fa1b6;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 10px 0 6px;
+  text-transform: uppercase;
+}
+
+.legend-item {
+  align-items: center;
+  color: #d6dee9;
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.legend-swatch {
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  border-radius: 999px;
+  display: inline-block;
+  height: 10px;
+  width: 10px;
+}
+
 #debug {
   background: rgba(0, 0, 0, 0.28);
   border: 1px solid rgba(255, 255, 255, 0.1);
