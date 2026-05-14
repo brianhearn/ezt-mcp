@@ -89,6 +89,16 @@ h1 {
   outline: none;
 }
 
+.tal-control option {
+  background: #101820;
+  color: #f6f8fb;
+}
+
+.tal-control option:checked {
+  background: #1d4ed8;
+  color: #ffffff;
+}
+
 .section-title {
   color: #8fa1b6;
   font-size: 11px;
