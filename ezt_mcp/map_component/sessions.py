@@ -51,6 +51,7 @@ class MapVisualizationSession:
     selection_resource_uri: str | None = None
     pending_job_reference: dict[str, Any] | None = None
     committed_selection: dict[str, Any] | None = None
+    active_selection_task_id: str | None = None
     updated_at: datetime | None = None
 
     @property
@@ -100,6 +101,7 @@ class MapVisualizationSession:
                 "ts_identity": self.ts_identity,
                 "pending_job_reference": self.pending_job_reference,
                 "committed_selection": self.committed_selection,
+                "active_selection_task_id": self.active_selection_task_id,
                 "created_at": _isoformat_z(self.created_at),
                 "updated_at": _isoformat_z(self.updated_at),
                 "expires_at": _isoformat_z(self.expires_at),
@@ -145,6 +147,8 @@ class MapVisualizationSession:
         )
         if previous_mode != mode:
             self.committed_selection = None
+            if mode != "select":
+                self.active_selection_task_id = None
 
 
 @dataclass
@@ -352,6 +356,32 @@ class InMemoryMapSessionStore:
             )
         return session.state_payload()
 
+    def set_active_selection_task(
+        self,
+        map_session_id: str,
+        selection_task_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        now = now or datetime.now(tz=UTC)
+        session = self.get_session(map_session_id)
+        session.active_selection_task_id = selection_task_id
+        session.mode = "select"
+        session.render_payload["mode"] = "select"
+        session.selection_resource_uri = f"ezt://part-selections/{selection_task_id}"
+        session.updated_at = now
+        self.publish_event(
+            map_session_id,
+            {
+                "type": "selection_prompt",
+                "map_session_id": map_session_id,
+                "selection_task_id": selection_task_id,
+                "selection_resource_uri": session.selection_resource_uri,
+                "created_at": _isoformat_z(now),
+            },
+        )
+        return session.state_payload()
+
     def commit_selection(
         self,
         map_session_id: str,
@@ -381,6 +411,8 @@ class InMemoryMapSessionStore:
             "part_ids": list(dict.fromkeys(part_ids)),
             "committed_at": _isoformat_z(now),
             "job_id": selection.get("job_id"),
+            "selection_task_id": selection.get("selection_task_id") or session.active_selection_task_id,
+            "selection_method": selection.get("selection_method"),
         }
         session.committed_selection = _drop_none(payload)
         session.updated_at = now

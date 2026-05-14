@@ -6,7 +6,7 @@ import asyncio
 import json
 from importlib import resources
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from starlette.requests import Request
 from starlette.responses import (
@@ -23,9 +23,16 @@ from .sessions import InMemoryMapSessionStore, MapVisualizationError
 class MapVisualizationRoutes:
     """HTTP handlers for dev/test map visualization sessions."""
 
-    def __init__(self, store: InMemoryMapSessionStore, *, public_base_url: str):
+    def __init__(
+        self,
+        store: InMemoryMapSessionStore,
+        *,
+        public_base_url: str,
+        on_selection_committed: Callable[[Mapping[str, Any]], dict[str, Any] | None] | None = None,
+    ):
         self.store = store
         self.public_base_url = public_base_url.rstrip("/")
+        self.on_selection_committed = on_selection_committed
 
     async def create_visualization(self, request: Request) -> JSONResponse:
         body = await request.json()
@@ -112,9 +119,15 @@ class MapVisualizationRoutes:
                     "INVALID_SELECTION", "Request body must be a JSON object."
                 )
             selection = self.store.commit_selection(session.map_session_id, body)
+            part_selection = None
+            if self.on_selection_committed is not None:
+                part_selection = self.on_selection_committed(selection)
         except MapVisualizationError as exc:
             return _error_response(exc, status_code=_status_for_error(exc))
-        return JSONResponse({"ok": True, "result": selection})
+        payload = {"ok": True, "result": selection}
+        if part_selection is not None:
+            payload["part_selection"] = part_selection
+        return JSONResponse(payload)
 
     async def static_asset(self, request: Request) -> Response:
         asset_name = request.path_params["asset_name"]

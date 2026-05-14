@@ -1,0 +1,21 @@
+{
+  "part_layer": "us_zips",
+  "purpose": "build_territory",
+  "prompt": "Select the ZIP codes for the new North Florida territory, then click Done.",
+  "active_tal_id": "tal-current",
+  "user_id": "monica",
+  "expiry_seconds": 3600,
+  "ts": {
+    "type": "FeatureCollection",
+    "properties": {
+      "active_tal_id": "tal-current",
+      "ts_identity": {
+        "ts_id": "ts-us-sales-2026-q2",
+        "revision": 7,
+        "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "updated_at": "2026-05-12T19:40:00Z"
+      }
+    },
+    "features": []
+  }
+}

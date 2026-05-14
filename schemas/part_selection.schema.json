@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.easyterritory.com/ezt-mcp/part_selection.schema.json",
+  "title": "EZT MCP First-Class Part Selection Contracts",
+  "type": "object",
+  "$defs": {
+    "selectionPurpose": {
+      "type": "string",
+      "enum": ["build_territory", "realign", "analyze", "return_list", "generic"]
+    },
+    "selectionStatus": {
+      "type": "string",
+      "enum": ["awaiting_user_selection", "committed", "expired", "cancelled"]
+    },
+    "requestPartSelectionRequest": {
+      "allOf": [
+        {
+          "$ref": "ts-reference.schema.json#/$defs/tsInputRef"
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["part_layer", "purpose"],
+          "properties": {
+            "part_layer": {
+              "$ref": "common.schema.json#/$defs/nonEmptyString"
+            },
+            "purpose": {
+              "$ref": "#/$defs/selectionPurpose"
+            },
+            "prompt": {
+              "type": "string",
+              "description": "Human-facing selection instruction shown by the host/agent or MC."
+            },
+            "active_tal_id": {
+              "type": "string"
+            },
+            "user_id": {
+              "type": "string"
+            },
+            "expiry_seconds": {
+              "type": "integer",
+              "minimum": 60,
+              "maximum": 86400
+            }
+          }
+        }
+      ]
+    },
+    "selectionTaskReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selection_task_id",
+        "status",
+        "purpose",
+        "part_layer",
+        "map_session_id",
+        "map_url",
+        "selection_resource_uri",
+        "state_resource_uri",
+        "session_exists",
+        "created_at",
+        "expires_at"
+      ],
+      "properties": {
+        "selection_task_id": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString"
+        },
+        "status": {
+          "$ref": "#/$defs/selectionStatus"
+        },
+        "purpose": {
+          "$ref": "#/$defs/selectionPurpose"
+        },
+        "part_layer": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "map_session_id": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString"
+        },
+        "map_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "selection_resource_uri": {
+          "type": "string",
+          "pattern": "^ezt://part-selections/.+"
+        },
+        "state_resource_uri": {
+          "type": "string",
+          "pattern": "^ezt://map-sessions/.+/state$"
+        },
+        "session_exists": {
+          "type": "boolean"
+        },
+        "active_tal_id": {
+          "type": "string"
+        },
+        "ts_identity": {
+          "$ref": "ts-reference.schema.json#/$defs/tsIdentity"
+        },
+        "created_at": {
+          "$ref": "common.schema.json#/$defs/isoDateTime"
+        },
+        "expires_at": {
+          "$ref": "common.schema.json#/$defs/isoDateTime"
+        }
+      }
+    },
+    "requestPartSelectionResponse": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ok", "result"],
+          "properties": {
+            "ok": { "const": true },
+            "result": { "$ref": "#/$defs/selectionTaskReference" },
+            "warnings": {
+              "type": "array",
+              "items": { "$ref": "common.schema.json#/$defs/warning" }
+            }
+          }
+        },
+        { "$ref": "common.schema.json#/$defs/errorEnvelope" }
+      ]
+    },
+    "getPartSelectionRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selection_task_id"],
+      "properties": {
+        "selection_task_id": {
+          "$ref": "common.schema.json#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "committedSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "selection_task_id",
+        "purpose",
+        "part_layer",
+        "part_ids",
+        "map_session_id",
+        "committed_at"
+      ],
+      "properties": {
+        "type": { "const": "part_selection" },
+        "selection_task_id": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "purpose": { "$ref": "#/$defs/selectionPurpose" },
+        "part_layer": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "part_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "common.schema.json#/$defs/nonEmptyString" }
+        },
+        "selection_method": { "type": "string" },
+        "map_session_id": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "committed_at": { "$ref": "common.schema.json#/$defs/isoDateTime" }
+      }
+    },
+    "partSelectionResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selection_task_id",
+        "status",
+        "purpose",
+        "part_layer",
+        "map_session_id",
+        "created_at",
+        "expires_at"
+      ],
+      "properties": {
+        "selection_task_id": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "status": { "$ref": "#/$defs/selectionStatus" },
+        "purpose": { "$ref": "#/$defs/selectionPurpose" },
+        "part_layer": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "prompt": { "type": "string" },
+        "map_session_id": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "active_tal_id": { "type": "string" },
+        "ts_identity": { "$ref": "ts-reference.schema.json#/$defs/tsIdentity" },
+        "selection": { "$ref": "#/$defs/committedSelection" },
+        "committed_at": { "$ref": "common.schema.json#/$defs/isoDateTime" },
+        "created_at": { "$ref": "common.schema.json#/$defs/isoDateTime" },
+        "expires_at": { "$ref": "common.schema.json#/$defs/isoDateTime" }
+      }
+    },
+    "getPartSelectionResponse": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ok", "result"],
+          "properties": {
+            "ok": { "const": true },
+            "result": { "$ref": "#/$defs/partSelectionResource" },
+            "warnings": {
+              "type": "array",
+              "items": { "$ref": "common.schema.json#/$defs/warning" }
+            }
+          }
+        },
+        { "$ref": "common.schema.json#/$defs/errorEnvelope" }
+      ]
+    },
+    "createTerritoryFromPartsRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["part_layer", "part_ids", "territory_name"],
+      "properties": {
+        "part_layer": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "part_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "common.schema.json#/$defs/nonEmptyString" }
+        },
+        "territory_name": { "$ref": "common.schema.json#/$defs/nonEmptyString" },
+        "territory_path": {
+          "type": "array",
+          "maxItems": 5,
+          "items": { "$ref": "common.schema.json#/$defs/nonEmptyString" }
+        },
+        "tal_id": { "type": "string" },
+        "conflict_policy": {
+          "type": "string",
+          "enum": ["reject", "replace", "move_from_existing", "allow_overlap"]
+        }
+      }
+    }
+  }
+}

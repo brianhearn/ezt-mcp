@@ -23,6 +23,11 @@ from .db.part_layers import AsyncpgPartLayerRepository
 from .db.parts import AsyncpgPartsRepository
 from .observability import RequestTimingMiddleware, timed_async_operation
 from .jobs import CustomerContext, InMemoryJobRepository, InvalidJobTransitionError, JobAccessError
+from .part_selection import (
+    InMemoryPartSelectionRepository,
+    InvalidPartSelectionError,
+    PartSelectionAccessError,
+)
 from .resources.part_layers import (
     UnknownPartLayerError,
     assert_no_forbidden_public_fields,
@@ -42,6 +47,7 @@ class AppState:
         self.part_layers_repo: AsyncpgPartLayerRepository | None = None
         self.parts_repo: AsyncpgPartsRepository | None = None
         self.jobs_repo: AsyncpgJobRepository | InMemoryJobRepository = InMemoryJobRepository()
+        self.part_selections = InMemoryPartSelectionRepository()
         self.map_sessions = InMemoryMapSessionStore()
 
 
@@ -141,6 +147,21 @@ def create_mcp_server(state: AppState, *, public_base_url: str):
                 )
             return json.dumps(result, indent=2)
 
+    @mcp.resource("ezt://part-selections/{selection_task_id}")
+    async def part_selection(selection_task_id: str) -> str:
+        """Committed output or current status for a first-class part-selection task."""
+        async with timed_async_operation(
+            logger, "mcp.resource.part_selections.detail", selection_task_id=selection_task_id
+        ):
+            try:
+                task = state.part_selections.get(_default_customer_context(), selection_task_id)
+            except PartSelectionAccessError as exc:
+                return json.dumps(
+                    _selection_error_payload(exc.code, str(exc), selection_task_id=selection_task_id),
+                    indent=2,
+                )
+            return json.dumps(task.resource(), indent=2)
+
     @mcp.resource("ezt://map-sessions/{map_session_id}/state")
     async def map_session_state(map_session_id: str) -> str:
         """Current Map Component session state."""
@@ -224,6 +245,99 @@ def create_mcp_server(state: AppState, *, public_base_url: str):
 
 
     @mcp.tool(
+        name="request_part_selection",
+        description=(
+            "Create a first-class human part-selection task, open/reuse the user's "
+            "Map Component in select mode, and return a selection resource URI."
+        ),
+        structured_output=True,
+    )
+    async def request_part_selection(
+        part_layer: str,
+        purpose: str = "generic",
+        prompt: str | None = None,
+        ts: dict[str, Any] | None = None,
+        active_tal_id: str | None = None,
+        user_id: str | None = None,
+        expiry_seconds: int | None = None,
+    ) -> dict[str, Any]:
+        request: dict[str, Any] = {
+            "mode": "select",
+            "user_id": user_id or "default-user",
+            "expiry_seconds": expiry_seconds,
+        }
+        if ts is not None:
+            request["ts"] = ts
+        if active_tal_id is not None:
+            request["active_tal_id"] = active_tal_id
+        async with timed_async_operation(logger, "mcp.tool.request_part_selection"):
+            return _request_part_selection_tool_result(
+                state,
+                request,
+                part_layer=part_layer,
+                purpose=purpose,
+                prompt=prompt,
+                public_base_url=public_base_url,
+            )
+
+    @mcp.tool(
+        name="get_part_selection",
+        description="Return the status or committed selected part IDs for a part-selection task.",
+        structured_output=True,
+    )
+    async def get_part_selection(selection_task_id: str) -> dict[str, Any]:
+        async with timed_async_operation(
+            logger, "mcp.tool.get_part_selection", selection_task_id=selection_task_id
+        ):
+            try:
+                task = state.part_selections.get(_default_customer_context(), selection_task_id)
+            except PartSelectionAccessError as exc:
+                return _selection_error_payload(exc.code, str(exc), selection_task_id=selection_task_id)
+            return {"ok": True, "result": task.resource()}
+
+    @mcp.tool(
+        name="create_territory_from_parts",
+        description=(
+            "Contract skeleton for creating/updating one territory from explicit part IDs. "
+            "The Map Component never creates territories directly."
+        ),
+        structured_output=True,
+    )
+    async def create_territory_from_parts(
+        part_layer: str,
+        part_ids: list[str],
+        territory_name: str,
+        territory_path: list[str] | None = None,
+        tal_id: str | None = None,
+        conflict_policy: str | None = None,
+    ) -> dict[str, Any]:
+        async with timed_async_operation(logger, "mcp.tool.create_territory_from_parts"):
+            if not part_ids or not all(isinstance(item, str) and item for item in part_ids):
+                return _selection_error_payload(
+                    "INVALID_REQUEST", "create_territory_from_parts requires non-empty part_ids."
+                )
+            return {
+                "ok": False,
+                "error": {
+                    "code": "UNSUPPORTED_OPERATION",
+                    "message": (
+                        "create_territory_from_parts is a contract skeleton; TS/TAL mutation "
+                        "will be implemented after selection task plumbing is verified."
+                    ),
+                    "details": {
+                        "part_layer": part_layer,
+                        "part_count": len(list(dict.fromkeys(part_ids))),
+                        "territory_name": territory_name,
+                        "territory_path": territory_path,
+                        "tal_id": tal_id,
+                        "conflict_policy": conflict_policy,
+                    },
+                    "retryable": False,
+                    "user_action_required": False,
+                },
+            }
+
+    @mcp.tool(
         name="cancel_job",
         description="Cooperatively cancel an async EZT MCP job for the authenticated customer.",
         structured_output=True,
@@ -292,6 +406,7 @@ def build_app(config: ServerConfig) -> Starlette:
     map_routes = MapVisualizationRoutes(
         state.map_sessions,
         public_base_url=config.map_visualization.public_base_url,
+        on_selection_committed=lambda selection: _commit_part_selection_from_map(state, selection),
     )
 
     @asynccontextmanager
@@ -508,6 +623,75 @@ def _create_map_visualization_tool_result(
     }
 
 
+def _commit_part_selection_from_map(
+    state: AppState, selection: dict[str, Any]
+) -> dict[str, Any] | None:
+    selection_task_id = selection.get("selection_task_id")
+    if not isinstance(selection_task_id, str) or not selection_task_id:
+        return None
+    try:
+        task = state.part_selections.commit(
+            _default_customer_context(), selection_task_id, selection
+        )
+    except (PartSelectionAccessError, InvalidPartSelectionError) as exc:
+        if isinstance(exc, PartSelectionAccessError):
+            return _selection_error_payload(
+                exc.code, str(exc), selection_task_id=selection_task_id
+            )
+        return _selection_error_payload(exc.code, str(exc), **exc.details)
+    state.map_sessions.publish_event(
+        task.map_session_id,
+        {
+            "type": "part_selection_committed",
+            "map_session_id": task.map_session_id,
+            "selection_task_id": task.selection_task_id,
+            "selection_resource_uri": task.selection_resource_uri,
+            "created_at": task.resource().get("committed_at"),
+        },
+    )
+    return task.resource()
+
+
+def _request_part_selection_tool_result(
+    state: AppState,
+    request: dict[str, Any],
+    *,
+    part_layer: str,
+    purpose: str,
+    prompt: str | None,
+    public_base_url: str,
+) -> dict[str, Any]:
+    try:
+        map_result = _create_map_visualization_tool_result(
+            state, request, public_base_url=public_base_url
+        )
+        if map_result.get("ok") is not True:
+            return map_result
+        map_payload = map_result["result"]
+        task = state.part_selections.create(
+            _default_customer_context(),
+            user_id=str(request.get("user_id") or "default-user"),
+            part_layer=part_layer,
+            purpose=purpose,
+            prompt=prompt,
+            map_session_id=map_payload["map_session_id"],
+            map_url=map_payload["map_url"],
+            active_tal_id=(map_payload.get("active_tal_summary") or {}).get("tal_id"),
+            ts_identity=map_payload.get("ts_identity"),
+            ttl_seconds=int(request.get("expiry_seconds") or 3600),
+        )
+        state.map_sessions.set_active_selection_task(
+            task.map_session_id, task.selection_task_id
+        )
+    except (MapVisualizationError, InvalidPartSelectionError) as exc:
+        if isinstance(exc, MapVisualizationError):
+            return {"ok": False, "error": exc.to_error()}
+        return _selection_error_payload(exc.code, str(exc), **exc.details)
+    return {
+        "ok": True,
+        "result": task.reference(session_exists=bool(map_payload.get("session_exists"))),
+    }
+
 
 def _require_jobs_repo(state: AppState):
     return state.jobs_repo
@@ -543,6 +727,19 @@ def _job_error_payload(code: str, message: str, **details: Any) -> dict[str, Any
             "details": {key: value for key, value in details.items() if value is not None},
             "retryable": False,
             "user_action_required": code == "UNKNOWN_JOB",
+        },
+    }
+
+
+def _selection_error_payload(code: str, message: str, **details: Any) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "error": {
+            "code": code,
+            "message": message,
+            "details": {key: value for key, value in details.items() if value is not None},
+            "retryable": False,
+            "user_action_required": code in {"UNKNOWN_SELECTION_TASK", "INVALID_REQUEST"},
         },
     }
 

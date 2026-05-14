@@ -1,0 +1,8 @@
+{
+  "part_layer": "us_zips",
+  "part_ids": ["32301", "32303", "32304"],
+  "territory_name": "North Florida",
+  "territory_path": ["East", "Southeast", "North Florida"],
+  "tal_id": "tal-current",
+  "conflict_policy": "move_from_existing"
+}

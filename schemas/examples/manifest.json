@@ -113,5 +113,30 @@
     "file": "query_parts.response.json",
     "schema": "query_parts.schema.json",
     "definition": "response"
+  },
+  {
+    "file": "request_part_selection.request.json",
+    "schema": "part_selection.schema.json",
+    "definition": "requestPartSelectionRequest"
+  },
+  {
+    "file": "request_part_selection.response.json",
+    "schema": "part_selection.schema.json",
+    "definition": "requestPartSelectionResponse"
+  },
+  {
+    "file": "get_part_selection.request.json",
+    "schema": "part_selection.schema.json",
+    "definition": "getPartSelectionRequest"
+  },
+  {
+    "file": "get_part_selection.response.json",
+    "schema": "part_selection.schema.json",
+    "definition": "getPartSelectionResponse"
+  },
+  {
+    "file": "create_territory_from_parts.request.json",
+    "schema": "part_selection.schema.json",
+    "definition": "createTerritoryFromPartsRequest"
   }
 ]

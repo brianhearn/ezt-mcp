@@ -15,6 +15,7 @@ These JSON Schemas define externally visible MCP request/response structures. Th
 | `realign.schema.json` | `realign` request and response payloads, including directed part-move operations and map session refresh. |
 | `analyze.schema.json` | `analyze` request and response payloads, including TAL analysis, scoped aggregates, cross-TAL comparison, and hypothetical impact. |
 | `get_map_visualization.schema.json` | `get_map_visualization` request and response payloads, including session mode, presentation context, and resource URIs. |
+| `part_selection.schema.json` | First-class `request_part_selection`, `get_part_selection`, `create_territory_from_parts`, and `ezt://part-selections/{selection_task_id}` contracts. |
 | `part_layers.schema.json` | Part-layer discovery resource payloads for `ezt://part-layers` and `ezt://part-layers/{part_layer}`. |
 
 ## Test vectors
