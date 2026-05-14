@@ -37,3 +37,26 @@ def test_load_config_public_base_url_env_override(tmp_path: Path, monkeypatch):
     config = load_config(path)
 
     assert config.map_visualization.public_base_url == "https://expertpack.ai/mcp"
+
+
+def test_load_config_dissolve_settings(tmp_path: Path, monkeypatch):
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        """
+dissolve:
+  simplify_tolerance: 0.001
+  overview_simplify_tolerance: 0.008
+  partition_threshold: 120
+  target_parts_per_cluster: 80
+  max_clusters: 25
+""".strip()
+    )
+    monkeypatch.setenv("EZT_MCP_DISSOLVE_MAX_CLUSTERS", "30")
+
+    config = load_config(path)
+
+    assert config.dissolve.simplify_tolerance == 0.001
+    assert config.dissolve.overview_simplify_tolerance == 0.008
+    assert config.dissolve.partition_threshold == 120
+    assert config.dissolve.target_parts_per_cluster == 80
+    assert config.dissolve.max_clusters == 30

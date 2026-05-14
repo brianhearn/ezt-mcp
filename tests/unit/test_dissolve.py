@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import pytest
-from shapely.geometry import Polygon, shape
+from shapely.geometry import GeometryCollection, Polygon, shape
 
-from ezt_mcp.territory.dissolve import DissolveValidationError, dissolve_hierarchy_geometries
+from ezt_mcp.territory.dissolve import (
+    DissolveOptions,
+    DissolveValidationError,
+    ShapelyGeometryDissolveBackend,
+    dissolve_hierarchy_geometries,
+)
 from ezt_mcp.territory.hierarchy import materialize_assignment_tree
 
 
@@ -125,3 +130,76 @@ def test_repairs_invalid_bowtie_polygon_to_polygonal_output():
 
     assert dissolved.territories[0].geometry.is_valid
     assert dissolved.territories[0].geometry.area > 0
+
+
+def test_backend_trusts_pre_normalized_geometry_inputs():
+    class ExplodingPolygon(Polygon):
+        @property
+        def is_valid(self):  # type: ignore[override]
+            raise AssertionError("backend should not re-check validity for normalized inputs")
+
+    backend = ShapelyGeometryDissolveBackend()
+    dissolved = backend.union(
+        [ExplodingPolygon(square(0, 0).exterior.coords)],
+        operation="leaf",
+        context={"territory_id": "tal-fast-path-only"},
+    )
+
+    assert dissolved.area == pytest.approx(1.0)
+
+
+def test_backend_rejects_empty_geometry_batch():
+    backend = ShapelyGeometryDissolveBackend()
+
+    with pytest.raises(DissolveValidationError) as exc:
+        backend.union(
+            [GeometryCollection()],
+            operation="leaf",
+            context={"territory_id": "tal-empty"},
+        )
+
+    assert exc.value.code == "EMPTY_GEOMETRY"
+    assert exc.value.details == {"territory_id": "tal-empty"}
+
+
+def test_partitioned_backend_preserves_dissolved_output():
+    backend = ShapelyGeometryDissolveBackend(
+        partition_threshold=2,
+        target_parts_per_cluster=2,
+        max_clusters=10,
+    )
+
+    dissolved = backend.union(
+        [square(x, 0) for x in range(6)],
+        operation="leaf",
+        context={"territory_id": "tal-partitioned"},
+    )
+
+    assert dissolved.area == pytest.approx(6.0)
+    assert dissolved.bounds == pytest.approx((0.0, 0.0, 6.0, 1.0))
+
+
+def test_dissolve_options_control_simplification_and_partitioning():
+    hierarchy = materialize_assignment_tree(
+        [{"part_id": f"P{x}", "territory_path": ["Only"]} for x in range(6)],
+        tal_id="tal-options",
+    )
+
+    dissolved = dissolve_hierarchy_geometries(
+        hierarchy,
+        {f"P{x}": square(x, 0) for x in range(6)},
+        options=DissolveOptions(
+            simplify_tolerance=0.0,
+            overview_simplify_tolerance=0.5,
+            partition_threshold=2,
+            target_parts_per_cluster=2,
+            max_clusters=10,
+        ),
+    )
+
+    territory = dissolved.territories[0]
+    assert territory.geometry.area == pytest.approx(6.0)
+    assert territory.geometry_simple.area == pytest.approx(6.0)
+    assert len(territory.geometry_simple.geoms[0].exterior.coords) <= len(
+        territory.geometry.geoms[0].exterior.coords
+    )

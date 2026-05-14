@@ -16,7 +16,11 @@ from datetime import UTC, datetime
 from typing import Any, Mapping
 
 from ezt_mcp.observability import timed_operation
-from ezt_mcp.territory.dissolve import GeometryDissolveBackend, dissolve_hierarchy_geometries
+from ezt_mcp.territory.dissolve import (
+    DissolveOptions,
+    GeometryDissolveBackend,
+    dissolve_hierarchy_geometries,
+)
 from ezt_mcp.territory.hierarchy import materialize_assignment_tree
 
 logger = logging.getLogger(__name__)
@@ -27,6 +31,7 @@ def build_direct_tal(
     part_geometries: Mapping[str, Any],
     *,
     backend: GeometryDissolveBackend | None = None,
+    dissolve_options: DissolveOptions | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """Append a Direct Build TAL to a TS and return a success payload.
@@ -62,6 +67,7 @@ def build_direct_tal(
                 hierarchy,
                 part_geometries,
                 backend=backend,
+                options=dissolve_options,
             )
 
         ts = _append_tal_to_ts(

@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from math import ceil
 from typing import Any, Protocol
 
 from shapely.geometry import MultiPolygon, Polygon, mapping, shape
@@ -55,6 +56,17 @@ class GeometryDissolveBackend(Protocol):
         context: Mapping[str, Any] | None = None,
     ) -> BaseGeometry:
         """Union geometries and return a valid polygonal geometry."""
+
+
+@dataclass(frozen=True)
+class DissolveOptions:
+    """Runtime-tunable dissolve settings."""
+
+    simplify_tolerance: float = 0.0
+    overview_simplify_tolerance: float = 0.0
+    partition_threshold: int = 10000
+    target_parts_per_cluster: int = 100
+    max_clusters: int = 30
 
 
 @dataclass(frozen=True)
@@ -138,6 +150,9 @@ class ShapelyGeometryDissolveBackend:
     """
 
     name: str = "shapely"
+    partition_threshold: int = 10000
+    target_parts_per_cluster: int = 100
+    max_clusters: int = 30
 
     def union(
         self,
@@ -146,16 +161,23 @@ class ShapelyGeometryDissolveBackend:
         operation: str,
         context: Mapping[str, Any] | None = None,
     ) -> BaseGeometry:
-        fields = {"geometry_count": len(geometries), "backend": self.name, **dict(context or {})}
+        cleaned = _non_empty_geometries(geometries, context=context)
+        cluster_count = _cluster_count(
+            len(cleaned),
+            partition_threshold=self.partition_threshold,
+            target_parts_per_cluster=self.target_parts_per_cluster,
+            max_clusters=self.max_clusters,
+        )
+        fields = {
+            "geometry_count": len(cleaned),
+            "backend": self.name,
+            "cluster_count": cluster_count,
+            **dict(context or {}),
+        }
         with timed_operation(logger, f"territory.dissolve.{operation}", **fields):
-            cleaned = [_repair_polygonal_geometry(geometry) for geometry in geometries]
-            cleaned = [geometry for geometry in cleaned if not geometry.is_empty]
-            if not cleaned:
-                raise DissolveValidationError(
-                    "EMPTY_GEOMETRY",
-                    "No non-empty polygon geometries were available to dissolve.",
-                    dict(context or {}),
-                )
+            if cluster_count > 1:
+                cluster_geometries = _partitioned_unary_union(cleaned, cluster_count=cluster_count)
+                return _repair_polygonal_geometry(unary_union(cluster_geometries))
             return _repair_polygonal_geometry(unary_union(cleaned))
 
 
@@ -164,8 +186,9 @@ def dissolve_hierarchy_geometries(
     part_geometries: Mapping[str, BaseGeometry | Mapping[str, Any]],
     *,
     backend: GeometryDissolveBackend | None = None,
-    simplify_tolerance: float = 0.0,
-    overview_simplify_tolerance: float = 0.0,
+    options: DissolveOptions | None = None,
+    simplify_tolerance: float | None = None,
+    overview_simplify_tolerance: float | None = None,
 ) -> DissolvedHierarchy:
     """Dissolve leaf and rollup territory geometries for a hierarchy.
 
@@ -174,7 +197,16 @@ def dissolve_hierarchy_geometries(
     are rejected before any union work starts so Direct Build can return a clear
     validation error.
     """
-    backend = backend or ShapelyGeometryDissolveBackend()
+    options = _resolve_dissolve_options(
+        options,
+        simplify_tolerance=simplify_tolerance,
+        overview_simplify_tolerance=overview_simplify_tolerance,
+    )
+    backend = backend or ShapelyGeometryDissolveBackend(
+        partition_threshold=options.partition_threshold,
+        target_parts_per_cluster=options.target_parts_per_cluster,
+        max_clusters=options.max_clusters,
+    )
     normalized_parts = _normalize_part_geometries(part_geometries)
     _validate_leaf_part_coverage(hierarchy, normalized_parts)
 
@@ -196,8 +228,8 @@ def dissolve_hierarchy_geometries(
                 hierarchy=hierarchy,
                 part_geometries=normalized_parts,
                 backend=backend,
-                simplify_tolerance=simplify_tolerance,
-                overview_simplify_tolerance=overview_simplify_tolerance,
+                simplify_tolerance=options.simplify_tolerance,
+                overview_simplify_tolerance=options.overview_simplify_tolerance,
             )
             by_node_id[territory.territory_id] = territory
 
@@ -212,8 +244,8 @@ def dissolve_hierarchy_geometries(
                 hierarchy=hierarchy,
                 dissolved_by_node_id=by_node_id,
                 backend=backend,
-                simplify_tolerance=simplify_tolerance,
-                overview_simplify_tolerance=overview_simplify_tolerance,
+                simplify_tolerance=options.simplify_tolerance,
+                overview_simplify_tolerance=options.overview_simplify_tolerance,
             )
             by_node_id[territory.territory_id] = territory
 
@@ -322,6 +354,32 @@ def _territory_geometry_from_node(
     )
 
 
+def _resolve_dissolve_options(
+    options: DissolveOptions | None,
+    *,
+    simplify_tolerance: float | None,
+    overview_simplify_tolerance: float | None,
+) -> DissolveOptions:
+    resolved = options or DissolveOptions()
+    if simplify_tolerance is not None or overview_simplify_tolerance is not None:
+        return DissolveOptions(
+            simplify_tolerance=(
+                resolved.simplify_tolerance
+                if simplify_tolerance is None
+                else simplify_tolerance
+            ),
+            overview_simplify_tolerance=(
+                resolved.overview_simplify_tolerance
+                if overview_simplify_tolerance is None
+                else overview_simplify_tolerance
+            ),
+            partition_threshold=resolved.partition_threshold,
+            target_parts_per_cluster=resolved.target_parts_per_cluster,
+            max_clusters=resolved.max_clusters,
+        )
+    return resolved
+
+
 def _normalize_part_geometries(
     part_geometries: Mapping[str, BaseGeometry | Mapping[str, Any]],
 ) -> dict[str, BaseGeometry]:
@@ -335,6 +393,102 @@ def _normalize_part_geometries(
             )
         normalized[public_part_id] = _coerce_geometry(geometry, part_id=public_part_id)
     return normalized
+
+
+def _non_empty_geometries(
+    geometries: Sequence[BaseGeometry],
+    *,
+    context: Mapping[str, Any] | None = None,
+) -> list[BaseGeometry]:
+    cleaned = [geometry for geometry in geometries if not geometry.is_empty]
+    if not cleaned:
+        raise DissolveValidationError(
+            "EMPTY_GEOMETRY",
+            "No non-empty polygon geometries were available to dissolve.",
+            dict(context or {}),
+        )
+    return cleaned
+
+
+def _cluster_count(
+    part_count: int,
+    *,
+    partition_threshold: int,
+    target_parts_per_cluster: int,
+    max_clusters: int,
+) -> int:
+    if part_count < max(1, partition_threshold):
+        return 1
+    target = max(1, target_parts_per_cluster)
+    return max(1, min(ceil(part_count / target), max(1, max_clusters)))
+
+
+def _partitioned_unary_union(
+    geometries: Sequence[BaseGeometry],
+    *,
+    cluster_count: int,
+) -> list[BaseGeometry]:
+    clusters: list[list[BaseGeometry]] = [[] for _ in range(cluster_count)]
+    for geometry, cluster_index in zip(
+        geometries,
+        _spatial_cluster_labels(geometries, cluster_count),
+        strict=True,
+    ):
+        clusters[cluster_index].append(geometry)
+    return [_repair_polygonal_geometry(unary_union(cluster)) for cluster in clusters if cluster]
+
+
+def _spatial_cluster_labels(geometries: Sequence[BaseGeometry], cluster_count: int) -> list[int]:
+    if cluster_count <= 1:
+        return [0 for _ in geometries]
+    coords = [(geometry.centroid.x, geometry.centroid.y) for geometry in geometries]
+    return _kmeans_cluster_labels(coords, cluster_count)
+
+
+def _kmeans_cluster_labels(coords: Sequence[tuple[float, float]], cluster_count: int) -> list[int]:
+    """Small deterministic k-means for Benton-style spatial dissolve partitioning."""
+    if not coords:
+        return []
+    if len(coords) <= cluster_count:
+        return list(range(len(coords)))
+
+    ordered = sorted(coords)
+    if cluster_count == 1:
+        centers = [ordered[len(ordered) // 2]]
+    else:
+        centers = [
+            ordered[round(index * (len(ordered) - 1) / (cluster_count - 1))]
+            for index in range(cluster_count)
+        ]
+
+    labels = [0 for _ in coords]
+    for _ in range(12):
+        changed = False
+        for index, (x, y) in enumerate(coords):
+            label = min(
+                range(cluster_count),
+                key=lambda center_index: _squared_distance((x, y), centers[center_index]),
+            )
+            if labels[index] != label:
+                labels[index] = label
+                changed = True
+        if not changed:
+            break
+
+        sums = [[0.0, 0.0, 0] for _ in range(cluster_count)]
+        for label, (x, y) in zip(labels, coords, strict=True):
+            sums[label][0] += x
+            sums[label][1] += y
+            sums[label][2] += 1
+        centers = [
+            (total_x / count, total_y / count) if count else centers[index]
+            for index, (total_x, total_y, count) in enumerate(sums)
+        ]
+    return labels
+
+
+def _squared_distance(a: tuple[float, float], b: tuple[float, float]) -> float:
+    return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2
 
 
 def _coerce_geometry(geometry: BaseGeometry | Mapping[str, Any], *, part_id: str) -> BaseGeometry:

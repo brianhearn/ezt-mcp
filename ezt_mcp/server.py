@@ -41,6 +41,7 @@ from .resources.part_layers import (
     get_part_layer_resource,
     list_part_layers_resource,
 )
+from .territory.dissolve import DissolveOptions
 from .tools.direct_build_job import run_direct_build_job
 from .tools.query_parts import query_parts_tool
 
@@ -449,6 +450,13 @@ def build_app(config: ServerConfig) -> Starlette:
         public_base_url=config.map_visualization.public_base_url,
         on_selection_committed=lambda selection: _commit_part_selection_from_map(state, selection),
     )
+    dissolve_options = DissolveOptions(
+        simplify_tolerance=config.dissolve.simplify_tolerance,
+        overview_simplify_tolerance=config.dissolve.overview_simplify_tolerance,
+        partition_threshold=config.dissolve.partition_threshold,
+        target_parts_per_cluster=config.dissolve.target_parts_per_cluster,
+        max_clusters=config.dissolve.max_clusters,
+    )
 
     @asynccontextmanager
     async def lifespan(app: Starlette):
@@ -550,7 +558,11 @@ def build_app(config: ServerConfig) -> Starlette:
         if not isinstance(body, dict):
             body = {}
         async with timed_async_operation(logger, "http.direct_build"):
-            payload = await _submit_and_run_direct_build(state, body)
+            payload = await _submit_and_run_direct_build(
+                state,
+                body,
+                dissolve_options=dissolve_options,
+            )
             status_code = 200 if payload.get("ok") is True else _status_for_tool_error(payload)
             return JSONResponse(payload, status_code=status_code)
 
@@ -716,7 +728,12 @@ def _commit_part_selection_from_map(
     return task.resource()
 
 
-async def _submit_and_run_direct_build(state: AppState, request: dict[str, Any]) -> dict[str, Any]:
+async def _submit_and_run_direct_build(
+    state: AppState,
+    request: dict[str, Any],
+    *,
+    dissolve_options: DissolveOptions | None = None,
+) -> dict[str, Any]:
     try:
         repo = _require_jobs_repo(state)
         parts_repo = _require_parts_repo(state)
@@ -737,6 +754,7 @@ async def _submit_and_run_direct_build(state: AppState, request: dict[str, Any])
                 request=request,
                 parts_repo=parts_repo,
                 jobs_repo=repo,
+                dissolve_options=dissolve_options,
             )
         )
         task.add_done_callback(_log_background_task_exception)

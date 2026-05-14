@@ -7,6 +7,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-14) — Direct Build dissolve performance and tuning
+- Optimized the Shapely dissolve backend to avoid re-repairing already-normalized input geometries; final union output is still repaired/validated.
+- Added optional Benton-style two-pass spatial partitioning to the Shapely backend with configurable `partition_threshold`, `target_parts_per_cluster`, and `max_clusters`; local benchmarks showed direct GEOS `unary_union` is faster through at least 5k synthetic parts, so the default threshold is intentionally high (`10000`) while keeping the partitioned path available for pathological real-world cases.
+- Added config-driven dissolve simplification controls (`simplify_tolerance`, `overview_simplify_tolerance`) plus environment overrides.
+- Documented that PostGIS backend selection is tabled until real dev data justifies it, and sliver buffer cleanup should only be added behind an explicit option if visible artifacts appear.
+- Expanded unit coverage for fast-path dissolve, empty geometry errors, partitioned output equivalence, and config parsing.
+
 ### Changed (2026-05-14) — Map Component active TAL switching
 - Added direct Map Component switching between TALs in a multi-TAL TS: one active TAL renders normally while sibling TALs remain visible as dimmed reference context.
 - `get_map_visualization` render payload now includes active/reference GeoJSON separation plus `available_tals`; browser sessions retain the source TS/presentation context so the active TAL can be rebuilt server-side without a new agent tool call.

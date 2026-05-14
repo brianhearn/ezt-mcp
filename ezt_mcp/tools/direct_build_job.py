@@ -9,7 +9,11 @@ from typing import Any, Protocol
 from ezt_mcp.jobs import CustomerContext
 from ezt_mcp.observability import timed_async_operation
 from ezt_mcp.resources.part_layers import UnknownPartLayerError
-from ezt_mcp.territory.dissolve import DissolveValidationError, GeometryDissolveBackend
+from ezt_mcp.territory.dissolve import (
+    DissolveOptions,
+    DissolveValidationError,
+    GeometryDissolveBackend,
+)
 from ezt_mcp.territory.hierarchy import HierarchyValidationError
 from ezt_mcp.tools.direct_build import build_direct_tal
 from ezt_mcp.tools.query_parts import QueryPartsError
@@ -48,6 +52,7 @@ async def run_direct_build_job(
     parts_repo: DirectBuildPartsRepository,
     jobs_repo: DirectBuildJobRepository,
     backend: GeometryDissolveBackend | None = None,
+    dissolve_options: DissolveOptions | None = None,
 ) -> dict[str, Any]:
     """Run Direct Build and persist progress/result into the job repository.
 
@@ -107,7 +112,12 @@ async def run_direct_build_job(
             )
             _raise_if_cancelled(await _maybe_await(jobs_repo.get(context, job_id)), job_id=job_id)
 
-            result_payload = build_direct_tal(request, part_geometries, backend=backend)
+            result_payload = build_direct_tal(
+                request,
+                part_geometries,
+                backend=backend,
+                dissolve_options=dissolve_options,
+            )
 
             await _maybe_await(
                 jobs_repo.update_progress(

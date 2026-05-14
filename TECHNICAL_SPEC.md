@@ -1158,6 +1158,16 @@ Configuration sources:
 
 Config should validate at startup and fail fast when required production secrets or DB connectivity are missing.
 
+Dissolve tuning is config-driven. Current settings:
+
+- `dissolve.simplify_tolerance` / `EZT_MCP_DISSOLVE_SIMPLIFY_TOLERANCE` — detailed geometry simplification; default `0.0` until real map artifacts and acceptable loss are reviewed.
+- `dissolve.overview_simplify_tolerance` / `EZT_MCP_DISSOLVE_OVERVIEW_SIMPLIFY_TOLERANCE` — simplified overview geometry; default `0.0`.
+- `dissolve.partition_threshold` / `EZT_MCP_DISSOLVE_PARTITION_THRESHOLD` — part count at which the Shapely backend switches to Benton-style two-pass spatial partitioning; default `10000` because local benchmarks show direct GEOS `unary_union` is faster through at least 5k synthetic parts, while the partitioned path is kept available for pathological real-world cases.
+- `dissolve.target_parts_per_cluster` / `EZT_MCP_DISSOLVE_TARGET_PARTS_PER_CLUSTER` — target cluster size for partitioned dissolve; default `100`.
+- `dissolve.max_clusters` / `EZT_MCP_DISSOLVE_MAX_CLUSTERS` — maximum clusters per union; default `30`.
+
+PostGIS dissolve backend selection is tabled until the Shapely implementation has been exercised with real development data. Sliver buffer cleanup is also tabled and should only be added behind an explicit option if visible artifacts appear during development.
+
 ---
 
 ## 15. Implementation Sequence
@@ -1193,7 +1203,7 @@ This sequence intentionally implements a minimal map visualization loop before d
 These are implementation questions, not product-contract blockers:
 
 1. **Transient cache backend:** PostgreSQL-only for v1 simplicity, or Redis-compatible cache for lower latency and easier TTL eviction?
-2. **Geometry backend threshold:** when should dissolve/repair run in Shapely vs PostGIS?
+2. **Geometry backend threshold:** when should dissolve/repair run in Shapely vs PostGIS? Tabled until real dev data shows Shapely's partitioned backend is insufficient.
 3. **Auto-build optimizer baseline:** which initial heuristic gives the best balance of quality, explainability, and implementation speed?
 4. **Map Component asset hosting:** serve from MCP container for v1 or from blob/CDN from the start?
 5. **MCP Tasks adoption timing:** expose native MCP Tasks immediately where client/server support is mature, or ship EZT job resources first and map MCP Tasks onto the same internal job table later?

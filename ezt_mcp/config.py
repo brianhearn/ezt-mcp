@@ -27,6 +27,16 @@ class MapVisualizationConfig(BaseModel):
     public_base_url: str = "http://127.0.0.1:8000"
 
 
+class DissolveConfig(BaseModel):
+    """Territory dissolve tuning."""
+
+    simplify_tolerance: float = 0.0
+    overview_simplify_tolerance: float = 0.0
+    partition_threshold: int = 10000
+    target_parts_per_cluster: int = 100
+    max_clusters: int = 30
+
+
 class ServerConfig(BaseModel):
     """Top-level server configuration."""
 
@@ -36,6 +46,7 @@ class ServerConfig(BaseModel):
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     map_visualization: MapVisualizationConfig = Field(default_factory=MapVisualizationConfig)
+    dissolve: DissolveConfig = Field(default_factory=DissolveConfig)
 
     @property
     def database_url(self) -> str | None:
@@ -60,6 +71,7 @@ def load_config(config_path: str | Path) -> ServerConfig:
     database_raw = raw.get("database", {}) or {}
     auth_raw = raw.get("auth", {}) or {}
     map_visualization_raw = raw.get("map_visualization", {}) or {}
+    dissolve_raw = raw.get("dissolve", {}) or {}
 
     env_api_key = os.environ.get("EZT_MCP_API_KEY")
     api_keys = list(auth_raw.get("api_keys") or [])
@@ -76,5 +88,32 @@ def load_config(config_path: str | Path) -> ServerConfig:
             public_base_url=os.environ.get("EZT_MCP_PUBLIC_BASE_URL")
             or map_visualization_raw.get("public_base_url")
             or "http://127.0.0.1:8000"
+        ),
+        dissolve=DissolveConfig(
+            simplify_tolerance=float(
+                os.environ.get("EZT_MCP_DISSOLVE_SIMPLIFY_TOLERANCE")
+                or dissolve_raw.get("simplify_tolerance")
+                or 0.0
+            ),
+            overview_simplify_tolerance=float(
+                os.environ.get("EZT_MCP_DISSOLVE_OVERVIEW_SIMPLIFY_TOLERANCE")
+                or dissolve_raw.get("overview_simplify_tolerance")
+                or 0.0
+            ),
+            partition_threshold=int(
+                os.environ.get("EZT_MCP_DISSOLVE_PARTITION_THRESHOLD")
+                or dissolve_raw.get("partition_threshold")
+                or 10000
+            ),
+            target_parts_per_cluster=int(
+                os.environ.get("EZT_MCP_DISSOLVE_TARGET_PARTS_PER_CLUSTER")
+                or dissolve_raw.get("target_parts_per_cluster")
+                or 100
+            ),
+            max_clusters=int(
+                os.environ.get("EZT_MCP_DISSOLVE_MAX_CLUSTERS")
+                or dissolve_raw.get("max_clusters")
+                or 30
+            ),
         ),
     )
