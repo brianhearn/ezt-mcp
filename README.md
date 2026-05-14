@@ -2,7 +2,7 @@
 
 > Server-side territory operations for AI agents, backed by EasyTerritory domain expertise.
 
-**Status:** Pre-implementation — Vision, Constitution, Scenarios, Functional Spec, and Technical Spec in active revision. See [SDLC.md](SDLC.md) for documentation boundaries, [VISION.md](VISION.md) for product intent, [SCENARIOS.md](SCENARIOS.md) for workflow scenarios, [FUNCTIONAL_SPEC.md](FUNCTIONAL_SPEC.md) for the draft external behavior contract, and [TECHNICAL_SPEC.md](TECHNICAL_SPEC.md) for implementation design.
+**Status:** Early implementation/testbed — Vision, Constitution, Scenarios, Functional Spec, and Technical Spec remain active contracts. Initial read-only resources, `query_parts`, Map Component visualization, and async job-control skeletons are implemented for the deploy/test path. See [SDLC.md](SDLC.md) for documentation boundaries, [VISION.md](VISION.md) for product intent, [SCENARIOS.md](SCENARIOS.md) for workflow scenarios, [FUNCTIONAL_SPEC.md](FUNCTIONAL_SPEC.md) for the draft external behavior contract, and [TECHNICAL_SPEC.md](TECHNICAL_SPEC.md) for implementation design.
 
 ---
 
@@ -10,14 +10,21 @@
 
 EZT MCP is an MCP server that gives AI agents the ability to build, balance, and analyze territory solutions — the same operations that previously required a trained user inside EZT Designer.
 
-**MVP tools:**
+**MVP tool surface:**
 - **Geocode Address** — address strings → TS with a point layer, using TomTom Level 1 first and Azure Maps fallback
-- **Direct Build** — alignment file (ZIP code → territory name mapping) + part layer → territory solution
+- **Ingest Accounts** — account/location rows → TS point layer, preserving safe non-geometry attributes
+- **Direct Build** — explicit part-to-territory assignments + part layer → appended TAL
 - **Account Build** — accounts with a grouping attribute (e.g., sales manager) → inferred territory solution with hole-filling and contiguity repair
-- **Auto Build** — TS + metric + part layer + target territory count → augmented TS with balanced TAL
-- **Realign** — move parts between territories (or into a new territory) in an existing solution
-- **Analyze Territory Solution** — TS-embedded point layers + metrics → structured JSON analysis, paired with presentation guidance for agent-generated insight
-- **Get Map Visualization** — TS/TAL → browser-safe Map Component URL for read-only review, sharing, QA, and select-mode spatial workflows
+- **Auto Build** — TS + metric/workload goals + part layer + target territory count → augmented TS with balanced TAL
+- **Realign** — move parts between territories in an existing TAL
+- **Analyze** — TS-embedded point layers + metrics → structured JSON facts, paired with presentation guidance for agent-generated insight
+- **Get Map Visualization** — TS/TAL → browser-safe persistent Map Component URL for read-only review, sharing, QA, and spatial workflows
+- **Request Part Selection** — first-class human spatial input: open/switch the MC to a part layer and ask Monica to select parts for build, realign, analyze, or list-return workflows
+- **Get Part Selection** — retrieve committed selected part IDs plus awareness metadata from a selection task
+- **Create Territory From Parts** — create/update one territory in a TAL from selected part IDs plus agent-collected territory metadata
+- **Query Parts** — safe paginated part metadata lookup by filter or explicit part IDs; never returns geometry
+- **Set Map State** — deliberate low-level MC state transitions; not the primary selection API
+- **Cancel Job** — cooperatively cancel an async EZT MCP job
 
 Output is a **Territory Solution (TS)** — standard GeoJSON and the only geometry-bearing file format used by EZT MCP. A TS supports 0-N point location layers and 0-N territory alignment layers (TALs). Geocode Address returns a TS with a point layer and no TAL; build tools append named TALs so agents and users can compare multiple alignment strategies side by side.
 
@@ -40,8 +47,8 @@ The repo's SDLC documents and ownership boundaries are defined in [SDLC.md](SDLC
 | Scenario Collection | ✅ Initial registry complete — see [SCENARIOS.md](SCENARIOS.md) |
 | Functional Spec | 🟡 Started — see [FUNCTIONAL_SPEC.md](FUNCTIONAL_SPEC.md) |
 | Technical Spec | 🟡 Started — see [TECHNICAL_SPEC.md](TECHNICAL_SPEC.md) |
-| Implementation | 🔲 Not started |
-| Verification | 🔲 Not started |
+| Implementation | 🟡 Started — deploy/testbed slices active |
+| Verification | 🟡 Started — unit/schema/smoke gates in place |
 
 ## TS Identity and Cache Handles
 
@@ -67,9 +74,9 @@ TS sharing is a flagship feature. EZT MCP should support upper-management consum
 
 ## Map Component
 
-EZT MCP is accompanied by an embedded **Map Component** — a unified TS viewing and spatial I/O component. `get_map_visualization` is the public tool that opens this surface. In `view` mode it provides read-only sharing/verification. In `select` mode it emits part selections (click, lasso, box) back to the agent. Monica selects parts visually; the agent calls Realign with the selection. The component is stateless — the agent owns the TS between interactions.
+EZT MCP is accompanied by an embedded **Map Component** — a unified TS viewing and spatial I/O component. `get_map_visualization` opens or returns the user's persistent MC workspace. In `view` mode it provides read-only sharing/verification. In `select` mode it supports first-class Part Selection workflows: Monica selects parts visually with click, ctrl-click, lasso, or box; the agent then decides whether to analyze, realign, create a territory, or simply return the selected part list.
 
-Interactive selection should use short-lived map sessions and MCP Resource Subscriptions: the agent creates a map session, opens or embeds the returned map URL, subscribes to the session's selection resource, and receives a notification when Monica clicks Done. The Map Component posts committed selections to EZT MCP over a browser-safe session channel; EZT MCP bridges those commits back to the agent as resource notifications.
+Interactive selection should use first-class selection tasks plus MCP Resource Subscriptions: the agent calls `request_part_selection`, opens or reuses the returned map URL, subscribes to `ezt://part-selections/{selection_task_id}`, and receives a notification when Monica clicks Done. The Map Component posts committed selections to EZT MCP over a browser-safe session channel; EZT MCP bridges those commits back to the agent as resource notifications. The MC never creates territories directly — the agent collects territory name/hierarchy/conflict decisions and calls `create_territory_from_parts` or another mutation tool.
 
 Implement the minimal read-only visualization loop early: it is the development/QA feedback surface for validating Direct Build, Realign, Auto Build, Analyze, styling, labels, and hierarchy output. Primary embedding target: OpenClaw Canvas (agent chat interface). Secondary: Microsoft Teams meeting app. Technology candidates: MapLibre GL JS + PMTiles. See [MAP_COMPONENT.md](MAP_COMPONENT.md) for the full concept stub and [DESIGN.md](DESIGN.md) for the required visual system.
 
