@@ -700,7 +700,7 @@ def _require_jobs_repo(state: AppState):
 async def _transient_jobs_available(pool: asyncpg.Pool) -> bool:
     try:
         async with pool.acquire() as conn:
-            value = await conn.fetchval("select to_regclass('transient.jobs')")
+            value = await conn.fetchval("select to_regclass($1)", "transient.jobs")
     except Exception as exc:  # noqa: BLE001
         logger.warning("transient.jobs migration probe failed: %s", exc.__class__.__name__)
         return False
