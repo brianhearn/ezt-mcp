@@ -130,6 +130,41 @@ def test_build_render_payload_defaults_select_mode_to_selection_template():
     assert payload["presentation"]["debug_panel"] is False
 
 
+def test_build_render_payload_includes_localizable_chrome_labels():
+    ts = sample_ts()
+    ts["properties"]["presentation"] = {
+        "views": {
+            "executive_review": {
+                "chrome_labels": {
+                    "active_alignment_label": "Escenario activo",
+                    "reference_alignments_legend": "Otros escenarios",
+                }
+            }
+        }
+    }
+
+    payload = build_render_payload(
+        ts,
+        active_tal_id="tal-current",
+        mode="view",
+        presentation={
+            "view_name": "executive_review",
+            "style_overrides": {
+                "chrome_labels": {
+                    "active_alignment_updated_status": "Escenario actualizado.",
+                }
+            },
+        },
+        public_base_url="https://expertpack.ai/mcp",
+    )
+
+    labels = payload["presentation"]["chrome_labels"]
+    assert labels["active_alignment_label"] == "Escenario activo"
+    assert labels["reference_alignments_legend"] == "Otros escenarios"
+    assert labels["active_alignment_updated_status"] == "Escenario actualizado."
+    assert labels["active_alignment_aria"] == "Active territory alignment"
+
+
 def test_session_store_returns_new_tab_response_and_validates_token():
     store = InMemoryMapSessionStore()
     session = store.create_session(

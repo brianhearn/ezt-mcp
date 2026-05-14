@@ -180,6 +180,7 @@ This document defines the repository's SDLC documents and their boundaries. The 
 - modes: `view`, `select`, future `edit`
 - UX primitives and expected behavior
 - rendering expectations, including active/dimmed TAL behavior at the UX level
+- customer-facing MC vocabulary, chrome-label intent, and localization/i18n expectations at the UX level
 - embedding targets
 - browser communication model at conceptual level
 - product/UX open questions
@@ -188,6 +189,7 @@ This document defines the repository's SDLC documents and their boundaries. The 
 - final MCP resource schemas or event payloads once Functional Spec exists
 - detailed MapLibre implementation
 - authoritative TS schema
+- concrete `presentation.chrome_labels` payload shape after Functional/Technical Spec define it
 - general sharing/reporting strategy except as it affects Map Component
 
 **Rule of thumb:** Map Component explains the human-facing spatial surface. Functional Spec owns exact external contracts.

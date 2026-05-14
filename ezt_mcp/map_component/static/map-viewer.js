@@ -43,6 +43,12 @@ function styleOverrides(payload) {
   return presentation.style_overrides || {};
 }
 
+function chromeLabel(payload, key, fallback) {
+  const labels = (payload.presentation && payload.presentation.chrome_labels) || {};
+  const value = labels[key];
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
 function debugEnabled(payload) {
   const presentation = payload.presentation || {};
   const overrides = styleOverrides(payload);
@@ -95,6 +101,9 @@ function panelEyebrow(templateName) {
 function renderTalSwitcher(payload) {
   const { wrapper, select } = ensureTalControl();
   if (!wrapper || !select) return;
+  const label = wrapper.querySelector("label");
+  if (label) label.textContent = chromeLabel(payload, "active_alignment_label", "Active alignment");
+  select.setAttribute("aria-label", chromeLabel(payload, "active_alignment_aria", "Active territory alignment"));
   const tals = Array.isArray(payload.available_tals) ? payload.available_tals : [];
   wrapper.hidden = tals.length <= 1;
   select.innerHTML = "";
@@ -118,10 +127,10 @@ function ensureTalControl() {
   wrapper.hidden = true;
   const label = document.createElement("label");
   label.htmlFor = "tal-select";
-  label.textContent = "Active TAL";
+  label.textContent = "Active alignment";
   select = document.createElement("select");
   select.id = "tal-select";
-  select.setAttribute("aria-label", "Active territory alignment layer");
+  select.setAttribute("aria-label", "Active territory alignment");
   wrapper.append(label, select);
   document.body.append(wrapper);
   attachTalSelectHandler(select);
@@ -136,7 +145,7 @@ function attachTalSelectHandler(select) {
       await switchActiveTal(event.target.value);
     } catch (error) {
       console.error(error);
-      debugMessage("Active TAL switch failed", errorDetails(error));
+      debugMessage("Active alignment switch failed", errorDetails(error));
       setStatus(error.message);
       if (currentPayload) renderTalSwitcher(currentPayload);
     }
@@ -233,7 +242,7 @@ function defaultLegendItems(payload) {
     color: (feature.properties && feature.properties._render_color) || "#2F80ED",
   }));
   if (hasReferenceTals(payload)) {
-    items.push({ label: "Other TALs (dimmed)", color: "#94a3b8" });
+    items.push({ label: chromeLabel(payload, "reference_alignments_legend", "Other alignments (dimmed)"), color: "#94a3b8" });
   }
   return items;
 }
@@ -541,7 +550,7 @@ function applyPayload(payload, { refit = true } = {}) {
 async function switchActiveTal(activeTalId) {
   if (!activeTalId || !currentPayload || activeTalId === currentPayload.active_tal.tal_id) return;
   const urls = sessionUrls();
-  setStatus("Switching active TAL…");
+  setStatus(chromeLabel(currentPayload, "switching_active_alignment_status", "Switching active alignment…"));
   const response = await fetch(urls.activeTal, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -549,11 +558,11 @@ async function switchActiveTal(activeTalId) {
   });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Failed to switch active TAL (${response.status}): ${text}`);
+    throw new Error(`Failed to switch active alignment (${response.status}): ${text}`);
   }
   const payload = await loadPayload();
   applyPayload(payload);
-  setStatus("Active TAL updated.");
+  setStatus(chromeLabel(payload, "active_alignment_updated_status", "Active alignment updated."));
 }
 
 async function main() {
@@ -589,7 +598,7 @@ async function main() {
     }
     addTerritoryLayers(map, payload);
     fitBounds(map, payload.bounds);
-    setStatus("Loaded. Use Active TAL to switch layers.");
+    setStatus(chromeLabel(payload, "loaded_multi_alignment_status", "Loaded. Use Active alignment to switch layers."));
   });
 
   map.on("styledata", () => {

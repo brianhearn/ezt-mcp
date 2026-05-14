@@ -901,7 +901,7 @@ The initial built-in templates are:
 - `executive_review` — clean stakeholder review, summary/legend, debug panel disabled by default;
 - `selection` — human spatial input, prompt/selection context, debug panel disabled by default.
 
-The upper-left panel is a template-driven context panel, not arbitrary agent-generated chrome. Agents may pass title/subtitle/summary/legend/debug hints through presentation metadata, but the MC owns layout and product styling per `DESIGN.md`. The debug panel is controlled by `debug_panel` in the resolved presentation payload and should default off outside QA contexts.
+The upper-left panel is a template-driven context panel, not arbitrary agent-generated chrome. Agents may pass title/subtitle/summary/legend/debug hints through presentation metadata, but the MC owns layout and product styling per `DESIGN.md`. The debug panel is controlled by `debug_panel` in the resolved presentation payload and should default off outside QA contexts. Customer-visible viewer strings are resolved from `presentation.chrome_labels` with built-in defaults; this keeps labels such as the active-alignment selector internationalizable and avoids leaking internal acronyms like “TAL” into product chrome.
 
 Map static JS/CSS should be served with no-store caching in the deploy/testbed path to avoid rapid-deploy version skew while MC code is changing quickly.
 

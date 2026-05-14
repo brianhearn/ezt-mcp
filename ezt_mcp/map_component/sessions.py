@@ -637,6 +637,16 @@ def build_render_payload(
     }
 
 
+DEFAULT_CHROME_LABELS: dict[str, str] = {
+    "active_alignment_label": "Active alignment",
+    "active_alignment_aria": "Active territory alignment",
+    "reference_alignments_legend": "Other alignments (dimmed)",
+    "switching_active_alignment_status": "Switching active alignment…",
+    "active_alignment_updated_status": "Active alignment updated.",
+    "loaded_multi_alignment_status": "Loaded. Use Active alignment to switch layers.",
+}
+
+
 PRESENTATION_TEMPLATES: dict[str, dict[str, Any]] = {
     "qa_verification": {
         "view_name": "qa_verification",
@@ -646,6 +656,7 @@ PRESENTATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "debug_panel": True,
         "title": "Territory QA Verification",
         "subtitle": "Review generated geometry, counts, and map-render diagnostics.",
+        "chrome_labels": DEFAULT_CHROME_LABELS,
     },
     "executive_review": {
         "view_name": "executive_review",
@@ -654,7 +665,8 @@ PRESENTATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "show_legend": True,
         "debug_panel": False,
         "title": "Territory Review",
-        "subtitle": "Executive summary of the active territory alignment layer.",
+        "subtitle": "Executive summary of the active territory alignment.",
+        "chrome_labels": DEFAULT_CHROME_LABELS,
     },
     "selection": {
         "view_name": "selection",
@@ -664,6 +676,7 @@ PRESENTATION_TEMPLATES: dict[str, dict[str, Any]] = {
         "debug_panel": False,
         "title": "Select Geography",
         "subtitle": "Choose parts on the map, then commit the selection.",
+        "chrome_labels": DEFAULT_CHROME_LABELS,
     },
 }
 

@@ -604,12 +604,12 @@ The tool accepts:
 2. Return a browser-safe URL containing only a short-lived map session token or exchange code.
 3. Make the visualization usable for human verification of generated TAL geometry, labels, styling, and point overlays.
 4. Never expose the customer's MCP API key to the browser.
-5. When a TS contains multiple TALs, resolve one active TAL from `active_tal_id`/TS metadata and render sibling TALs as dimmed reference context rather than hiding them. Active-TAL ambiguity remains an error when no active TAL can be resolved. The MC exposes a browser-side Active TAL selector when multiple TALs are available; switching TALs updates the session's `active_tal_id` and re-renders active/reference overlays without a new agent tool call.
+5. When a TS contains multiple TALs, resolve one active TAL from `active_tal_id`/TS metadata and render sibling TALs as dimmed reference context rather than hiding them. Active-TAL ambiguity remains an error when no active TAL can be resolved. The MC exposes a browser-side active-alignment selector when multiple TALs are available; switching alignments updates the session's `active_tal_id` and re-renders active/reference overlays without a new agent tool call. Visible MC chrome must use customer-appropriate labels such as “alignment” rather than requiring users to know the internal “TAL” acronym.
 6. In `view` mode, allow map review but no selection commits.
 7. In `select` mode, allow local transient selection and committed selection events.
 8. Expose subscribable selection and state resources.
 9. Support live refresh events after successful Realign when connected.
-10. Resolve presentation context from built-in template defaults, TS presentation metadata, and request-time overrides. The MC must use this context to populate its panel/legend/debug behavior while preserving product chrome ownership.
+10. Resolve presentation context from built-in template defaults, TS presentation metadata, and request-time overrides. The MC must use this context to populate its panel/legend/debug behavior while preserving product chrome ownership. MC chrome labels must be supplied through a small label map (`chrome_labels`) in the resolved presentation payload so customer deployments can internationalize visible strings without rewriting viewer code.
 11. Expire sessions predictably and report expiration through state/resource behavior.
 
 ### 11.4 Functional output

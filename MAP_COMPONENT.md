@@ -33,7 +33,7 @@ The communication contract is simple:
 - **Input:** a Territory Solution (TS) — renders one active TAL, dimmed sibling TALs when present, and all point layers
 - **Output:** mode-dependent. In `view` mode, no mutation or selection output is emitted. In `select` mode, the component emits an array of `part_ids` the user has chosen.
 
-When a TS contains multiple TALs, the MC must always have exactly one active TAL. The active TAL is selected by `active_tal_id` or TS metadata. Other TALs remain visible as dimmed reference context behind the active TAL; they are not hidden unless a future explicit layer-visibility control says so. In v1, the MC exposes an Active TAL selector when multiple TALs are available. Switching TALs updates the map-session state through a browser-safe endpoint and re-renders active/dimmed overlays without requiring the agent to issue a new `get_map_visualization` call.
+When a TS contains multiple TALs, the MC must always have exactly one active TAL. The active TAL is selected by `active_tal_id` or TS metadata. Other TALs remain visible as dimmed reference context behind the active TAL; they are not hidden unless a future explicit layer-visibility control says so. In v1, the MC exposes a customer-facing active-alignment selector when multiple TALs are available. Switching alignments updates the map-session state through a browser-safe endpoint and re-renders active/dimmed overlays without requiring the agent to issue a new `get_map_visualization` call. Internal APIs may keep `tal_*` field names, but product chrome must not require customers to understand the acronym “TAL”.
 
 The agent session drives all territory operations. The component is a read/select surface only — it does not call EZT MCP tools directly.
 

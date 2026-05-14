@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-14) — Map Component customer labels and i18n
+- Replaced visible MC chrome text that said “TAL” with customer-facing “alignment” labels while preserving internal `tal_*` API and payload field names.
+- Added resolved `presentation.chrome_labels` defaults/overrides so MC chrome labels can be internationalized via presentation metadata or request-time overrides instead of hardcoded viewer strings.
+- Documented that MC product chrome must use customer-appropriate, localizable labels and avoid exposing internal acronyms.
+
 ### Changed (2026-05-14) — Direct Build dissolve performance and tuning
 - Optimized the Shapely dissolve backend to avoid re-repairing already-normalized input geometries; final union output is still repaired/validated.
 - Added optional Benton-style two-pass spatial partitioning to the Shapely backend with configurable `partition_threshold`, `target_parts_per_cluster`, and `max_clusters`; local benchmarks showed direct GEOS `unary_union` is faster through at least 5k synthetic parts, so the default threshold is intentionally high (`10000`) while keeping the partitioned path available for pathological real-world cases.
@@ -18,7 +23,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added direct Map Component switching between TALs in a multi-TAL TS: one active TAL renders normally while sibling TALs remain visible as dimmed reference context.
 - `get_map_visualization` render payload now includes active/reference GeoJSON separation plus `available_tals`; browser sessions retain the source TS/presentation context so the active TAL can be rebuilt server-side without a new agent tool call.
 - Added browser-safe active-TAL session update endpoint and extended `set_map_state` to accept `active_tal_id`.
-- Added a prominent floating Active TAL selector in the MC, including runtime DOM fallback for rapid-deploy HTML/JS asset skew and explicit dropdown contrast styling.
+- Added a prominent floating active-alignment selector in the MC, including runtime DOM fallback for rapid-deploy HTML/JS asset skew and explicit dropdown contrast styling.
 - Added unit/route coverage for active TAL switching and updated Functional/Technical/Map Component docs for the v1 behavior.
 
 ### Changed (2026-05-13) — map visualization as early v1 capability
