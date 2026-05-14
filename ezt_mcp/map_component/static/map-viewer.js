@@ -1,7 +1,30 @@
 const statusEl = document.getElementById("status");
+const debugEl = document.getElementById("debug");
+const debugMessages = [];
 
 function setStatus(message) {
   statusEl.textContent = message;
+}
+
+function debugMessage(message, details) {
+  const text = details ? `${message}: ${details}` : message;
+  debugMessages.push(text);
+  console.warn(text);
+  if (debugEl) {
+    debugEl.hidden = false;
+    debugEl.textContent = debugMessages.slice(-8).join("\n");
+  }
+}
+
+function errorDetails(error) {
+  if (!error) return "unknown error";
+  if (typeof error === "string") return error;
+  if (error.message) return error.message;
+  try {
+    return JSON.stringify(error);
+  } catch (_) {
+    return String(error);
+  }
 }
 
 function sessionParts() {
@@ -68,7 +91,7 @@ function baseStyle(payload) {
         source: "basemap",
         "source-layer": "roads",
         minzoom: 8,
-        filter: ["!in", ["get", "kind"], ["literal", ["highway", "major_road"]]],
+        filter: ["!", ["in", ["get", "kind"], ["literal", ["highway", "major_road"]]]],
         paint: {
           "line-color": "#334252",
           "line-width": ["interpolate", ["linear"], ["zoom"], 8, 0.25, 12, 0.8, 15, 1.4],
@@ -152,43 +175,49 @@ function baseStyle(payload) {
   }
   return style;
 }
+
 function addTerritoryLayers(map, payload) {
-  map.addSource("territories", { type: "geojson", data: payload.geojson });
-  map.addLayer({
-    id: "territory-fill",
-    type: "fill",
-    source: "territories",
-    paint: {
-      "fill-color": ["coalesce", ["get", "_render_color"], "#2F80ED"],
-      "fill-opacity": 0.42,
-    },
-  });
-  map.addLayer({
-    id: "territory-outline",
-    type: "line",
-    source: "territories",
-    paint: {
-      "line-color": "#f6f8fb",
-      "line-width": 1.25,
-      "line-opacity": 0.85,
-    },
-  });
-  map.addLayer({
-    id: "territory-labels",
-    type: "symbol",
-    source: "territories",
-    layout: {
-      "text-field": ["coalesce", ["get", "_render_label"], ["get", "label"], ["get", "territory_id"]],
-      "text-size": 12,
-      "text-font": ["Noto Sans Regular"],
-      "text-allow-overlap": false,
-    },
-    paint: {
-      "text-color": "#f6f8fb",
-      "text-halo-color": "#101418",
-      "text-halo-width": 1.5,
-    },
-  });
+  try {
+    map.addSource("territories", { type: "geojson", data: payload.geojson });
+    map.addLayer({
+      id: "territory-fill",
+      type: "fill",
+      source: "territories",
+      paint: {
+        "fill-color": ["coalesce", ["get", "_render_color"], "#2F80ED"],
+        "fill-opacity": 0.42,
+      },
+    });
+    map.addLayer({
+      id: "territory-outline",
+      type: "line",
+      source: "territories",
+      paint: {
+        "line-color": "#f6f8fb",
+        "line-width": 1.25,
+        "line-opacity": 0.85,
+      },
+    });
+    map.addLayer({
+      id: "territory-labels",
+      type: "symbol",
+      source: "territories",
+      layout: {
+        "text-field": ["coalesce", ["get", "_render_label"], ["get", "label"], ["get", "territory_id"]],
+        "text-size": 12,
+        "text-font": ["Noto Sans Regular"],
+        "text-allow-overlap": false,
+      },
+      paint: {
+        "text-color": "#f6f8fb",
+        "text-halo-color": "#101418",
+        "text-halo-width": 1.5,
+      },
+    });
+  } catch (error) {
+    debugMessage("Failed to add territory layers", errorDetails(error));
+    throw error;
+  }
 
   map.on("click", "territory-fill", (event) => {
     const feature = event.features && event.features[0];
@@ -212,11 +241,15 @@ function addTerritoryLayers(map, payload) {
 
 function fitBounds(map, bounds) {
   if (!Array.isArray(bounds) || bounds.length !== 4) return;
-  map.fitBounds([[bounds[0], bounds[1]], [bounds[2], bounds[3]]], {
-    padding: 80,
-    duration: 0,
-    maxZoom: 9,
-  });
+  try {
+    map.fitBounds([[bounds[0], bounds[1]], [bounds[2], bounds[3]]], {
+      padding: 80,
+      duration: 0,
+      maxZoom: 9,
+    });
+  } catch (error) {
+    debugMessage("Failed to fit bounds", errorDetails(error));
+  }
 }
 
 function appBaseUrl() {
@@ -254,22 +287,36 @@ async function main() {
     center: [-96, 38],
     zoom: 3,
     attributionControl: true,
+    failIfMajorPerformanceCaveat: false,
   });
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
 
   map.on("load", () => {
+    debugMessage("Map load event", `features=${payload.geojson && payload.geojson.features ? payload.geojson.features.length : 0}; bounds=${JSON.stringify(payload.bounds)}`);
     addTerritoryLayers(map, payload);
     fitBounds(map, payload.bounds);
-    setStatus("Loaded. New-tab view is canonical for v1; inline embedding is experimental.");
+    setStatus("Loaded. Debug panel shows map events/errors if present.");
+  });
+
+  map.on("styledata", () => {
+    debugMessage("Style data loaded");
+  });
+
+  map.on("sourcedata", (event) => {
+    if (event && event.sourceId && event.isSourceLoaded) {
+      debugMessage("Source loaded", event.sourceId);
+    }
   });
 
   map.on("error", (event) => {
-    console.warn("Map error", event && event.error);
-    setStatus("Map loaded with warnings. Check browser console for details.");
+    const details = errorDetails(event && event.error ? event.error : event);
+    debugMessage("MapLibre error", details);
+    setStatus("Map warning/error captured below.");
   });
 }
 
 main().catch((error) => {
   console.error(error);
+  debugMessage("Fatal viewer error", errorDetails(error));
   setStatus(`Error: ${error.message}`);
 });
