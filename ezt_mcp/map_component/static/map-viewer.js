@@ -91,7 +91,7 @@ function baseStyle(payload) {
         source: "basemap",
         "source-layer": "roads",
         minzoom: 8,
-        filter: ["!", ["in", ["get", "kind"], ["literal", ["highway", "major_road"]]]],
+        filter: ["!in", "kind", "highway", "major_road"],
         paint: {
           "line-color": "#334252",
           "line-width": ["interpolate", ["linear"], ["zoom"], 8, 0.25, 12, 0.8, 15, 1.4],
@@ -103,7 +103,7 @@ function baseStyle(payload) {
         type: "line",
         source: "basemap",
         "source-layer": "roads",
-        filter: ["in", ["get", "kind"], ["literal", ["highway", "major_road"]]],
+        filter: ["in", "kind", "highway", "major_road"],
         paint: {
           "line-color": "#4d6176",
           "line-width": ["interpolate", ["linear"], ["zoom"], 3, 0.45, 8, 1.1, 12, 2.4],
