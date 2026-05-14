@@ -138,7 +138,11 @@ class MapVisualizationRoutes:
         if asset_name not in asset_map:
             return Response("Not found", status_code=404)
         file_name, media_type = asset_map[asset_name]
-        return Response(_static_text(file_name), media_type=media_type)
+        return Response(
+            _static_text(file_name),
+            media_type=media_type,
+            headers={"Cache-Control": "no-store, max-age=0"},
+        )
 
     async def pmtiles_asset(self, request: Request) -> Response:
         tile_path = _static_path("tiles/us-basemap.pmtiles")

@@ -2,16 +2,26 @@ const statusEl = document.getElementById("status");
 const debugEl = document.getElementById("debug");
 const debugMessages = [];
 
+function byId(id) {
+  return document.getElementById(id);
+}
+
+function setText(id, value) {
+  const element = byId(id);
+  if (element) element.textContent = value == null ? "" : String(value);
+}
+
 function setStatus(message) {
-  statusEl.textContent = message;
+  setText("status", message);
 }
 
 function debugMessage(message, details) {
   const text = details ? `${message}: ${details}` : message;
   debugMessages.push(text);
   console.warn(text);
-  if (debugEl && !debugEl.hidden) {
-    debugEl.textContent = debugMessages.slice(-8).join("\n");
+  const element = byId("debug");
+  if (element && !element.hidden) {
+    element.textContent = debugMessages.slice(-8).join("\n");
   }
 }
 
@@ -52,15 +62,16 @@ function legendVisible(payload) {
 
 function renderPanel(payload) {
   const presentation = payload.presentation || {};
-  const panel = document.getElementById("panel");
+  const panel = byId("panel");
   if (panel) panel.hidden = !panelVisible(payload);
 
-  document.getElementById("panel-eyebrow").textContent = presentation.eyebrow || panelEyebrow(presentation.panel_template);
-  document.getElementById("title").textContent = presentation.title || payload.active_tal.label || payload.active_tal.tal_id;
-  document.getElementById("subtitle").textContent = presentation.subtitle || payload.active_tal.tal_id;
+  setText("panel-eyebrow", presentation.eyebrow || panelEyebrow(presentation.panel_template));
+  setText("title", presentation.title || payload.active_tal.label || payload.active_tal.tal_id);
+  setText("subtitle", presentation.subtitle || payload.active_tal.tal_id);
 
   const summaryItems = panelSummaryItems(payload);
-  const summaryEl = document.getElementById("summary");
+  const summaryEl = byId("summary");
+  if (!summaryEl) return;
   summaryEl.innerHTML = "";
   for (const item of summaryItems) {
     const dt = document.createElement("dt");
@@ -139,8 +150,8 @@ function shortBounds(bounds) {
 }
 
 function renderLegend(payload) {
-  const legendEl = document.getElementById("legend");
-  const itemsEl = document.getElementById("legend-items");
+  const legendEl = byId("legend");
+  const itemsEl = byId("legend-items");
   if (!legendEl || !itemsEl) return;
   const presentation = payload.presentation || {};
   const legendItems = Array.isArray(presentation.legend_items)
