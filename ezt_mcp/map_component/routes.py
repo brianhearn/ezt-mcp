@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from importlib import resources
 from pathlib import Path
 from typing import Any, Mapping
 
 from starlette.requests import Request
-from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from starlette.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    Response,
+    StreamingResponse,
+)
 
 from .sessions import InMemoryMapSessionStore, MapVisualizationError
 
@@ -28,13 +35,20 @@ class MapVisualizationRoutes:
                 status_code=400,
             )
         try:
-            session = self.store.create_session(body, public_base_url=self.public_base_url)
+            created = self.store.create_or_update_session(
+                body,
+                public_base_url=self.public_base_url,
+                user_id=_user_id_from_request(request, body),
+            )
         except MapVisualizationError as exc:
             return _error_response(exc, status_code=_status_for_error(exc))
         return JSONResponse(
             {
                 "ok": True,
-                "result": session.response_result(public_base_url=self.public_base_url),
+                "result": created.session.response_result(
+                    public_base_url=self.public_base_url,
+                    session_exists=created.session_exists,
+                ),
             }
         )
 
@@ -62,6 +76,45 @@ class MapVisualizationRoutes:
         except MapVisualizationError as exc:
             return _error_response(exc, status_code=_status_for_error(exc))
         return JSONResponse(session.state_payload())
+
+    async def events(self, request: Request) -> StreamingResponse:
+        try:
+            session = self._session_from_request(request)
+            queue = self.store.subscribe(session.map_session_id)
+        except MapVisualizationError as exc:
+            return _error_response(exc, status_code=_status_for_error(exc))
+
+        async def event_stream():
+            try:
+                while True:
+                    try:
+                        event = await asyncio.wait_for(queue.get(), timeout=15)
+                        yield _sse_event(event)
+                    except asyncio.TimeoutError:
+                        yield ": keepalive\n\n"
+                    if await request.is_disconnected():
+                        break
+            finally:
+                self.store.unsubscribe(session.map_session_id, queue)
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    async def commit_selection(self, request: Request) -> JSONResponse:
+        try:
+            session = self._session_from_request(request)
+            body = await request.json()
+            if not isinstance(body, Mapping):
+                raise MapVisualizationError(
+                    "INVALID_SELECTION", "Request body must be a JSON object."
+                )
+            selection = self.store.commit_selection(session.map_session_id, body)
+        except MapVisualizationError as exc:
+            return _error_response(exc, status_code=_status_for_error(exc))
+        return JSONResponse({"ok": True, "result": selection})
 
     async def static_asset(self, request: Request) -> Response:
         asset_name = request.path_params["asset_name"]
@@ -107,6 +160,18 @@ class MapVisualizationRoutes:
         return self.store.get_session(session_id, token)
 
 
+def _user_id_from_request(request: Request, body: Mapping[str, Any] | None = None) -> str | None:
+    if body and isinstance(body.get("user_id"), str):
+        return body["user_id"]
+    return request.headers.get("X-EZT-User-Id") or request.headers.get("X-User-Id")
+
+
+def _sse_event(event: Mapping[str, Any]) -> str:
+    event_type = str(event.get("type") or "message")
+    data = json.dumps(dict(event), separators=(",", ":"))
+    return f"event: {event_type}\ndata: {data}\n\n"
+
+
 def _static_text(asset_name: str) -> str:
     return _static_path(asset_name).read_text(encoding="utf-8")
 
@@ -121,7 +186,7 @@ def _error_response(exc: MapVisualizationError, *, status_code: int) -> JSONResp
 
 
 def _status_for_error(exc: MapVisualizationError) -> int:
-    if exc.code in {"INVALID_TS", "UNSUPPORTED_OPERATION", "AMBIGUOUS_TAL"}:
+    if exc.code in {"INVALID_TS", "INVALID_SELECTION", "UNSUPPORTED_OPERATION", "AMBIGUOUS_TAL"}:
         return 400
     if exc.code in {"INVALID_TS_HANDLE", "UNKNOWN_TAL_ID"}:
         return 404

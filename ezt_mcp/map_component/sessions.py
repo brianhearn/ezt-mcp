@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import secrets
 from dataclasses import dataclass, field
@@ -11,6 +12,7 @@ from typing import Any, Mapping
 from shapely.geometry import shape
 
 DEFAULT_SESSION_TTL_SECONDS = 3600
+DEFAULT_USER_ID = "default-user"
 
 
 class MapVisualizationError(ValueError):
@@ -31,7 +33,7 @@ class MapVisualizationError(ValueError):
         }
 
 
-@dataclass(frozen=True)
+@dataclass
 class MapVisualizationSession:
     """One browser-safe map visualization session."""
 
@@ -45,13 +47,19 @@ class MapVisualizationSession:
     created_at: datetime
     expires_at: datetime
     state_resource_uri: str
+    user_id: str = DEFAULT_USER_ID
     selection_resource_uri: str | None = None
+    pending_job_reference: dict[str, Any] | None = None
+    committed_selection: dict[str, Any] | None = None
+    updated_at: datetime | None = None
 
     @property
     def territory_count(self) -> int:
         return len(self.render_payload.get("geojson", {}).get("features", []))
 
-    def response_result(self, *, public_base_url: str) -> dict[str, Any]:
+    def response_result(
+        self, *, public_base_url: str, session_exists: bool = False
+    ) -> dict[str, Any]:
         map_url = (
             f"{public_base_url.rstrip('/')}/maps/session/"
             f"{self.map_session_id}/{self.token}"
@@ -68,7 +76,7 @@ class MapVisualizationSession:
                 "mode": self.mode,
                 "territory_count": self.territory_count,
             },
-            "session_exists": False,
+            "session_exists": session_exists,
             "presentation": {
                 "preferred_open": "new_tab",
                 "embed_status": "experimental",
@@ -80,44 +88,136 @@ class MapVisualizationSession:
         return result
 
     def state_payload(self) -> dict[str, Any]:
-        return {
-            "map_session_id": self.map_session_id,
-            "mode": self.mode,
-            "status": "active" if datetime.now(tz=UTC) < self.expires_at else "expired",
-            "active_tal_id": self.active_tal_id,
-            "active_tal_label": self.active_tal_label,
-            "territory_count": self.territory_count,
-            "ts_identity": self.ts_identity,
-            "created_at": _isoformat_z(self.created_at),
-            "expires_at": _isoformat_z(self.expires_at),
-        }
+        return _drop_none(
+            {
+                "map_session_id": self.map_session_id,
+                "user_id": self.user_id,
+                "mode": self.mode,
+                "status": "active" if datetime.now(tz=UTC) < self.expires_at else "expired",
+                "active_tal_id": self.active_tal_id,
+                "active_tal_label": self.active_tal_label,
+                "territory_count": self.territory_count,
+                "ts_identity": self.ts_identity,
+                "pending_job_reference": self.pending_job_reference,
+                "committed_selection": self.committed_selection,
+                "created_at": _isoformat_z(self.created_at),
+                "updated_at": _isoformat_z(self.updated_at),
+                "expires_at": _isoformat_z(self.expires_at),
+            }
+        )
+
+    def refresh_from_request(
+        self,
+        request: Mapping[str, Any],
+        *,
+        public_base_url: str,
+        now: datetime,
+    ) -> None:
+        mode = _validated_mode(request.get("mode") or self.mode)
+        ts = request.get("ts")
+        if not isinstance(ts, Mapping):
+            raise MapVisualizationError(
+                "INVALID_TS",
+                "A full TS payload is required until TS handle resolution is implemented.",
+            )
+        render_payload = build_render_payload(
+            copy.deepcopy(dict(ts)),
+            active_tal_id=request.get("active_tal_id"),
+            mode=mode,
+            presentation=(
+                request.get("presentation")
+                if isinstance(request.get("presentation"), Mapping)
+                else {}
+            ),
+            public_base_url=public_base_url,
+        )
+        ttl_seconds = _bounded_ttl(request.get("expiry_seconds"))
+        previous_mode = self.mode
+        self.mode = mode
+        self.active_tal_id = render_payload["active_tal"]["tal_id"]
+        self.active_tal_label = render_payload["active_tal"].get("label")
+        self.ts_identity = render_payload["ts_identity"]
+        self.render_payload = render_payload
+        self.expires_at = now + timedelta(seconds=ttl_seconds)
+        self.updated_at = now
+        self.selection_resource_uri = (
+            f"ezt://map-sessions/{self.map_session_id}/selection" if mode == "select" else None
+        )
+        if previous_mode != mode:
+            self.committed_selection = None
+
+
+@dataclass
+class _SessionWithExistence:
+    session: MapVisualizationSession
+    session_exists: bool
 
 
 @dataclass
 class InMemoryMapSessionStore:
     """Process-local map session store for the dev/test visualization loop.
 
-    This is intentionally short-lived and will be replaced by the transient DB
-    store when async job/session infrastructure lands.
+    The store enforces one active browser session per user in-process. Production
+    will move this to the transient DB, but the public contract and MC event flow
+    are intentionally represented here first.
     """
 
     _sessions: dict[str, MapVisualizationSession] = field(default_factory=dict)
+    _session_by_user: dict[str, str] = field(default_factory=dict)
+    _event_queues: dict[str, set[asyncio.Queue[dict[str, Any]]]] = field(default_factory=dict)
 
     def create_session(
         self,
         request: Mapping[str, Any],
         *,
         public_base_url: str,
+        user_id: str | None = None,
         now: datetime | None = None,
     ) -> MapVisualizationSession:
+        return self.create_or_update_session(
+            request,
+            public_base_url=public_base_url,
+            user_id=user_id,
+            now=now,
+        ).session
+
+    def create_or_update_session(
+        self,
+        request: Mapping[str, Any],
+        *,
+        public_base_url: str,
+        user_id: str | None = None,
+        now: datetime | None = None,
+    ) -> _SessionWithExistence:
         now = now or datetime.now(tz=UTC)
-        mode = str(request.get("mode") or "view")
-        if mode not in {"view", "select"}:
-            raise MapVisualizationError(
-                "UNSUPPORTED_OPERATION",
-                "get_map_visualization mode must be 'view' or 'select'.",
-                {"mode": mode},
+        user_id = _normal_user_id(user_id)
+        existing = self._active_session_for_user(user_id, now=now)
+        if existing is not None:
+            previous_mode = existing.mode
+            existing.refresh_from_request(request, public_base_url=public_base_url, now=now)
+            self.publish_event(
+                existing.map_session_id,
+                {
+                    "type": "tal_updated",
+                    "map_session_id": existing.map_session_id,
+                    "active_tal_id": existing.active_tal_id,
+                    "ts_identity": existing.ts_identity,
+                    "created_at": _isoformat_z(now),
+                },
             )
+            if previous_mode != existing.mode:
+                self.publish_event(
+                    existing.map_session_id,
+                    {
+                        "type": "mode_changed",
+                        "map_session_id": existing.map_session_id,
+                        "mode": existing.mode,
+                        "created_at": _isoformat_z(now),
+                    },
+                )
+            return _SessionWithExistence(existing, True)
+
+        mode = _validated_mode(request.get("mode") or "view")
         ts = request.get("ts")
         if not isinstance(ts, Mapping):
             raise MapVisualizationError(
@@ -130,7 +230,9 @@ class InMemoryMapSessionStore:
             active_tal_id=request.get("active_tal_id"),
             mode=mode,
             presentation=(
-                request.get("presentation") if isinstance(request.get("presentation"), Mapping) else {}
+                request.get("presentation")
+                if isinstance(request.get("presentation"), Mapping)
+                else {}
             ),
             public_base_url=public_base_url,
         )
@@ -153,27 +255,200 @@ class InMemoryMapSessionStore:
             ts_identity=render_payload["ts_identity"],
             render_payload=render_payload,
             created_at=now,
+            updated_at=now,
             expires_at=now + timedelta(seconds=ttl_seconds),
             state_resource_uri=f"ezt://map-sessions/{map_session_id}/state",
             selection_resource_uri=selection_uri,
+            user_id=user_id,
         )
         self._sessions[map_session_id] = session
-        return session
+        self._session_by_user[user_id] = map_session_id
+        self.publish_event(
+            map_session_id,
+            {
+                "type": "session_created",
+                "map_session_id": map_session_id,
+                "mode": mode,
+                "active_tal_id": session.active_tal_id,
+                "created_at": _isoformat_z(now),
+            },
+        )
+        return _SessionWithExistence(session, False)
 
-    def get_session(self, map_session_id: str, token: str) -> MapVisualizationSession:
+    def get_session(self, map_session_id: str, token: str | None = None) -> MapVisualizationSession:
         session = self._sessions.get(map_session_id)
-        if session is None or not _safe_token_equal(session.token, token):
+        if session is None:
+            raise MapVisualizationError(
+                "INVALID_TS_HANDLE",
+                "Map visualization session was not found or the token is invalid.",
+            )
+        if token is not None and not _safe_token_equal(session.token, token):
             raise MapVisualizationError(
                 "INVALID_TS_HANDLE",
                 "Map visualization session was not found or the token is invalid.",
             )
         if datetime.now(tz=UTC) >= session.expires_at:
             self._sessions.pop(map_session_id, None)
+            self._session_by_user.pop(session.user_id, None)
+            self.publish_event(
+                map_session_id,
+                {
+                    "type": "session_expired",
+                    "map_session_id": map_session_id,
+                    "created_at": _isoformat_z(datetime.now(tz=UTC)),
+                },
+            )
             raise MapVisualizationError(
                 "INVALID_TS_HANDLE",
                 "Map visualization session has expired.",
                 {"map_session_id": map_session_id},
             )
+        return session
+
+    def get_state(self, map_session_id: str) -> dict[str, Any]:
+        return self.get_session(map_session_id).state_payload()
+
+    def set_state(
+        self,
+        map_session_id: str,
+        *,
+        mode: str | None = None,
+        pending_job_reference: Mapping[str, Any] | None = None,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        now = now or datetime.now(tz=UTC)
+        session = self.get_session(map_session_id)
+        previous_mode = session.mode
+        if mode is not None:
+            session.mode = _validated_mode(mode)
+            session.render_payload["mode"] = session.mode
+            session.selection_resource_uri = (
+                f"ezt://map-sessions/{session.map_session_id}/selection"
+                if session.mode == "select"
+                else None
+            )
+        if pending_job_reference is not None:
+            session.pending_job_reference = dict(pending_job_reference)
+        session.updated_at = now
+        if previous_mode != session.mode:
+            self.publish_event(
+                map_session_id,
+                {
+                    "type": "mode_changed",
+                    "map_session_id": map_session_id,
+                    "mode": session.mode,
+                    "created_at": _isoformat_z(now),
+                },
+            )
+        else:
+            self.publish_event(
+                map_session_id,
+                {
+                    "type": "state_updated",
+                    "map_session_id": map_session_id,
+                    "state": session.state_payload(),
+                    "created_at": _isoformat_z(now),
+                },
+            )
+        return session.state_payload()
+
+    def commit_selection(
+        self,
+        map_session_id: str,
+        selection: Mapping[str, Any],
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        now = now or datetime.now(tz=UTC)
+        session = self.get_session(map_session_id)
+        if session.mode != "select":
+            raise MapVisualizationError(
+                "UNSUPPORTED_OPERATION",
+                "Selections can only be committed while the map session is in select mode.",
+                {"map_session_id": map_session_id, "mode": session.mode},
+            )
+        part_ids = selection.get("part_ids")
+        if not isinstance(part_ids, list) or not all(
+            isinstance(item, str) and item for item in part_ids
+        ):
+            raise MapVisualizationError(
+                "INVALID_SELECTION",
+                "Selection commit requires a non-empty part_ids array of strings.",
+            )
+        payload = {
+            "type": "map_selection",
+            "part_layer": selection.get("part_layer"),
+            "part_ids": list(dict.fromkeys(part_ids)),
+            "committed_at": _isoformat_z(now),
+            "job_id": selection.get("job_id"),
+        }
+        session.committed_selection = _drop_none(payload)
+        session.updated_at = now
+        self.publish_event(
+            map_session_id,
+            {
+                "type": "selection_committed",
+                "map_session_id": map_session_id,
+                "selection": session.committed_selection,
+                "created_at": _isoformat_z(now),
+            },
+        )
+        return session.committed_selection
+
+    def get_selection(self, map_session_id: str) -> dict[str, Any]:
+        session = self.get_session(map_session_id)
+        if session.committed_selection is None:
+            raise MapVisualizationError(
+                "INVALID_TS_HANDLE",
+                "No committed selection is available for this map session yet.",
+                {"map_session_id": map_session_id},
+            )
+        return session.committed_selection
+
+    def subscribe(self, map_session_id: str) -> asyncio.Queue[dict[str, Any]]:
+        # Validate session id but do not require browser token for server-side MCP/SSE wiring.
+        session = self.get_session(map_session_id)
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=100)
+        self._event_queues.setdefault(map_session_id, set()).add(queue)
+        queue.put_nowait(
+            {
+                "type": "connected",
+                "map_session_id": map_session_id,
+                "state": session.state_payload(),
+                "created_at": _isoformat_z(datetime.now(tz=UTC)),
+            }
+        )
+        return queue
+
+    def unsubscribe(self, map_session_id: str, queue: asyncio.Queue[dict[str, Any]]) -> None:
+        queues = self._event_queues.get(map_session_id)
+        if not queues:
+            return
+        queues.discard(queue)
+        if not queues:
+            self._event_queues.pop(map_session_id, None)
+
+    def publish_event(self, map_session_id: str, event: Mapping[str, Any]) -> None:
+        queues = list(self._event_queues.get(map_session_id, set()))
+        for queue in queues:
+            try:
+                queue.put_nowait(dict(event))
+            except asyncio.QueueFull:
+                # Drop stale clients rather than blocking server-side tool work.
+                self.unsubscribe(map_session_id, queue)
+
+    def _active_session_for_user(
+        self, user_id: str, *, now: datetime
+    ) -> MapVisualizationSession | None:
+        session_id = self._session_by_user.get(user_id)
+        if not session_id:
+            return None
+        session = self._sessions.get(session_id)
+        if session is None or now >= session.expires_at:
+            self._session_by_user.pop(user_id, None)
+            if session is not None:
+                self._sessions.pop(session_id, None)
+            return None
         return session
 
 
@@ -270,12 +545,12 @@ def _feature_collection_bounds(features: list[Mapping[str, Any]]) -> list[float]
 
 def _single_tal_id(ts: Mapping[str, Any]) -> str | None:
     tal_ids = {
-        feature["properties"].get("tal_id")
+        feature.get("properties", {}).get("tal_id")
         for feature in ts.get("features", [])
         if isinstance(feature, Mapping) and isinstance(feature.get("properties"), Mapping)
     }
-    tal_ids = {str(tal_id) for tal_id in tal_ids if tal_id}
-    return next(iter(tal_ids)) if len(tal_ids) == 1 else None
+    tal_ids.discard(None)
+    return str(next(iter(tal_ids))) if len(tal_ids) == 1 else None
 
 
 def _tal_label(properties: Mapping[str, Any], tal_id: str) -> str | None:
@@ -284,29 +559,30 @@ def _tal_label(properties: Mapping[str, Any], tal_id: str) -> str | None:
         for layer in layers:
             if isinstance(layer, Mapping) and layer.get("tal_id") == tal_id:
                 label = layer.get("label")
-                return str(label) if label else None
+                return str(label) if label is not None else None
     return None
 
 
 def _ts_identity(properties: Mapping[str, Any]) -> dict[str, Any]:
-    identity = properties.get("ts_identity")
-    if isinstance(identity, Mapping):
-        return dict(identity)
+    identity = (
+        properties.get("ts_identity")
+        if isinstance(properties.get("ts_identity"), Mapping)
+        else {}
+    )
     return {
-        "ts_id": str(properties.get("ts_id") or "ts-visualization"),
-        "revision": int(properties.get("revision") or 0),
-        "content_hash": str(
-            properties.get("content_hash")
-            or "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        "ts_id": str(identity.get("ts_id") or properties.get("ts_id") or "ts-inline"),
+        "revision": int(identity.get("revision") or properties.get("revision") or 1),
+        "content_hash": str(identity.get("content_hash") or "sha256:" + "0" * 64),
+        "updated_at": str(
+            identity.get("updated_at")
+            or datetime.now(tz=UTC).isoformat().replace("+00:00", "Z")
         ),
-        "updated_at": str(properties.get("updated_at") or _isoformat_z(datetime.now(tz=UTC))),
     }
 
 
-def _safe_token_equal(expected: str, actual: str) -> bool:
-    if not actual or not actual.isascii():
-        return False
-    return secrets.compare_digest(expected, actual)
+def _palette_color(index: int) -> str:
+    palette = ["#2F80ED", "#27AE60", "#F2994A", "#9B51E0", "#EB5757", "#56CCF2"]
+    return palette[index % len(palette)]
 
 
 def _bounded_ttl(value: Any) -> int:
@@ -317,19 +593,33 @@ def _bounded_ttl(value: Any) -> int:
     return max(60, min(seconds, 86400))
 
 
-def _palette_color(index: int) -> str:
-    palette = [
-        "#2F80ED",
-        "#27AE60",
-        "#F2994A",
-        "#9B51E0",
-        "#EB5757",
-        "#00A3A3",
-        "#F2C94C",
-        "#56CCF2",
-    ]
-    return palette[index % len(palette)]
+def _validated_mode(value: Any) -> str:
+    mode = str(value or "view")
+    if mode not in {"view", "select"}:
+        raise MapVisualizationError(
+            "UNSUPPORTED_OPERATION",
+            "get_map_visualization mode must be 'view' or 'select'.",
+            {"mode": mode},
+        )
+    return mode
 
 
-def _isoformat_z(value: datetime) -> str:
+def _normal_user_id(value: str | None) -> str:
+    user_id = str(value or DEFAULT_USER_ID).strip()
+    return user_id or DEFAULT_USER_ID
+
+
+def _safe_token_equal(actual: str, supplied: str) -> bool:
+    return secrets.compare_digest(actual.encode("utf-8"), str(supplied).encode("utf-8"))
+
+
+def _drop_none(payload: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in payload.items() if value is not None}
+
+
+def _isoformat_z(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")

@@ -1,0 +1,65 @@
+from __future__ import annotations
+
+from ezt_mcp.map_component.sessions import InMemoryMapSessionStore
+from tests.unit.test_map_visualization import sample_ts
+
+
+def test_map_session_is_idempotent_per_user_and_publishes_state_events():
+    store = InMemoryMapSessionStore()
+    first = store.create_or_update_session(
+        {"ts": sample_ts(), "mode": "view", "active_tal_id": "tal-current"},
+        public_base_url="https://expertpack.ai/mcp",
+        user_id="monica",
+    )
+    queue = store.subscribe(first.session.map_session_id)
+
+    second = store.create_or_update_session(
+        {"ts": sample_ts(), "mode": "select", "active_tal_id": "tal-current"},
+        public_base_url="https://expertpack.ai/mcp",
+        user_id="monica",
+    )
+
+    assert first.session.map_session_id == second.session.map_session_id
+    assert second.session_exists is True
+    assert second.session.mode == "select"
+    assert second.session.response_result(
+        public_base_url="https://expertpack.ai/mcp",
+        session_exists=True,
+    )["session_exists"] is True
+    events = [
+        queue.get_nowait()["type"],
+        queue.get_nowait()["type"],
+        queue.get_nowait()["type"],
+    ]
+    assert events == ["connected", "tal_updated", "mode_changed"]
+
+
+def test_set_state_and_commit_selection_are_explicit_primitives():
+    store = InMemoryMapSessionStore()
+    created = store.create_or_update_session(
+        {"ts": sample_ts(), "mode": "view", "active_tal_id": "tal-current"},
+        public_base_url="https://expertpack.ai/mcp",
+        user_id="monica",
+    )
+
+    state = store.set_state(
+        created.session.map_session_id,
+        mode="select",
+        pending_job_reference={"job_id": "job_1", "status": "awaiting_user_selection"},
+    )
+    selection = store.commit_selection(
+        created.session.map_session_id,
+        {
+            "part_layer": "us_zips",
+            "part_ids": ["32301", "32301", "32303"],
+            "job_id": "job_1",
+        },
+    )
+
+    assert state["mode"] == "select"
+    assert state["pending_job_reference"] == {
+        "job_id": "job_1",
+        "status": "awaiting_user_selection",
+    }
+    assert selection["part_ids"] == ["32301", "32303"]
+    assert store.get_selection(created.session.map_session_id) == selection

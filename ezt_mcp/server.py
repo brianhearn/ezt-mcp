@@ -18,9 +18,11 @@ from .map_component.sessions import InMemoryMapSessionStore, MapVisualizationErr
 
 from .auth import APIKeyAuth
 from .config import ServerConfig
+from .db.jobs import AsyncpgJobRepository
 from .db.part_layers import AsyncpgPartLayerRepository
 from .db.parts import AsyncpgPartsRepository
 from .observability import RequestTimingMiddleware, timed_async_operation
+from .jobs import CustomerContext, InMemoryJobRepository, InvalidJobTransitionError, JobAccessError
 from .resources.part_layers import (
     UnknownPartLayerError,
     assert_no_forbidden_public_fields,
@@ -39,6 +41,7 @@ class AppState:
         self.pool: asyncpg.Pool | None = None
         self.part_layers_repo: AsyncpgPartLayerRepository | None = None
         self.parts_repo: AsyncpgPartsRepository | None = None
+        self.jobs_repo: AsyncpgJobRepository | InMemoryJobRepository = InMemoryJobRepository()
         self.map_sessions = InMemoryMapSessionStore()
 
 
@@ -104,6 +107,62 @@ def create_mcp_server(state: AppState, *, public_base_url: str):
             assert_no_forbidden_public_fields(payload)
             return json.dumps(payload, indent=2)
 
+    @mcp.resource("ezt://jobs/{job_id}/status")
+    async def job_status(job_id: str) -> str:
+        """Authoritative async job status for the authenticated customer."""
+        async with timed_async_operation(logger, "mcp.resource.jobs.status", job_id=job_id):
+            try:
+                job = await _maybe_await(
+                    _require_jobs_repo(state).get(_default_customer_context(), job_id)
+                )
+            except JobAccessError as exc:
+                return json.dumps(_job_error_payload(exc.code, str(exc), job_id=job_id), indent=2)
+            return json.dumps(job.status_resource(), indent=2)
+
+    @mcp.resource("ezt://jobs/{job_id}/result")
+    async def job_result(job_id: str) -> str:
+        """Terminal async job result for the authenticated customer."""
+        async with timed_async_operation(logger, "mcp.resource.jobs.result", job_id=job_id):
+            try:
+                repo = _require_jobs_repo(state)
+                if hasattr(repo, "result_resource"):
+                    result = await _maybe_await(
+                        repo.result_resource(_default_customer_context(), job_id)
+                    )
+                else:
+                    job = await _maybe_await(repo.get(_default_customer_context(), job_id))
+                    result = job.result_resource()
+            except JobAccessError as exc:
+                return json.dumps(_job_error_payload(exc.code, str(exc), job_id=job_id), indent=2)
+            except InvalidJobTransitionError as exc:
+                return json.dumps(
+                    _job_error_payload(exc.code, str(exc), job_id=job_id, status=exc.status),
+                    indent=2,
+                )
+            return json.dumps(result, indent=2)
+
+    @mcp.resource("ezt://map-sessions/{map_session_id}/state")
+    async def map_session_state(map_session_id: str) -> str:
+        """Current Map Component session state."""
+        async with timed_async_operation(
+            logger, "mcp.resource.map_sessions.state", map_session_id=map_session_id
+        ):
+            try:
+                return json.dumps(state.map_sessions.get_state(map_session_id), indent=2)
+            except MapVisualizationError as exc:
+                return json.dumps({"ok": False, "error": exc.to_error()}, indent=2)
+
+    @mcp.resource("ezt://map-sessions/{map_session_id}/selection")
+    async def map_session_selection(map_session_id: str) -> str:
+        """Committed Map Component selection, when available."""
+        async with timed_async_operation(
+            logger, "mcp.resource.map_sessions.selection", map_session_id=map_session_id
+        ):
+            try:
+                return json.dumps(state.map_sessions.get_selection(map_session_id), indent=2)
+            except MapVisualizationError as exc:
+                return json.dumps({"ok": False, "error": exc.to_error()}, indent=2)
+
     @mcp.tool(
         name="get_map_visualization",
         description=(
@@ -163,6 +222,64 @@ def create_mcp_server(state: AppState, *, public_base_url: str):
         async with timed_async_operation(logger, "mcp.tool.query_parts"):
             return await query_parts_tool(_require_parts_repo(state), payload)
 
+
+    @mcp.tool(
+        name="cancel_job",
+        description="Cooperatively cancel an async EZT MCP job for the authenticated customer.",
+        structured_output=True,
+    )
+    async def cancel_job(job_id: str) -> dict[str, Any]:
+        async with timed_async_operation(logger, "mcp.tool.cancel_job", job_id=job_id):
+            try:
+                job = await _maybe_await(
+                    _require_jobs_repo(state).cancel(_default_customer_context(), job_id)
+                )
+            except JobAccessError as exc:
+                return _job_error_payload(exc.code, str(exc), job_id=job_id)
+            return {"ok": True, "result": job.status_resource()}
+
+    @mcp.tool(
+        name="set_map_state",
+        description=(
+            "Update deterministic Map Component session state, such as mode and "
+            "pending job reference. "
+            "Selection-driven job advancement is intentionally handled separately."
+        ),
+        structured_output=True,
+    )
+    async def set_map_state(
+        map_session_id: str,
+        mode: str | None = None,
+        pending_job_reference: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        async with timed_async_operation(
+            logger, "mcp.tool.set_map_state", map_session_id=map_session_id
+        ):
+            try:
+                result = state.map_sessions.set_state(
+                    map_session_id,
+                    mode=mode,
+                    pending_job_reference=pending_job_reference,
+                )
+            except MapVisualizationError as exc:
+                return {"ok": False, "error": exc.to_error()}
+            return {"ok": True, "result": result}
+
+    @mcp.tool(
+        name="get_map_selection",
+        description="Return the committed selection for a Map Component session, if one exists.",
+        structured_output=True,
+    )
+    async def get_map_selection(map_session_id: str) -> dict[str, Any]:
+        async with timed_async_operation(
+            logger, "mcp.tool.get_map_selection", map_session_id=map_session_id
+        ):
+            try:
+                selection = state.map_sessions.get_selection(map_session_id)
+            except MapVisualizationError as exc:
+                return {"ok": False, "error": exc.to_error()}
+            return {"ok": True, "result": selection}
+
     return mcp
 
 
@@ -185,6 +302,13 @@ def build_app(config: ServerConfig) -> Starlette:
                 state.pool = await asyncpg.create_pool(database_url, min_size=1, max_size=5)
                 state.part_layers_repo = AsyncpgPartLayerRepository(state.pool)
                 state.parts_repo = AsyncpgPartsRepository(state.pool)
+                if await _transient_jobs_available(state.pool):
+                    state.jobs_repo = AsyncpgJobRepository(state.pool)
+                else:
+                    logger.warning(
+                        "transient.jobs migration is not available; "
+                        "async job resources will use the in-memory dev repository"
+                    )
         else:
             logger.warning("DATABASE_URL not configured; DB-backed resources will be unavailable")
 
@@ -262,23 +386,92 @@ def build_app(config: ServerConfig) -> Starlette:
             status_code = 200 if payload.get("ok") is True else _status_for_tool_error(payload)
             return JSONResponse(payload, status_code=status_code)
 
+    async def job_status_http(request: Request) -> JSONResponse:
+        unauthorized = _unauthorized_if_needed(request, auth)
+        if unauthorized is not None:
+            return unauthorized
+        job_id = request.path_params["job_id"]
+        async with timed_async_operation(logger, "http.jobs.status", job_id=job_id):
+            try:
+                job = await _maybe_await(
+                    _require_jobs_repo(state).get(_default_customer_context(), job_id)
+                )
+            except JobAccessError as exc:
+                return JSONResponse(
+                    _job_error_payload(exc.code, str(exc), job_id=job_id), status_code=404
+                )
+            return JSONResponse(job.status_resource())
+
+    async def job_result_http(request: Request) -> JSONResponse:
+        unauthorized = _unauthorized_if_needed(request, auth)
+        if unauthorized is not None:
+            return unauthorized
+        job_id = request.path_params["job_id"]
+        async with timed_async_operation(logger, "http.jobs.result", job_id=job_id):
+            try:
+                repo = _require_jobs_repo(state)
+                if hasattr(repo, "result_resource"):
+                    result = await _maybe_await(
+                        repo.result_resource(_default_customer_context(), job_id)
+                    )
+                else:
+                    job = await _maybe_await(repo.get(_default_customer_context(), job_id))
+                    result = job.result_resource()
+            except JobAccessError as exc:
+                return JSONResponse(
+                    _job_error_payload(exc.code, str(exc), job_id=job_id), status_code=404
+                )
+            except InvalidJobTransitionError as exc:
+                return JSONResponse(
+                    _job_error_payload(exc.code, str(exc), job_id=job_id, status=exc.status),
+                    status_code=409,
+                )
+            return JSONResponse(result)
+
+    async def cancel_job_http(request: Request) -> JSONResponse:
+        unauthorized = _unauthorized_if_needed(request, auth)
+        if unauthorized is not None:
+            return unauthorized
+        job_id = request.path_params["job_id"]
+        async with timed_async_operation(logger, "http.jobs.cancel", job_id=job_id):
+            try:
+                job = await _maybe_await(
+                    _require_jobs_repo(state).cancel(_default_customer_context(), job_id)
+                )
+            except JobAccessError as exc:
+                return JSONResponse(
+                    _job_error_payload(exc.code, str(exc), job_id=job_id), status_code=404
+                )
+            return JSONResponse({"ok": True, "result": job.status_resource()})
+
     routes = [
         Route("/health", health),
         Route("/part-layers", part_layers_http),
         Route("/part-layers/{part_layer}", part_layer_http),
         Route("/query-parts", query_parts_http, methods=["POST"]),
+        Route("/jobs/{job_id}/status", job_status_http),
+        Route("/jobs/{job_id}/result", job_result_http),
+        Route("/jobs/{job_id}/cancel", cancel_job_http, methods=["POST"]),
         Route("/get-map-visualization", map_routes.create_visualization, methods=["POST"]),
         Route("/maps/session/{map_session_id}/{token}", map_routes.viewer),
         Route("/maps/session/{map_session_id}/{token}/render-payload", map_routes.render_payload),
         Route("/maps/session/{map_session_id}/{token}/state", map_routes.state),
+        Route("/maps/session/{map_session_id}/{token}/events", map_routes.events),
+        Route(
+            "/maps/session/{map_session_id}/{token}/selection",
+            map_routes.commit_selection,
+            methods=["POST"],
+        ),
         Route("/maps/session/{map_session_id}", map_routes.viewer),
         Route("/maps/session/{map_session_id}/render-payload", map_routes.render_payload),
         Route("/maps/session/{map_session_id}/state", map_routes.state),
+        Route("/maps/session/{map_session_id}/events", map_routes.events),
         Route("/static/{asset_name}", map_routes.static_asset),
         Route("/assets/tiles/us-basemap.pmtiles", map_routes.pmtiles_asset),
         Mount("/", app=mcp_app),
     ]
     app = Starlette(routes=routes, lifespan=lifespan)
+    app.state.ezt_state = state
     app.add_middleware(RequestTimingMiddleware)
     return app
 
@@ -299,10 +492,59 @@ def _create_map_visualization_tool_result(
     state: AppState, request: dict[str, Any], *, public_base_url: str
 ) -> dict[str, Any]:
     try:
-        session = state.map_sessions.create_session(request, public_base_url=public_base_url)
+        created = state.map_sessions.create_or_update_session(
+            request,
+            public_base_url=public_base_url,
+            user_id=str(request.get("user_id") or "default-user"),
+        )
     except MapVisualizationError as exc:
         return {"ok": False, "error": exc.to_error()}
-    return {"ok": True, "result": session.response_result(public_base_url=public_base_url)}
+    return {
+        "ok": True,
+        "result": created.session.response_result(
+            public_base_url=public_base_url,
+            session_exists=created.session_exists,
+        ),
+    }
+
+
+
+def _require_jobs_repo(state: AppState):
+    return state.jobs_repo
+
+
+async def _transient_jobs_available(pool: asyncpg.Pool) -> bool:
+    try:
+        async with pool.acquire() as conn:
+            value = await conn.fetchval("select to_regclass('transient.jobs')")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("transient.jobs migration probe failed: %s", exc.__class__.__name__)
+        return False
+    return value is not None
+
+
+def _default_customer_context() -> CustomerContext:
+    # Temporary dev/test customer context until auth exposes customer_id/key_id.
+    return CustomerContext(customer_id="00000000-0000-0000-0000-000000000001")
+
+
+async def _maybe_await(value: Any) -> Any:
+    if hasattr(value, "__await__"):
+        return await value
+    return value
+
+
+def _job_error_payload(code: str, message: str, **details: Any) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "error": {
+            "code": code,
+            "message": message,
+            "details": {key: value for key, value in details.items() if value is not None},
+            "retryable": False,
+            "user_action_required": code == "UNKNOWN_JOB",
+        },
+    }
 
 
 def _status_for_tool_error(payload: dict[str, Any]) -> int:
