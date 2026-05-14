@@ -1,7 +1,8 @@
-"""PostGIS-backed part query repository."""
+"""PostGIS-backed part query and geometry repository."""
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from ezt_mcp.resources.part_layers import UnknownPartLayerError
@@ -47,6 +48,39 @@ class AsyncpgPartsRepository:
                 part_layer=request.part_layer, offset=next_offset
             )
         return result
+
+    async def fetch_part_geometries(
+        self,
+        part_layer: str,
+        part_ids: list[str],
+    ) -> dict[str, dict[str, Any]]:
+        """Fetch GeoJSON geometries for public part IDs from a known part layer.
+
+        Geometry stays server-side until Direct Build needs it. The returned dict
+        is keyed by public ``part_id`` and contains GeoJSON geometry objects that
+        the dissolve kernel can coerce into Shapely geometries. Internal table and
+        geometry column names are selected only from the closed layer mapping and
+        database metadata; caller values are bind parameters.
+        """
+        spec = _LAYER_SPECS.get(part_layer)
+        if spec is None:
+            raise UnknownPartLayerError(part_layer)
+
+        unique_part_ids = list(dict.fromkeys(str(part_id) for part_id in part_ids if part_id))
+        if not unique_part_ids:
+            return {}
+
+        async with self._pool.acquire() as conn:
+            geometry_column = await _geometry_column(conn, spec)
+            rows = await _fetch_part_geometries(conn, spec, geometry_column, unique_part_ids)
+
+        geometries: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            part_id = str(row["part_id"])
+            geometry_geojson = row["geometry_geojson"]
+            if geometry_geojson:
+                geometries[part_id] = json.loads(geometry_geojson)
+        return geometries
 
 
 _LAYER_SPECS: dict[str, dict[str, Any]] = {
@@ -125,6 +159,34 @@ async def _safe_columns(conn: Any, spec: dict[str, Any]) -> list[str]:
     return columns
 
 
+async def _geometry_column(conn: Any, spec: dict[str, Any]) -> str:
+    rows = await conn.fetch(
+        """
+        select column_name, data_type, udt_name
+        from information_schema.columns
+        where table_schema = $1 and table_name = $2
+        order by ordinal_position
+        """,
+        spec["schema"],
+        spec["table_name"],
+    )
+    for row in rows:
+        column_name = str(row["column_name"])
+        data_type = row.get("data_type") if hasattr(row, "get") else row["data_type"]
+        udt_name = row.get("udt_name") if hasattr(row, "get") else row["udt_name"]
+        lowered = column_name.lower()
+        if lowered in _GEOMETRY_COLUMN_NAMES or (
+            data_type in _GEOMETRY_DATA_TYPES and str(udt_name).lower() in {"geometry", "geography"}
+        ):
+            return column_name
+    raise QueryPartsError(
+        "UNSUPPORTED_OPERATION",
+        "Part layer table is missing a supported geometry column.",
+        details={"part_layer": _public_layer_for_spec(spec)},
+        user_action_required=False,
+    )
+
+
 async def _query_by_part_ids(
     conn: Any, spec: dict[str, Any], columns: list[str], request: QueryPartsRequest
 ):
@@ -145,6 +207,23 @@ async def _count_by_part_ids(conn: Any, spec: dict[str, Any], part_ids: list[str
         where {spec["id_column"]} = any($1::text[])
     """
     return int(await conn.fetchval(sql, part_ids) or 0)
+
+
+async def _fetch_part_geometries(
+    conn: Any,
+    spec: dict[str, Any],
+    geometry_column: str,
+    part_ids: list[str],
+):
+    sql = f"""
+        select
+          {spec["id_column"]}::text as part_id,
+          ST_AsGeoJSON(ST_Transform({geometry_column}, 4326)) as geometry_geojson
+        from {spec["table"]}
+        where {spec["id_column"]} = any($1::text[])
+        order by {spec["order_column"]}
+    """
+    return await conn.fetch(sql, part_ids)
 
 
 async def _query_by_filter(

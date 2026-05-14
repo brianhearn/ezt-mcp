@@ -108,3 +108,35 @@ def test_parts_repository_rejects_unsupported_filter_field():
         )
 
     assert exc.value.code == "UNSUPPORTED_FILTER"
+
+
+def test_fetch_part_geometries_uses_known_mapping_and_geojson_transform():
+    class GeometryConn(FakeConn):
+        async def fetch(self, sql, *args):
+            self.fetch_calls.append((sql, args))
+            if "information_schema.columns" in sql:
+                return [
+                    {"column_name": "zipcode", "data_type": "text", "udt_name": "text"},
+                    {"column_name": "geom", "data_type": "USER-DEFINED", "udt_name": "geometry"},
+                ]
+            if "ST_AsGeoJSON(ST_Transform(geom, 4326))" in sql:
+                return [
+                    {
+                        "part_id": "32301",
+                        "geometry_geojson": '{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,0]]]}',
+                    }
+                ]
+            return []
+
+    conn = GeometryConn()
+    repo = AsyncpgPartsRepository(FakePool(conn))
+
+    result = asyncio.run(repo.fetch_part_geometries("us_zips", ["32301", "32301"]))
+
+    assert result == {
+        "32301": {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]}
+    }
+    fetch_sql, fetch_args = conn.fetch_calls[1]
+    assert "from geo.us_postal" in fetch_sql
+    assert "where zipcode = any($1::text[])" in fetch_sql
+    assert fetch_args == (["32301"],)

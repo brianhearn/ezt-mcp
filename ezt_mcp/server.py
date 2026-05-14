@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
@@ -22,7 +23,13 @@ from .db.jobs import AsyncpgJobRepository
 from .db.part_layers import AsyncpgPartLayerRepository
 from .db.parts import AsyncpgPartsRepository
 from .observability import RequestTimingMiddleware, timed_async_operation
-from .jobs import CustomerContext, InMemoryJobRepository, InvalidJobTransitionError, JobAccessError
+from .jobs import (
+    CustomerContext,
+    InMemoryJobRepository,
+    InvalidJobTransitionError,
+    JobAccessError,
+    submission_response,
+)
 from .part_selection import (
     InMemoryPartSelectionRepository,
     InvalidPartSelectionError,
@@ -34,6 +41,7 @@ from .resources.part_layers import (
     get_part_layer_resource,
     list_part_layers_resource,
 )
+from .tools.direct_build_job import run_direct_build_job
 from .tools.query_parts import query_parts_tool
 
 logger = logging.getLogger(__name__)
@@ -243,6 +251,37 @@ def create_mcp_server(state: AppState, *, public_base_url: str):
         async with timed_async_operation(logger, "mcp.tool.query_parts"):
             return await query_parts_tool(_require_parts_repo(state), payload)
 
+    @mcp.tool(
+        name="direct_build",
+        description=(
+            "Submit and run a Direct Build job from part assignments to a Territory Solution. "
+            "The job fetches part geometry server-side and returns the completed result through job resources."
+        ),
+        structured_output=True,
+    )
+    async def direct_build(
+        part_layer: str,
+        tal_label: str,
+        assignments: list[dict[str, Any]],
+        ts: dict[str, Any] | None = None,
+        ts_handle: str | None = None,
+        expected_revision: int | None = None,
+        repair_policy: str = "default",
+    ) -> dict[str, Any]:
+        request: dict[str, Any] = {
+            "part_layer": part_layer,
+            "tal_label": tal_label,
+            "assignments": assignments,
+            "repair_policy": repair_policy,
+        }
+        if ts is not None:
+            request["ts"] = ts
+        if ts_handle is not None:
+            request["ts_handle"] = ts_handle
+        if expected_revision is not None:
+            request["expected_revision"] = expected_revision
+        async with timed_async_operation(logger, "mcp.tool.direct_build"):
+            return await _submit_and_run_direct_build(state, request)
 
     @mcp.tool(
         name="request_part_selection",
@@ -501,6 +540,18 @@ def build_app(config: ServerConfig) -> Starlette:
             status_code = 200 if payload.get("ok") is True else _status_for_tool_error(payload)
             return JSONResponse(payload, status_code=status_code)
 
+    async def direct_build_http(request: Request) -> JSONResponse:
+        unauthorized = _unauthorized_if_needed(request, auth)
+        if unauthorized is not None:
+            return unauthorized
+        body = await request.json()
+        if not isinstance(body, dict):
+            body = {}
+        async with timed_async_operation(logger, "http.direct_build"):
+            payload = await _submit_and_run_direct_build(state, body)
+            status_code = 200 if payload.get("ok") is True else _status_for_tool_error(payload)
+            return JSONResponse(payload, status_code=status_code)
+
     async def job_status_http(request: Request) -> JSONResponse:
         unauthorized = _unauthorized_if_needed(request, auth)
         if unauthorized is not None:
@@ -564,6 +615,7 @@ def build_app(config: ServerConfig) -> Starlette:
         Route("/part-layers", part_layers_http),
         Route("/part-layers/{part_layer}", part_layer_http),
         Route("/query-parts", query_parts_http, methods=["POST"]),
+        Route("/direct-build", direct_build_http, methods=["POST"]),
         Route("/jobs/{job_id}/status", job_status_http),
         Route("/jobs/{job_id}/result", job_result_http),
         Route("/jobs/{job_id}/cancel", cancel_job_http, methods=["POST"]),
@@ -650,6 +702,42 @@ def _commit_part_selection_from_map(
         },
     )
     return task.resource()
+
+
+async def _submit_and_run_direct_build(state: AppState, request: dict[str, Any]) -> dict[str, Any]:
+    try:
+        repo = _require_jobs_repo(state)
+        parts_repo = _require_parts_repo(state)
+        context = _default_customer_context()
+        job = await _maybe_await(
+            repo.submit(
+                context,
+                tool_name="direct_build",
+                phase="queued",
+                status="queued",
+                status_message="Direct Build job accepted and queued.",
+            )
+        )
+        task = asyncio.create_task(
+            run_direct_build_job(
+                context=context,
+                job_id=job.job_id,
+                request=request,
+                parts_repo=parts_repo,
+                jobs_repo=repo,
+            )
+        )
+        task.add_done_callback(_log_background_task_exception)
+        return submission_response(job)
+    except RuntimeError as exc:
+        return _job_error_payload("UNSUPPORTED_OPERATION", str(exc))
+
+
+def _log_background_task_exception(task: asyncio.Task[Any]) -> None:
+    try:
+        task.result()
+    except Exception:  # noqa: BLE001
+        logger.exception("Direct Build background task crashed")
 
 
 def _request_part_selection_tool_result(
@@ -749,8 +837,10 @@ def _status_for_tool_error(payload: dict[str, Any]) -> int:
     code = error.get("code") if isinstance(error, dict) else None
     if code in {"INVALID_REQUEST", "INVALID_PAGE_TOKEN", "UNSUPPORTED_FILTER"}:
         return 400
-    if code == "UNKNOWN_PART_LAYER":
+    if code in {"UNKNOWN_PART_LAYER", "UNKNOWN_PART_ID"}:
         return 404
+    if code == "UNSUPPORTED_OPERATION":
+        return 501
     return 500
 
 
