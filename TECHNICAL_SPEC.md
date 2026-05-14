@@ -722,19 +722,24 @@ Rows that cannot become valid points are represented in failure output; successf
 
 Pipeline:
 
-1. Resolve base TS or create an empty TS.
-2. Validate `part_layer`.
-3. Materialize assignment trie from `territory_path`.
-4. Validate part IDs and detect duplicate part assignments.
-5. Dissolve leaf territories from assigned parts.
-6. Dissolve rollup territories bottom-up.
-7. Run repair on leaf territory assignments/geometries.
-8. Build TAL metadata with `part_layer`, label, max depth, territory counts.
-9. Append TAL features and metadata to TS.
-10. Set `active_tal_id` to the new TAL.
-11. Compute TS identity and return summary.
+1. Accept request and create a customer-scoped async job record.
+2. Return the job submission envelope immediately; run the worker in the background.
+3. Resolve base TS or create an empty TS.
+4. Validate `part_layer` against the closed public layer registry/mapping.
+5. Materialize assignment trie from `territory_path`.
+6. Validate part IDs and detect duplicate part assignments.
+7. Fetch part geometries server-side from PostGIS; never return raw part geometry through interrogation tools.
+8. Dissolve leaf territories from assigned parts.
+9. Dissolve rollup territories bottom-up.
+10. Run repair on leaf territory assignments/geometries.
+11. Build TAL metadata with `part_layer`, label, max depth, territory counts.
+12. Append TAL features and metadata to TS.
+13. Set `active_tal_id` to the new TAL.
+14. Compute TS identity and complete the job result.
 
 Duplicate part assignment v1 policy: fail with `CLARIFICATION_REQUIRED` unless all duplicate assignments point to the same leaf path, in which case de-duplicate and warn.
+
+Current implementation note: the first deployed worker uses process-local `asyncio.create_task` execution behind the persisted job contract. This is sufficient for the deploy/testbed path, but production should move execution to a durable worker/queue so in-flight jobs survive process restarts.
 
 ### 7.4 `account_build`
 
@@ -880,7 +885,25 @@ Implementation minimum for the development loop:
 
 `ezt://map-sessions/{id}/state` returns session status, active TAL, expiry, current TS identity, last selection status, and last refresh status.
 
-### 8.3 Refresh events
+### 8.3 Presentation templates and panel context
+
+The Map Component uses a presentation resolution stack:
+
+1. Built-in EZT MCP presentation templates;
+2. TS `properties.presentation.views[view_name]` metadata;
+3. request-time `presentation.style_overrides`.
+
+The initial built-in templates are:
+
+- `qa_verification` — QA/development review, geometry counts, bounds/build diagnostics, debug panel enabled by default;
+- `executive_review` — clean stakeholder review, summary/legend, debug panel disabled by default;
+- `selection` — human spatial input, prompt/selection context, debug panel disabled by default.
+
+The upper-left panel is a template-driven context panel, not arbitrary agent-generated chrome. Agents may pass title/subtitle/summary/legend/debug hints through presentation metadata, but the MC owns layout and product styling per `DESIGN.md`. The debug panel is controlled by `debug_panel` in the resolved presentation payload and should default off outside QA contexts.
+
+Map static JS/CSS should be served with no-store caching in the deploy/testbed path to avoid rapid-deploy version skew while MC code is changing quickly.
+
+### 8.4 Refresh events
 
 After successful Realign with a valid `map_session_id`:
 

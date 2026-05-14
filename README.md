@@ -62,7 +62,7 @@ Any agent or developer implementing the Map Component should read `DESIGN.md` fi
 
 ## Styling
 
-The lightweight Map Component needs real but bounded styling support. Style should travel with the TS as optional presentation metadata and/or come from EZT MCP style templates. V1 should cover territory colors/boundaries/opacity, labels, point symbols, simple classification, legends, and named visualization presets — enough for sharing and verification without recreating the full Designer symbology surface.
+The lightweight Map Component needs real but bounded styling support. Style should travel with the TS as optional presentation metadata and/or come from EZT MCP style templates. V1 should cover territory colors/boundaries/opacity, labels, point symbols, simple classification, legends, context panels, and named visualization presets — enough for sharing and verification without recreating the full Designer symbology surface. The initial presentation templates are `qa_verification`, `executive_review`, and `selection`; more templates are expected as workflows mature.
 
 ## Analysis Presentation
 

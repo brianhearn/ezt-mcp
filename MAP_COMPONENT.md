@@ -157,6 +157,14 @@ V1 styling capabilities:
 
 The component should also be able to apply EZT MCP-provided style templates when a TS does not already contain presentation metadata or when the agent asks for a specific context such as `executive_review`, `balance_diagnostic`, or `qa_verification`.
 
+Initial template registry:
+
+- `qa_verification` — development/QA view for generated TS/TAL outputs. Shows diagnostic summary items and may show a debug panel. Useful while debugging geometry, basemap, and render behavior.
+- `executive_review` — stakeholder-facing read-only view. Prioritizes clean title/subtitle, concise summary metrics, and legend. Debug is off by default.
+- `selection` — spatial input view for Part Selection workflows. Prioritizes user instructions, active layer/context, selected count, and commit/cancel affordances. Debug is off by default.
+
+The upper-left panel is a context panel selected/configured by the resolved presentation template. The agent can provide context (title, subtitle, summary items, legend hints, debug flag) through TS presentation metadata or request-time presentation overrides, but the MC owns layout, typography, and product chrome.
+
 Out of scope for v1 unless later specs add them: full symbology editor, complex filter builder, hotspots, clustering, print layouts, and Designer-level layer administration.
 
 ---

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from shapely.geometry import Polygon
@@ -35,7 +35,7 @@ def square(x: float, y: float, size: float = 1.0) -> Polygon:
 def test_run_direct_build_job_fetches_geometries_and_completes_job():
     context = CustomerContext(customer_id="cust-1")
     jobs = InMemoryJobRepository()
-    now = datetime(2026, 5, 14, 21, 0, tzinfo=UTC)
+    now = datetime.now(tz=UTC) + timedelta(seconds=5)
     job = jobs.submit(context, tool_name="direct_build", now=now)
     parts = FakePartsRepository({"A": square(0, 0), "B": square(1, 0)})
     request = {

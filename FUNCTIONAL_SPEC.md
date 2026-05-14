@@ -594,7 +594,7 @@ The tool accepts:
 - `ts` or `ts_handle`;
 - mode: `view` or `select`;
 - optional active `tal_id`; default is TS `active_tal_id` when present;
-- optional named presentation view/style context;
+- optional named presentation view/style context, including built-in templates such as `qa_verification`, `executive_review`, and `selection`;
 - optional expiry duration within policy limits;
 - optional allowed interaction flags.
 
@@ -608,6 +608,7 @@ The tool accepts:
 6. In `select` mode, allow local transient selection and committed selection events.
 7. Expose subscribable selection and state resources.
 8. Support live refresh events after successful Realign when connected.
+9. Resolve presentation context from built-in template defaults, TS presentation metadata, and request-time overrides. The MC must use this context to populate its panel/legend/debug behavior while preserving product chrome ownership.
 9. Expire sessions predictably and report expiration through state/resource behavior.
 
 ### 11.4 Functional output
