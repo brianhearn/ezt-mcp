@@ -47,30 +47,43 @@ h1 {
   font-size: 13px;
 }
 
-.tal-switcher {
-  color: #8fa1b6;
+.tal-control {
+  backdrop-filter: blur(14px);
+  background: rgba(15, 23, 32, 0.94);
+  border: 1px solid rgba(110, 231, 249, 0.42);
+  border-radius: 12px;
+  box-shadow: 0 14px 42px rgba(0, 0, 0, 0.35);
+  min-width: 300px;
+  padding: 12px;
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  z-index: 3;
+}
+
+.tal-control label {
+  color: #6ee7f9;
   display: block;
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  margin-top: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  margin-bottom: 6px;
   text-transform: uppercase;
 }
 
-.tal-switcher select {
+.tal-control select {
   appearance: none;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
   color: #f6f8fb;
   display: block;
-  font: 13px Inter, ui-sans-serif, system-ui, sans-serif;
-  margin-top: 6px;
-  padding: 8px 10px;
+  font: 14px Inter, ui-sans-serif, system-ui, sans-serif;
+  padding: 9px 10px;
   width: 100%;
 }
 
-.tal-switcher select:focus {
+.tal-control select:focus {
   border-color: #6ee7f9;
   box-shadow: 0 0 0 2px rgba(110, 231, 249, 0.18);
   outline: none;

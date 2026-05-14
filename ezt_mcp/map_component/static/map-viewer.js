@@ -93,7 +93,7 @@ function panelEyebrow(templateName) {
 }
 
 function renderTalSwitcher(payload) {
-  const wrapper = byId("tal-switcher");
+  const wrapper = byId("tal-control");
   const select = byId("tal-select");
   if (!wrapper || !select) return;
   const tals = Array.isArray(payload.available_tals) ? payload.available_tals : [];
