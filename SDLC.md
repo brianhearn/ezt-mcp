@@ -179,7 +179,7 @@ This document defines the repository's SDLC documents and their boundaries. The 
 - Map Component role and boundaries
 - modes: `view`, `select`, future `edit`
 - UX primitives and expected behavior
-- rendering expectations
+- rendering expectations, including active/dimmed TAL behavior at the UX level
 - embedding targets
 - browser communication model at conceptual level
 - product/UX open questions
@@ -300,6 +300,7 @@ Potential contents:
 | Exact external payload structure | `FUNCTIONAL_SPEC.md` + `schemas/` when present |
 | Internal implementation design | `TECHNICAL_SPEC.md` |
 | Map Component role/UX concept | `MAP_COMPONENT.md` |
+| Map Component browser/session implementation | `TECHNICAL_SPEC.md` |
 | UI visual language | `DESIGN.md` |
 | Analysis narrative/presentation | `ANALYSIS_DESIGN.md` |
 | Change history | `CHANGELOG.md` |

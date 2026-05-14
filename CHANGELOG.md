@@ -7,6 +7,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-14) — Map Component active TAL switching
+- Added direct Map Component switching between TALs in a multi-TAL TS: one active TAL renders normally while sibling TALs remain visible as dimmed reference context.
+- `get_map_visualization` render payload now includes active/reference GeoJSON separation plus `available_tals`; browser sessions retain the source TS/presentation context so the active TAL can be rebuilt server-side without a new agent tool call.
+- Added browser-safe active-TAL session update endpoint and extended `set_map_state` to accept `active_tal_id`.
+- Added a prominent floating Active TAL selector in the MC, including runtime DOM fallback for rapid-deploy HTML/JS asset skew and explicit dropdown contrast styling.
+- Added unit/route coverage for active TAL switching and updated Functional/Technical/Map Component docs for the v1 behavior.
+
 ### Changed (2026-05-13) — map visualization as early v1 capability
 - Renamed the public map-session tool contract from `map_session_create` to `get_map_visualization` to reflect user/agent intent: get a browser-safe Map Component visualization for a TS/TAL
 - Added S004 / MC-000 visual verification scenarios: Brian/developers need read-only MC visualization early to validate Direct Build, Realign, Auto Build, Analyze, styling, labels, rollups, and repair effects
