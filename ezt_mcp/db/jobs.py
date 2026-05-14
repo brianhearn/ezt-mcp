@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import secrets
+from collections.abc import Mapping as MappingABC
 from datetime import UTC, datetime, timedelta
 from typing import Any, Mapping
 
@@ -416,8 +417,8 @@ async def _insert_event(
 
 
 def _row_to_job(row: Any) -> JobRecord:
-    request_summary = dict(row["request_summary"] or {})
-    result_summary = dict(row["result_summary"] or {})
+    request_summary = _jsonb_to_dict(row["request_summary"])
+    result_summary = _jsonb_to_dict(row["result_summary"])
     required_input = request_summary.get("required_input")
     counts = result_summary.get("counts") or {}
     result = {"result_handle": row["result_handle"]} if row["result_handle"] else None
@@ -435,7 +436,7 @@ def _row_to_job(row: Any) -> JobRecord:
         poll_interval_ms=int(row["poll_interval_ms"]),
         required_input=dict(required_input) if isinstance(required_input, dict) else None,
         result=result,
-        error=dict(row["error"]) if row["error"] else None,
+        error=_jsonb_to_dict(row["error"]) if row["error"] else None,
         created_at=_as_utc(row["created_at"]),
         started_at=_as_utc(row["started_at"]),
         last_progress_at=_as_utc(row["last_progress_at"]),
@@ -443,6 +444,15 @@ def _row_to_job(row: Any) -> JobRecord:
         expires_at=_as_utc(row["expires_at"]),
         cancel_requested=bool(row["cancel_requested"]),
     )
+
+
+def _jsonb_to_dict(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, str):
+        decoded = json.loads(value)
+        return dict(decoded) if isinstance(decoded, MappingABC) else {}
+    return dict(value) if isinstance(value, MappingABC) else {}
 
 
 def _as_utc(value: datetime | None) -> datetime | None:
