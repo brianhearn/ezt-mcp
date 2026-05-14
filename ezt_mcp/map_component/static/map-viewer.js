@@ -93,8 +93,7 @@ function panelEyebrow(templateName) {
 }
 
 function renderTalSwitcher(payload) {
-  const wrapper = byId("tal-control");
-  const select = byId("tal-select");
+  const { wrapper, select } = ensureTalControl();
   if (!wrapper || !select) return;
   const tals = Array.isArray(payload.available_tals) ? payload.available_tals : [];
   wrapper.hidden = tals.length <= 1;
@@ -106,6 +105,42 @@ function renderTalSwitcher(payload) {
     option.selected = tal.tal_id === payload.active_tal.tal_id;
     select.append(option);
   }
+}
+
+function ensureTalControl() {
+  let wrapper = byId("tal-control");
+  let select = byId("tal-select");
+  if (wrapper && select) return { wrapper, select };
+
+  wrapper = document.createElement("div");
+  wrapper.className = "tal-control";
+  wrapper.id = "tal-control";
+  wrapper.hidden = true;
+  const label = document.createElement("label");
+  label.htmlFor = "tal-select";
+  label.textContent = "Active TAL";
+  select = document.createElement("select");
+  select.id = "tal-select";
+  select.setAttribute("aria-label", "Active territory alignment layer");
+  wrapper.append(label, select);
+  document.body.append(wrapper);
+  attachTalSelectHandler(select);
+  return { wrapper, select };
+}
+
+function attachTalSelectHandler(select) {
+  if (!select || select.dataset.eztTalHandlerAttached === "true") return;
+  select.dataset.eztTalHandlerAttached = "true";
+  select.addEventListener("change", async (event) => {
+    try {
+      await switchActiveTal(event.target.value);
+    } catch (error) {
+      console.error(error);
+      debugMessage("Active TAL switch failed", errorDetails(error));
+      setStatus(error.message);
+      if (currentPayload) renderTalSwitcher(currentPayload);
+    }
+  });
 }
 
 function panelSummaryItems(payload) {
@@ -531,19 +566,7 @@ async function main() {
   const payload = await loadPayload();
   applyPayload(payload, { refit: false });
 
-  const select = byId("tal-select");
-  if (select) {
-    select.addEventListener("change", async (event) => {
-      try {
-        await switchActiveTal(event.target.value);
-      } catch (error) {
-        console.error(error);
-        debugMessage("Active TAL switch failed", errorDetails(error));
-        setStatus(error.message);
-        if (currentPayload) renderTalSwitcher(currentPayload);
-      }
-    });
-  }
+  attachTalSelectHandler(byId("tal-select"));
 
   const protocol = new pmtiles.Protocol();
   maplibregl.addProtocol("pmtiles", protocol.tile);
