@@ -77,6 +77,7 @@ class JobRecord:
     required_input: dict[str, Any] | None = None
     result: dict[str, Any] | None = None
     error: dict[str, Any] | None = None
+    request_payload: dict[str, Any] | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
     cancel_requested: bool = False
@@ -157,6 +158,7 @@ class InMemoryJobRepository:
         status: JobStatus = "queued",
         status_message: str | None = None,
         required_input: Mapping[str, Any] | None = None,
+        request_payload: Mapping[str, Any] | None = None,
         ttl_seconds: int = DEFAULT_JOB_TTL_SECONDS,
         now: datetime | None = None,
     ) -> JobRecord:
@@ -171,6 +173,7 @@ class InMemoryJobRepository:
             progress=0,
             status_message=status_message,
             required_input=dict(required_input) if required_input else None,
+            request_payload=dict(request_payload) if request_payload else None,
             created_at=now,
             last_progress_at=now,
             expires_at=now + timedelta(seconds=_bounded_ttl(ttl_seconds)),

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import Any
 
 import asyncpg
@@ -44,8 +44,8 @@ from .resources.part_layers import (
     list_part_layers_resource,
 )
 from .territory.dissolve import DissolveOptions
-from .tools.direct_build_job import run_direct_build_job
 from .tools.query_parts import query_parts_tool
+from .workers import JobWorker
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,8 @@ class AppState:
         self.jobs_repo: AsyncpgJobRepository | InMemoryJobRepository = InMemoryJobRepository()
         self.part_selections = InMemoryPartSelectionRepository()
         self.map_sessions = InMemoryMapSessionStore()
+        self.job_worker: JobWorker | None = None
+        self.job_worker_task: asyncio.Task[Any] | None = None
 
 
 def create_mcp_server(state: AppState, *, public_base_url: str):
@@ -274,6 +276,7 @@ def create_mcp_server(state: AppState, *, public_base_url: str):
         ts_handle: str | None = None,
         expected_revision: int | None = None,
         repair_policy: str = "default",
+        map_session_id: str | None = None,
     ) -> dict[str, Any]:
         request: dict[str, Any] = {
             "part_layer": part_layer,
@@ -287,6 +290,8 @@ def create_mcp_server(state: AppState, *, public_base_url: str):
             request["ts_handle"] = ts_handle
         if expected_revision is not None:
             request["expected_revision"] = expected_revision
+        if map_session_id is not None:
+            request["map_session_id"] = map_session_id
         async with timed_async_operation(logger, "mcp.tool.direct_build"):
             return await _submit_and_run_direct_build(state, request)
 
@@ -344,8 +349,8 @@ def create_mcp_server(state: AppState, *, public_base_url: str):
     @mcp.tool(
         name="create_territory_from_parts",
         description=(
-            "Contract skeleton for creating/updating one territory from explicit part IDs. "
-            "The Map Component never creates territories directly."
+            "Create/update one territory from explicit part IDs by submitting a queued "
+            "Direct Build-backed mutation job. The Map Component only supplies selected parts."
         ),
         structured_output=True,
     )
@@ -356,32 +361,27 @@ def create_mcp_server(state: AppState, *, public_base_url: str):
         territory_path: list[str] | None = None,
         tal_id: str | None = None,
         conflict_policy: str | None = None,
+        ts: dict[str, Any] | None = None,
+        map_session_id: str | None = None,
     ) -> dict[str, Any]:
         async with timed_async_operation(logger, "mcp.tool.create_territory_from_parts"):
             if not part_ids or not all(isinstance(item, str) and item for item in part_ids):
                 return _selection_error_payload(
                     "INVALID_REQUEST", "create_territory_from_parts requires non-empty part_ids."
                 )
-            return {
-                "ok": False,
-                "error": {
-                    "code": "UNSUPPORTED_OPERATION",
-                    "message": (
-                        "create_territory_from_parts is a contract skeleton; TS/TAL mutation "
-                        "will be implemented after selection task plumbing is verified."
-                    ),
-                    "details": {
-                        "part_layer": part_layer,
-                        "part_count": len(list(dict.fromkeys(part_ids))),
-                        "territory_name": territory_name,
-                        "territory_path": territory_path,
-                        "tal_id": tal_id,
-                        "conflict_policy": conflict_policy,
-                    },
-                    "retryable": False,
-                    "user_action_required": False,
-                },
-            }
+            request = _create_territory_direct_build_request(
+                part_layer=part_layer,
+                part_ids=part_ids,
+                territory_name=territory_name,
+                territory_path=territory_path,
+                tal_id=tal_id,
+                conflict_policy=conflict_policy,
+                ts=ts,
+                map_session_id=map_session_id,
+            )
+            return await _submit_and_run_direct_build(
+                state, request, tool_name="create_territory_from_parts"
+            )
 
     @mcp.tool(
         name="cancel_job",
@@ -492,8 +492,28 @@ def build_app(config: ServerConfig) -> Starlette:
         else:
             logger.warning("DATABASE_URL not configured; DB-backed resources will be unavailable")
 
+        if state.parts_repo is not None:
+            state.job_worker = JobWorker(
+                context=_default_customer_context(),
+                jobs_repo=state.jobs_repo,
+                parts_repo=state.parts_repo,
+                dissolve_options=dissolve_options,
+                progress_publisher=lambda map_session_id, event_state, message, percent: _publish_map_progress(
+                    state, map_session_id, event_state, message, percent
+                ),
+            )
+            state.job_worker_task = asyncio.create_task(state.job_worker.run())
+
         async with mcp.session_manager.run():
-            yield
+            try:
+                yield
+            finally:
+                if state.job_worker is not None:
+                    state.job_worker.stop()
+                if state.job_worker_task is not None:
+                    state.job_worker_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await state.job_worker_task
 
         if state.pool is not None:
             async with timed_async_operation(logger, "shutdown.db_pool.close"):
@@ -594,6 +614,37 @@ def build_app(config: ServerConfig) -> Starlette:
             status_code = 200 if payload.get("ok") is True else _status_for_tool_error(payload)
             return JSONResponse(payload, status_code=status_code)
 
+    async def create_territory_from_parts_http(request: Request) -> JSONResponse:
+        unauthorized = _unauthorized_if_needed(request, auth)
+        if unauthorized is not None:
+            return unauthorized
+        body = await request.json()
+        if not isinstance(body, dict):
+            body = {}
+        async with timed_async_operation(logger, "http.create_territory_from_parts"):
+            try:
+                direct_request = _create_territory_direct_build_request(
+                    part_layer=str(body.get("part_layer") or ""),
+                    part_ids=list(body.get("part_ids") or []),
+                    territory_name=str(body.get("territory_name") or ""),
+                    territory_path=body.get("territory_path"),
+                    tal_id=body.get("tal_id"),
+                    conflict_policy=body.get("conflict_policy"),
+                    ts=body.get("ts") if isinstance(body.get("ts"), dict) else None,
+                    map_session_id=body.get("map_session_id"),
+                )
+            except ValueError as exc:
+                payload = _selection_error_payload("INVALID_REQUEST", str(exc))
+                return JSONResponse(payload, status_code=400)
+            payload = await _submit_and_run_direct_build(
+                state,
+                direct_request,
+                tool_name="create_territory_from_parts",
+                dissolve_options=dissolve_options,
+            )
+            status_code = 200 if payload.get("ok") is True else _status_for_tool_error(payload)
+            return JSONResponse(payload, status_code=status_code)
+
     async def job_status_http(request: Request) -> JSONResponse:
         unauthorized = _unauthorized_if_needed(request, auth)
         if unauthorized is not None:
@@ -658,6 +709,7 @@ def build_app(config: ServerConfig) -> Starlette:
         Route("/part-layers/{part_layer}", part_layer_http),
         Route("/query-parts", query_parts_http, methods=["POST"]),
         Route("/direct-build", direct_build_http, methods=["POST"]),
+        Route("/create-territory-from-parts", create_territory_from_parts_http, methods=["POST"]),
         Route("/jobs/{job_id}/status", job_status_http),
         Route("/jobs/{job_id}/result", job_result_http),
         Route("/jobs/{job_id}/cancel", cancel_job_http, methods=["POST"]),
@@ -827,43 +879,76 @@ async def _submit_and_run_direct_build(
     state: AppState,
     request: dict[str, Any],
     *,
+    tool_name: str = "direct_build",
     dissolve_options: DissolveOptions | None = None,
 ) -> dict[str, Any]:
     try:
         repo = _require_jobs_repo(state)
-        parts_repo = _require_parts_repo(state)
+        _require_parts_repo(state)
         context = _default_customer_context()
+        message = (
+            "Create Territory from Parts job accepted and queued."
+            if tool_name == "create_territory_from_parts"
+            else "Direct Build job accepted and queued."
+        )
         job = await _maybe_await(
             repo.submit(
                 context,
-                tool_name="direct_build",
+                tool_name=tool_name,
                 phase="queued",
                 status="queued",
-                status_message="Direct Build job accepted and queued.",
+                status_message=message,
+                request_payload=request,
             )
         )
-        task = asyncio.create_task(
-            run_direct_build_job(
-                context=context,
-                job_id=job.job_id,
-                request=request,
-                parts_repo=parts_repo,
-                jobs_repo=repo,
-                dissolve_options=dissolve_options,
-            )
-        )
-        task.add_done_callback(_log_background_task_exception)
+        # A startup JobWorker claims queued jobs from shared transient storage.
+        # This keeps submissions durable across request completion and avoids
+        # process-local per-request asyncio.create_task execution.
         return submission_response(job)
     except RuntimeError as exc:
         return _job_error_payload("UNSUPPORTED_OPERATION", str(exc))
 
 
-def _log_background_task_exception(task: asyncio.Task[Any]) -> None:
-    try:
-        task.result()
-    except Exception:  # noqa: BLE001
-        logger.exception("Direct Build background task crashed")
 
+
+def _create_territory_direct_build_request(
+    *,
+    part_layer: str,
+    part_ids: list[str],
+    territory_name: str,
+    territory_path: list[str] | None,
+    tal_id: str | None,
+    conflict_policy: str | None,
+    ts: dict[str, Any] | None,
+    map_session_id: str | None,
+) -> dict[str, Any]:
+    unique_part_ids = list(
+        dict.fromkeys(str(part_id).strip() for part_id in part_ids if str(part_id).strip())
+    )
+    clean_name = str(territory_name or "").strip()
+    if not clean_name:
+        raise ValueError("territory_name is required")
+    path = [str(item).strip() for item in (territory_path or []) if str(item).strip()]
+    if not path or path[-1] != clean_name:
+        path.append(clean_name)
+    request: dict[str, Any] = {
+        "part_layer": part_layer,
+        "tal_label": clean_name,
+        "assignments": [
+            {"part_id": part_id, "territory_path": path}
+            for part_id in unique_part_ids
+        ],
+        "repair_policy": "default",
+        "source_tool": "create_territory_from_parts",
+        "conflict_policy": conflict_policy or "reject",
+    }
+    if ts is not None:
+        request["ts"] = ts
+    if tal_id:
+        request["requested_tal_id"] = tal_id
+    if map_session_id:
+        request["map_session_id"] = map_session_id
+    return request
 
 def _request_part_selection_tool_result(
     state: AppState,
@@ -933,6 +1018,19 @@ async def _transient_map_sessions_available(pool: asyncpg.Pool) -> bool:
 def _default_customer_context() -> CustomerContext:
     # Temporary dev/test customer context until auth exposes customer_id/key_id.
     return CustomerContext(customer_id="00000000-0000-0000-0000-000000000001")
+
+
+def _publish_map_progress(
+    state: AppState, map_session_id: str, event_state: str, message: str, percent: int | None
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "map_session_id": map_session_id,
+        "state": event_state,
+        "message": message,
+    }
+    if percent is not None:
+        payload["percent"] = percent
+    return _set_map_progress(state, payload)
 
 
 async def _maybe_await(value: Any) -> Any:

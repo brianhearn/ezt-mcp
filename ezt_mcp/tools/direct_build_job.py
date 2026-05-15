@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
+from collections.abc import Callable
 from typing import Any, Protocol
 
 from ezt_mcp.jobs import CustomerContext
@@ -53,6 +54,7 @@ async def run_direct_build_job(
     jobs_repo: DirectBuildJobRepository,
     backend: GeometryDissolveBackend | None = None,
     dissolve_options: DissolveOptions | None = None,
+    progress_publisher: Callable[[str, str, str, int | None], Any] | None = None,
 ) -> dict[str, Any]:
     """Run Direct Build and persist progress/result into the job repository.
 
@@ -63,6 +65,7 @@ async def run_direct_build_job(
     part_layer = str(request.get("part_layer") or "").strip()
     assignments = list(request.get("assignments") or [])
     part_ids = _assignment_part_ids(assignments)
+    map_session_id = str(request.get("map_session_id") or "").strip()
 
     async with timed_async_operation(
         logger,
@@ -73,6 +76,9 @@ async def run_direct_build_job(
         unique_part_count=len(part_ids),
     ):
         try:
+            await _publish_progress(
+                progress_publisher, map_session_id, "running", "Fetching part geometries.", 10
+            )
             await _maybe_await(
                 jobs_repo.update_progress(
                     context,
@@ -96,6 +102,9 @@ async def run_direct_build_job(
             ):
                 part_geometries = await parts_repo.fetch_part_geometries(part_layer, part_ids)
 
+            await _publish_progress(
+                progress_publisher, map_session_id, "running", "Dissolving territory geometries.", 45
+            )
             await _maybe_await(
                 jobs_repo.update_progress(
                     context,
@@ -119,6 +128,9 @@ async def run_direct_build_job(
                 dissolve_options=dissolve_options,
             )
 
+            await _publish_progress(
+                progress_publisher, map_session_id, "running", "Serializing Territory Solution result.", 90
+            )
             await _maybe_await(
                 jobs_repo.update_progress(
                     context,
@@ -135,10 +147,14 @@ async def run_direct_build_job(
                 )
             )
             await _maybe_await(jobs_repo.complete(context, job_id, result=result_payload))
+            await _publish_progress(
+                progress_publisher, map_session_id, "done", "Territory build complete.", 100
+            )
             return result_payload
         except (HierarchyValidationError, DissolveValidationError, QueryPartsError, ValueError) as exc:
             error = _structured_error(exc)
             await _maybe_await(jobs_repo.fail(context, job_id, error=error))
+            await _publish_progress(progress_publisher, map_session_id, "error", str(error.get("message") or "Territory build failed."), None)
             return {"ok": False, "error": error}
         except UnknownPartLayerError as exc:
             error = {
@@ -149,6 +165,7 @@ async def run_direct_build_job(
                 "user_action_required": True,
             }
             await _maybe_await(jobs_repo.fail(context, job_id, error=error))
+            await _publish_progress(progress_publisher, map_session_id, "error", str(error.get("message") or "Territory build failed."), None)
             return {"ok": False, "error": error}
         except Exception as exc:  # noqa: BLE001
             logger.exception("Direct Build job failed")
@@ -160,7 +177,23 @@ async def run_direct_build_job(
                 "user_action_required": False,
             }
             await _maybe_await(jobs_repo.fail(context, job_id, error=error))
+            await _publish_progress(progress_publisher, map_session_id, "error", error["message"], None)
             return {"ok": False, "error": error}
+
+
+async def _publish_progress(
+    publisher: Callable[[str, str, str, int | None], Any] | None,
+    map_session_id: str,
+    state: str,
+    message: str,
+    percent: int | None,
+) -> None:
+    if not publisher or not map_session_id:
+        return
+    try:
+        await _maybe_await(publisher(map_session_id, state, message, percent))
+    except Exception:  # noqa: BLE001
+        logger.debug("Map progress publish failed", exc_info=True)
 
 
 def _assignment_part_ids(assignments: list[Any]) -> list[str]:

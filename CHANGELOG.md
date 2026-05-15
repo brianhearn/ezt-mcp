@@ -7,11 +7,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-15) — create territory, queued worker, progress, and scalability
+- Implemented `create_territory_from_parts` as a real queued Direct Build-backed mutation path, including `POST /create-territory-from-parts` for HTTP smoke/dev use.
+- Added persisted queued job payloads plus a startup `JobWorker` that claims queued `direct_build` / `create_territory_from_parts` jobs from `transient.jobs` instead of running per-request compute via process-local task submission.
+- Wired Direct Build worker phases to publish best-effort MC progress events when `map_session_id` is supplied.
+- Added `scripts/zip_scalability.py` for read-only real ZIP scalability benchmarking against staging PostGIS.
+- Verified real FL ZIP benchmark: 1000 ZIPs / 20 territories fetched in ~0.954s, built in ~0.844s, total ~1.798s.
+
 ### Changed (2026-05-15) — MC themes, progress, and durable-session deployment path
 - Added MC light/dark theme support driven by `presentation.style_overrides.theme`; dark remains the default for development/testing unless explicitly requested.
 - Added `set_map_progress` plus `POST /set-map-progress` to push best-effort `progress` SSE events to open MC sessions, rendering a bottom-center progress overlay with message, optional percent bar, and running/done/error/idle states.
 - Added Postgres-backed `AsyncpgMapSessionStore` and `scripts/migrate_map_sessions.py` for `transient.map_sessions`; service uses it automatically when the table exists and falls back to in-memory sessions otherwise.
-- Deployed to `https://expertpack.ai/mcp/` and verified health, dark MC render payload, and progress events. Durable sessions are currently blocked by DB DDL permissions: `ezt_mcp_app` cannot create `transient.map_sessions`; Matt was emailed the required SQL/grants.
+- Deployed to `https://expertpack.ai/mcp/` and verified health, dark MC render payload, progress events, and restart-surviving Postgres-backed durable map sessions after the DB owner applied the migration.
 
 ### Changed (2026-05-14) — Map Component customer labels and i18n
 - Replaced visible MC chrome text that said “TAL” with customer-facing “alignment” labels while preserving internal `tal_*` API and payload field names.

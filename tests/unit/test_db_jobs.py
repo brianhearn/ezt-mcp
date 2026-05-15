@@ -113,6 +113,8 @@ class FakeConn:
                 )
             elif "set status = 'expired'" in normalized:
                 job.update({"status": "expired", "phase": "expired", "completed_at": args[2], "last_progress_at": args[2]})
+            elif "set leased_by = $3" in normalized:
+                job.update({"leased_by": args[2], "lease_expires_at": args[3], "last_progress_at": args[4]})
             elif "set status = 'failed'" in normalized:
                 job.update({"status": "failed", "phase": "failed", "error": __import__("json").loads(args[2]), "completed_at": args[3], "last_progress_at": args[3]})
             elif "set cancel_requested = true" in normalized:
@@ -121,6 +123,16 @@ class FakeConn:
 
     async def fetchrow(self, sql, *args):
         normalized = " ".join(sql.split()).lower()
+        if normalized.startswith("select * from transient.jobs") and "for update skip locked" in normalized:
+            candidates = [
+                job for job in self.jobs.values()
+                if str(job["customer_id"]) == args[0]
+                and job["status"] == "queued"
+                and job["expires_at"] > args[1]
+                and (args[2] is None or job["tool_name"] in args[2])
+            ]
+            candidates.sort(key=lambda item: item["created_at"])
+            return dict(candidates[0]) if candidates else None
         if "from transient.jobs" in normalized:
             job = self.jobs.get(args[0])
             if job is None or str(job["customer_id"]) != args[1]:
@@ -208,3 +220,23 @@ def test_asyncpg_job_repo_expiry_on_access():
     expired = asyncio.run(repo.get(context, job.job_id, now=now + timedelta(seconds=61)))
 
     assert expired.status == "expired"
+
+
+def test_asyncpg_job_repo_claim_next_returns_oldest_matching_queued_job():
+    repo, _conn = _repo()
+    context = CustomerContext(customer_id="11111111-1111-1111-1111-111111111111")
+    now = datetime(2026, 5, 13, 21, 0, tzinfo=UTC)
+    first = asyncio.run(repo.submit(context, tool_name="direct_build", now=now))
+    asyncio.run(repo.submit(context, tool_name="other_tool", now=now + timedelta(seconds=1)))
+
+    claimed = asyncio.run(
+        repo.claim_next(
+            context,
+            worker_id="worker-1",
+            tool_names=["direct_build"],
+            now=now + timedelta(seconds=2),
+        )
+    )
+
+    assert claimed is not None
+    assert claimed.job_id == first.job_id

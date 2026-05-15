@@ -36,13 +36,18 @@ class AsyncpgJobRepository:
         status: JobStatus = "queued",
         status_message: str | None = None,
         required_input: Mapping[str, Any] | None = None,
+        request_payload: Mapping[str, Any] | None = None,
         ttl_seconds: int = DEFAULT_JOB_TTL_SECONDS,
         now: datetime | None = None,
     ) -> JobRecord:
         now = now or datetime.now(tz=UTC)
         job_id = f"job_{secrets.token_urlsafe(18)}"
         expires_at = now + timedelta(seconds=_bounded_ttl(ttl_seconds))
-        request_summary = {"required_input": dict(required_input)} if required_input else {}
+        request_summary = {}
+        if required_input:
+            request_summary["required_input"] = dict(required_input)
+        if request_payload:
+            request_summary["request_payload"] = dict(request_payload)
         async with self._pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
@@ -91,10 +96,73 @@ class AsyncpgJobRepository:
             progress=0,
             status_message=status_message,
             required_input=dict(required_input) if required_input else None,
+            request_payload=dict(request_payload) if request_payload else None,
             created_at=now,
             last_progress_at=now,
             expires_at=expires_at,
         )
+
+
+    async def claim_next(
+        self,
+        context: CustomerContext,
+        *,
+        worker_id: str,
+        tool_names: list[str] | None = None,
+        lease_seconds: int = 300,
+        now: datetime | None = None,
+    ) -> JobRecord | None:
+        """Atomically claim the next queued job for a background worker."""
+        now = now or datetime.now(tz=UTC)
+        lease_expires_at = now + timedelta(seconds=max(30, int(lease_seconds)))
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    """
+                    select *
+                    from transient.jobs
+                    where customer_id = $1::uuid
+                      and status = 'queued'
+                      and expires_at > $2
+                      and (lease_expires_at is null or lease_expires_at <= $2)
+                      and ($3::text[] is null or tool_name = any($3::text[]))
+                    order by priority asc, created_at asc
+                    for update skip locked
+                    limit 1
+                    """,
+                    context.customer_id,
+                    now,
+                    tool_names,
+                )
+                if row is None:
+                    return None
+                job = _row_to_job(row)
+                await conn.execute(
+                    """
+                    update transient.jobs
+                    set leased_by = $3, lease_expires_at = $4,
+                        last_progress_at = $5
+                    where job_id = $1 and customer_id = $2::uuid
+                    """,
+                    job.job_id,
+                    context.customer_id,
+                    worker_id,
+                    lease_expires_at,
+                    now,
+                )
+                await _insert_event(
+                    conn,
+                    job_id=job.job_id,
+                    customer_id=context.customer_id,
+                    event_type="phase",
+                    phase=job.phase,
+                    progress=job.progress,
+                    total=job.total,
+                    message="Job claimed by worker.",
+                    details={"worker_id": worker_id},
+                    created_at=now,
+                )
+                return job
 
     async def get(
         self, context: CustomerContext, job_id: str, *, now: datetime | None = None
@@ -420,6 +488,7 @@ def _row_to_job(row: Any) -> JobRecord:
     request_summary = _jsonb_to_dict(row["request_summary"])
     result_summary = _jsonb_to_dict(row["result_summary"])
     required_input = request_summary.get("required_input")
+    request_payload = request_summary.get("request_payload")
     counts = result_summary.get("counts") or {}
     result = {"result_handle": row["result_handle"]} if row["result_handle"] else None
     return JobRecord(
@@ -435,6 +504,7 @@ def _row_to_job(row: Any) -> JobRecord:
         counts=dict(counts),
         poll_interval_ms=int(row["poll_interval_ms"]),
         required_input=dict(required_input) if isinstance(required_input, dict) else None,
+        request_payload=dict(request_payload) if isinstance(request_payload, dict) else None,
         result=result,
         error=_jsonb_to_dict(row["error"]) if row["error"] else None,
         created_at=_as_utc(row["created_at"]),
