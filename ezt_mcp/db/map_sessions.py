@@ -24,6 +24,19 @@ def _as_utc(value):
     if getattr(value, 'tzinfo', None) is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
+
+def _json_object(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, str):
+        parsed = json.loads(value)
+        return dict(parsed) if isinstance(parsed, Mapping) else {}
+    if isinstance(value, Mapping):
+        return dict(value)
+    return dict(value)
+
+
 from ..map_component.sessions import (
     DEFAULT_SESSION_TTL_SECONDS,
     MapVisualizationError,
@@ -292,8 +305,8 @@ class AsyncpgMapSessionStore:
             # Caller will handle delete + raise
             raise MapVisualizationError("INVALID_TS_HANDLE", "Map visualization session has expired.")
 
-        ts = dict(row["ts"]) if row["ts"] else {}
-        presentation = dict(row["presentation"]) if row["presentation"] else {}
+        ts = _json_object(row["ts"])
+        presentation = _json_object(row["presentation"])
         theme = row["theme"] or "dark"
         mode = row["mode"]
         active_tal_id = row["active_tal_id"]
@@ -314,7 +327,7 @@ class AsyncpgMapSessionStore:
             theme=theme,
             active_tal_id=render_payload["active_tal"]["tal_id"],
             active_tal_label=render_payload["active_tal"].get("label"),
-            ts_identity=dict(row["ts_identity"]) if row["ts_identity"] else {},
+            ts_identity=_json_object(row["ts_identity"]),
             render_payload=render_payload,
             ts=ts,
             presentation=presentation,
@@ -325,8 +338,12 @@ class AsyncpgMapSessionStore:
             state_resource_uri=row["state_resource_uri"],
             selection_resource_uri=row.get("selection_resource_uri"),
             user_id=row["user_id"],
-            pending_job_reference=dict(row["pending_job_reference"]) if row.get("pending_job_reference") else None,
-            committed_selection=dict(row["committed_selection"]) if row.get("committed_selection") else None,
+            pending_job_reference=(
+                _json_object(row["pending_job_reference"]) if row.get("pending_job_reference") else None
+            ),
+            committed_selection=(
+                _json_object(row["committed_selection"]) if row.get("committed_selection") else None
+            ),
             active_selection_task_id=row.get("active_selection_task_id"),
         )
         return session
@@ -346,15 +363,8 @@ class AsyncpgMapSessionStore:
                     "Map visualization session was not found or the token is invalid.",
                 )
 
-            session = self._row_to_session(row, public_base_url=row["public_base_url"], now=now)
-
-            if token is not None and not _safe_token_equal(session.token, token):
-                raise MapVisualizationError(
-                    "INVALID_TS_HANDLE",
-                    "Map visualization session was not found or the token is invalid.",
-                )
-
-            if now >= session.expires_at:
+            expires_at = _as_utc(row["expires_at"])
+            if now >= expires_at:
                 await conn.execute(
                     "DELETE FROM transient.map_sessions WHERE map_session_id = $1",
                     map_session_id,
@@ -372,6 +382,14 @@ class AsyncpgMapSessionStore:
                     "Map visualization session has expired.",
                     {"map_session_id": map_session_id},
                 )
+
+            if token is not None and not _safe_token_equal(row["token"], token):
+                raise MapVisualizationError(
+                    "INVALID_TS_HANDLE",
+                    "Map visualization session was not found or the token is invalid.",
+                )
+
+            session = self._row_to_session(row, public_base_url=row["public_base_url"], now=now)
         return session
 
     async def get_state(self, map_session_id: str) -> dict[str, Any]:

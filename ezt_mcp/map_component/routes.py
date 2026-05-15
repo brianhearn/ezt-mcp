@@ -42,10 +42,12 @@ class MapVisualizationRoutes:
                 status_code=400,
             )
         try:
-            created = self.store.create_or_update_session(
-                body,
-                public_base_url=self.public_base_url,
-                user_id=_user_id_from_request(request, body),
+            created = await _maybe_await(
+                self.store.create_or_update_session(
+                    body,
+                    public_base_url=self.public_base_url,
+                    user_id=_user_id_from_request(request, body),
+                )
             )
         except MapVisualizationError as exc:
             return _error_response(exc, status_code=_status_for_error(exc))
@@ -61,7 +63,7 @@ class MapVisualizationRoutes:
 
     async def viewer(self, request: Request) -> HTMLResponse:
         try:
-            self._session_from_request(request)
+            await self._session_from_request(request)
         except MapVisualizationError as exc:
             return HTMLResponse(_error_html(str(exc)), status_code=_status_for_error(exc))
         html = _static_text("viewer.html").replace("__PUBLIC_BASE_URL__", self.public_base_url)
@@ -69,7 +71,7 @@ class MapVisualizationRoutes:
 
     async def render_payload(self, request: Request) -> JSONResponse:
         try:
-            session = self._session_from_request(request)
+            session = await self._session_from_request(request)
         except MapVisualizationError as exc:
             return _error_response(exc, status_code=_status_for_error(exc))
         payload: dict[str, Any] = dict(session.render_payload)
@@ -79,14 +81,14 @@ class MapVisualizationRoutes:
 
     async def state(self, request: Request) -> JSONResponse:
         try:
-            session = self._session_from_request(request)
+            session = await self._session_from_request(request)
         except MapVisualizationError as exc:
             return _error_response(exc, status_code=_status_for_error(exc))
         return JSONResponse(session.state_payload())
 
     async def set_active_tal(self, request: Request) -> JSONResponse:
         try:
-            session = self._session_from_request(request)
+            session = await self._session_from_request(request)
             body = await request.json()
             if not isinstance(body, Mapping):
                 raise MapVisualizationError("INVALID_TS", "Request body must be a JSON object.")
@@ -96,9 +98,11 @@ class MapVisualizationRoutes:
                     "UNKNOWN_TAL_ID",
                     "active_tal_id is required to switch the active TAL.",
                 )
-            state = self.store.set_state(
-                session.map_session_id,
-                active_tal_id=active_tal_id,
+            state = await _maybe_await(
+                self.store.set_state(
+                    session.map_session_id,
+                    active_tal_id=active_tal_id,
+                )
             )
         except MapVisualizationError as exc:
             return _error_response(exc, status_code=_status_for_error(exc))
@@ -106,7 +110,7 @@ class MapVisualizationRoutes:
 
     async def events(self, request: Request) -> StreamingResponse:
         try:
-            session = self._session_from_request(request)
+            session = await self._session_from_request(request)
             queue = self.store.subscribe(session.map_session_id)
         except MapVisualizationError as exc:
             return _error_response(exc, status_code=_status_for_error(exc))
@@ -132,13 +136,13 @@ class MapVisualizationRoutes:
 
     async def commit_selection(self, request: Request) -> JSONResponse:
         try:
-            session = self._session_from_request(request)
+            session = await self._session_from_request(request)
             body = await request.json()
             if not isinstance(body, Mapping):
                 raise MapVisualizationError(
                     "INVALID_SELECTION", "Request body must be a JSON object."
                 )
-            selection = self.store.commit_selection(session.map_session_id, body)
+            selection = await _maybe_await(self.store.commit_selection(session.map_session_id, body))
             part_selection = None
             if self.on_selection_committed is not None:
                 part_selection = self.on_selection_committed(selection)
@@ -191,10 +195,16 @@ class MapVisualizationRoutes:
             filename="us-basemap.pmtiles",
         )
 
-    def _session_from_request(self, request: Request):
+    async def _session_from_request(self, request: Request):
         token = request.path_params.get("token") or request.query_params.get("token", "")
         session_id = request.path_params["map_session_id"]
-        return self.store.get_session(session_id, token)
+        return await _maybe_await(self.store.get_session(session_id, token))
+
+
+async def _maybe_await(value: Any) -> Any:
+    if hasattr(value, "__await__"):
+        return await value
+    return value
 
 
 def _user_id_from_request(request: Request, body: Mapping[str, Any] | None = None) -> str | None:

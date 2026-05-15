@@ -180,7 +180,9 @@ def create_mcp_server(state: AppState, *, public_base_url: str):
             logger, "mcp.resource.map_sessions.state", map_session_id=map_session_id
         ):
             try:
-                return json.dumps(state.map_sessions.get_state(map_session_id), indent=2)
+                return json.dumps(
+                    await _maybe_await(state.map_sessions.get_state(map_session_id)), indent=2
+                )
             except MapVisualizationError as exc:
                 return json.dumps({"ok": False, "error": exc.to_error()}, indent=2)
 
@@ -191,7 +193,9 @@ def create_mcp_server(state: AppState, *, public_base_url: str):
             logger, "mcp.resource.map_sessions.selection", map_session_id=map_session_id
         ):
             try:
-                return json.dumps(state.map_sessions.get_selection(map_session_id), indent=2)
+                return json.dumps(
+                    await _maybe_await(state.map_sessions.get_selection(map_session_id)), indent=2
+                )
             except MapVisualizationError as exc:
                 return json.dumps({"ok": False, "error": exc.to_error()}, indent=2)
 
@@ -222,7 +226,7 @@ def create_mcp_server(state: AppState, *, public_base_url: str):
         if interaction_flags is not None:
             request["interaction_flags"] = interaction_flags
         async with timed_async_operation(logger, "mcp.tool.get_map_visualization"):
-            return _create_map_visualization_tool_result(
+            return await _create_map_visualization_tool_result_async(
                 state,
                 request,
                 public_base_url=public_base_url,
@@ -313,7 +317,7 @@ def create_mcp_server(state: AppState, *, public_base_url: str):
         if active_tal_id is not None:
             request["active_tal_id"] = active_tal_id
         async with timed_async_operation(logger, "mcp.tool.request_part_selection"):
-            return _request_part_selection_tool_result(
+            return await _request_part_selection_tool_result_async(
                 state,
                 request,
                 part_layer=part_layer,
@@ -413,11 +417,13 @@ def create_mcp_server(state: AppState, *, public_base_url: str):
             logger, "mcp.tool.set_map_state", map_session_id=map_session_id
         ):
             try:
-                result = state.map_sessions.set_state(
-                    map_session_id,
-                    mode=mode,
-                    active_tal_id=active_tal_id,
-                    pending_job_reference=pending_job_reference,
+                result = await _maybe_await(
+                    state.map_sessions.set_state(
+                        map_session_id,
+                        mode=mode,
+                        active_tal_id=active_tal_id,
+                        pending_job_reference=pending_job_reference,
+                    )
                 )
             except MapVisualizationError as exc:
                 return {"ok": False, "error": exc.to_error()}
@@ -433,7 +439,7 @@ def create_mcp_server(state: AppState, *, public_base_url: str):
             logger, "mcp.tool.get_map_selection", map_session_id=map_session_id
         ):
             try:
-                selection = state.map_sessions.get_selection(map_session_id)
+                selection = await _maybe_await(state.map_sessions.get_selection(map_session_id))
             except MapVisualizationError as exc:
                 return {"ok": False, "error": exc.to_error()}
             return {"ok": True, "result": selection}
@@ -713,6 +719,26 @@ def _create_map_visualization_tool_result(
         )
     except MapVisualizationError as exc:
         return {"ok": False, "error": exc.to_error()}
+    return _map_visualization_payload(created, public_base_url=public_base_url)
+
+
+async def _create_map_visualization_tool_result_async(
+    state: AppState, request: dict[str, Any], *, public_base_url: str
+) -> dict[str, Any]:
+    try:
+        created = await _maybe_await(
+            state.map_sessions.create_or_update_session(
+                request,
+                public_base_url=public_base_url,
+                user_id=str(request.get("user_id") or "default-user"),
+            )
+        )
+    except MapVisualizationError as exc:
+        return {"ok": False, "error": exc.to_error()}
+    return _map_visualization_payload(created, public_base_url=public_base_url)
+
+
+def _map_visualization_payload(created: Any, *, public_base_url: str) -> dict[str, Any]:
     return {
         "ok": True,
         "result": created.session.response_result(
@@ -721,6 +747,52 @@ def _create_map_visualization_tool_result(
         ),
     }
 
+
+
+
+async def _request_part_selection_tool_result_async(
+    state: AppState,
+    request: dict[str, Any],
+    *,
+    part_layer: str,
+    purpose: str,
+    prompt: str | None,
+    public_base_url: str,
+) -> dict[str, Any]:
+    try:
+        map_result = await _create_map_visualization_tool_result_async(
+            state, request, public_base_url=public_base_url
+        )
+        if map_result.get("ok") is not True:
+            return map_result
+        map_payload = map_result["result"]
+        task = state.part_selections.create(
+            _default_customer_context(),
+            user_id=str(request.get("user_id") or "default-user"),
+            part_layer=part_layer,
+            purpose=purpose,
+            prompt=prompt,
+            map_session_id=map_payload["map_session_id"],
+            map_url=map_payload["map_url"],
+            active_tal_id=(map_payload.get("active_tal_summary") or {}).get("tal_id"),
+            ts_identity=map_payload.get("ts_identity"),
+        )
+        await _maybe_await(
+            state.map_sessions.set_active_selection_task(
+                map_payload["map_session_id"], task.selection_task_id
+            )
+        )
+    except (MapVisualizationError, InvalidPartSelectionError) as exc:
+        return {"ok": False, "error": exc.to_error()}
+    return {
+        "ok": True,
+        "result": {
+            **map_payload,
+            "selection_task_id": task.selection_task_id,
+            "selection_resource_uri": f"ezt://part-selections/{task.selection_task_id}",
+            "part_selection": task.resource(),
+        },
+    }
 
 def _commit_part_selection_from_map(
     state: AppState, selection: dict[str, Any]
@@ -844,6 +916,16 @@ async def _transient_jobs_available(pool: asyncpg.Pool) -> bool:
             value = await conn.fetchval("select to_regclass($1)", "transient.jobs")
     except Exception as exc:  # noqa: BLE001
         logger.warning("transient.jobs migration probe failed: %s", exc.__class__.__name__)
+        return False
+    return value is not None
+
+
+async def _transient_map_sessions_available(pool: asyncpg.Pool) -> bool:
+    try:
+        async with pool.acquire() as conn:
+            value = await conn.fetchval("select to_regclass($1)", "transient.map_sessions")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("transient.map_sessions migration probe failed: %s", exc.__class__.__name__)
         return False
     return value is not None
 
