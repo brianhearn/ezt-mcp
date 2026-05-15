@@ -28,7 +28,9 @@
   --tal-control-bg:    rgba(15, 23, 32, 0.94);
   --tal-control-border: rgba(0, 212, 170, 0.42);
   --tal-label-color:   #00d4aa;
-}
+  --success: #22c55e;
+  --danger: #ef4444;
+
 
 /* ─── Design tokens: light ───────────────────────────────────────────────── */
 :root[data-theme="light"] {
@@ -59,7 +61,9 @@
   --tal-control-bg:    rgba(248, 250, 252, 0.95);
   --tal-control-border: rgba(0, 180, 148, 0.40);
   --tal-label-color:   #009e7a;
-}
+  --success: #22c55e;
+  --danger: #ef4444;
+
 
 /* ─── Layout ─────────────────────────────────────────────────────────────── */
 html,
@@ -244,4 +248,69 @@ dd {
 
 .maplibregl-popup-tip {
   border-top-color: var(--popup-bg) !important;
+}
+
+/* ─── Progress overlay (non-blocking, bottom-center) ─────────────────────── */
+#progress-overlay {
+  position: absolute;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  min-width: 220px;
+  max-width: 420px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+  font-size: 12px;
+  backdrop-filter: blur(8px);
+  opacity: 1;
+  transition: opacity 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+#progress-overlay[hidden],
+#progress-overlay.hidden {
+  display: none;
+}
+
+#progress-overlay.progress-done {
+  color: var(--success, #22c55e);
+}
+
+#progress-overlay.progress-error {
+  color: var(--danger, #ef4444);
+}
+
+#progress-message {
+  margin-bottom: 6px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#progress-bar-track {
+  margin-top: 6px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--border-subtle);
+  overflow: hidden;
+}
+
+#progress-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--brand);
+  transition: width 0.3s ease;
+}
+
+/* Reduced-motion support */
+@media (prefers-reduced-motion: reduce) {
+  #progress-overlay,
+  #progress-bar-fill {
+    transition: none;
+  }
 }

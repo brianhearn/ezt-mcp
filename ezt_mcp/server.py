@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 from .auth import APIKeyAuth
 from .config import ServerConfig
 from .db.jobs import AsyncpgJobRepository
+from .db.map_sessions import AsyncpgMapSessionStore
 from .db.part_layers import AsyncpgPartLayerRepository
 from .db.parts import AsyncpgPartsRepository
 from .observability import RequestTimingMiddleware, timed_async_operation
@@ -473,6 +474,14 @@ def build_app(config: ServerConfig) -> Starlette:
                     logger.warning(
                         "transient.jobs migration is not available; "
                         "async job resources will use the in-memory dev repository"
+                    )
+                if await _transient_map_sessions_available(state.pool):
+                    state.map_sessions = AsyncpgMapSessionStore(state.pool)
+                    map_routes.store = state.map_sessions
+                else:
+                    logger.warning(
+                        "transient.map_sessions migration is not available; "
+                        "map sessions will use the in-memory dev repository"
                     )
         else:
             logger.warning("DATABASE_URL not configured; DB-backed resources will be unavailable")

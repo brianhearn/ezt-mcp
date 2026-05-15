@@ -785,6 +785,7 @@ async function main() {
       setStatus("Selection committed. Processing…");
     }
   }
+}
 
 main().catch((error) => {
   console.error(error);
