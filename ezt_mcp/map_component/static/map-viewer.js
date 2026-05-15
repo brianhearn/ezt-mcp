@@ -596,9 +596,89 @@ async function loadPayload() {
   return response.json();
 }
 
+function ensureProgressOverlay() {
+  let overlay = byId("progress-overlay");
+  if (overlay) return overlay;
+
+  overlay = document.createElement("div");
+  overlay.id = "progress-overlay";
+  overlay.style.position = "absolute";
+  overlay.style.bottom = "32px";
+  overlay.style.left = "50%";
+  overlay.style.transform = "translateX(-50%)";
+  overlay.style.zIndex = "10";
+  overlay.style.minWidth = "220px";
+  overlay.style.maxWidth = "420px";
+  overlay.style.padding = "8px 14px";
+  overlay.style.borderRadius = "8px";
+  overlay.style.background = "var(--surface-overlay)";
+  overlay.style.border = "1px solid var(--border-default)";
+  overlay.style.color = "var(--text-primary)";
+  overlay.style.fontSize = "12px";
+  overlay.style.backdropFilter = "blur(8px)";
+  overlay.style.opacity = "1";
+  overlay.style.transition = "opacity 0.2s ease";
+  overlay.style.display = "none";
+
+  overlay.innerHTML = `
+    <div id="progress-message" style="margin-bottom: 6px; font-weight: 500;"></div>
+    <div id="progress-bar-track" style="display: none; margin-top: 6px; height: 3px; border-radius: 999px; background: var(--border-subtle); overflow: hidden;">
+      <div id="progress-bar-fill" style="height: 100%; border-radius: 999px; background: var(--brand); transition: width 0.3s ease; width: 0%;"></div>
+    </div>
+  `;
+  document.getElementById("map").appendChild(overlay);
+  return overlay;
+}
+
+function renderProgress(payload) {
+  const overlay = ensureProgressOverlay();
+  // reset to idle on any new payload (page refresh, tal switch etc)
+  if (!payload || payload.type !== "progress") {
+    overlay.style.display = "none";
+    return;
+  }
+  const state = payload.state || "idle";
+  const messageEl = document.getElementById("progress-message");
+  const trackEl = document.getElementById("progress-bar-track");
+  const fillEl = document.getElementById("progress-bar-fill");
+  const msg = payload.message || "";
+
+  overlay.classList.remove("progress-done", "progress-error");
+  messageEl.textContent = msg;
+
+  if (state === "running") {
+    overlay.style.display = "block";
+    if (payload.percent != null) {
+      trackEl.style.display = "block";
+      fillEl.style.width = payload.percent + "%";
+    } else {
+      trackEl.style.display = "none";
+    }
+  } else if (state === "done") {
+    overlay.classList.add("progress-done");
+    trackEl.style.display = "none";
+    overlay.style.display = "block";
+    setTimeout(() => {
+      overlay.style.opacity = "0";
+      setTimeout(() => { overlay.style.display = "none"; overlay.style.opacity = "1"; }, 200);
+    }, 1500);
+  } else if (state === "error") {
+    overlay.classList.add("progress-error");
+    trackEl.style.display = "none";
+    overlay.style.display = "block";
+    setTimeout(() => {
+      overlay.style.opacity = "0";
+      setTimeout(() => { overlay.style.display = "none"; overlay.style.opacity = "1"; }, 200);
+    }, 3000);
+  } else {
+    overlay.style.display = "none";
+  }
+}
+
 function applyPayload(payload, { refit = true } = {}) {
   currentPayload = payload;
   renderPanel(payload);
+  renderProgress(payload); // reset progress to idle when new payload lands
   if (currentMap && currentMap.getSource("territories")) {
     updateTerritoryLayers(currentMap, payload);
     if (refit) fitBounds(currentMap, payload.bounds);
@@ -675,7 +755,36 @@ async function main() {
     debugMessage("MapLibre error", details);
     setStatus("Map warning/error captured below.");
   });
-}
+
+  // SSE event handling for progress (and existing events)
+  const eventSource = new EventSource(
+    `${appBaseUrl()}/maps/session/${encodeURIComponent(sessionId)}/${encodeURIComponent(token)}/events`
+  );
+  eventSource.onmessage = function (e) {
+    try {
+      const event = JSON.parse(e.data);
+      handleEvent(event);
+    } catch (err) {
+      console.warn("SSE parse error", err);
+    }
+  };
+  eventSource.onerror = function () {
+    console.warn("SSE connection error - will retry");
+  };
+
+  function handleEvent(event) {
+    if (!event) return;
+    const type = event.type;
+    if (type === "progress") {
+      renderProgress(event);
+    } else if (type === "tal_updated" || type === "mode_changed") {
+      loadPayload().then(applyPayload).catch(console.error);
+    } else if (type === "selection_prompt") {
+      setStatus("Select parts on the map to continue.");
+    } else if (type === "part_selection_committed") {
+      setStatus("Selection committed. Processing…");
+    }
+  }
 
 main().catch((error) => {
   console.error(error);

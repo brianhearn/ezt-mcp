@@ -16,6 +16,7 @@ from starlette.routing import Mount, Route
 
 from .map_component.routes import MapVisualizationRoutes
 from .map_component.sessions import InMemoryMapSessionStore, MapVisualizationError
+from datetime import UTC, datetime
 
 from .auth import APIKeyAuth
 from .config import ServerConfig
@@ -550,6 +551,18 @@ def build_app(config: ServerConfig) -> Starlette:
             status_code = 200 if payload.get("ok") is True else _status_for_tool_error(payload)
             return JSONResponse(payload, status_code=status_code)
 
+    async def set_map_progress_http(request: Request) -> JSONResponse:
+        unauthorized = _unauthorized_if_needed(request, auth)
+        if unauthorized is not None:
+            return unauthorized
+        body = await request.json()
+        if not isinstance(body, dict):
+            body = {}
+        async with timed_async_operation(logger, "http.set_map_progress"):
+            payload = await _set_map_progress(state, body)
+            status_code = 200 if payload.get("ok") is True else 400
+            return JSONResponse(payload, status_code=status_code)
+
     async def direct_build_http(request: Request) -> JSONResponse:
         unauthorized = _unauthorized_if_needed(request, auth)
         if unauthorized is not None:
@@ -634,6 +647,7 @@ def build_app(config: ServerConfig) -> Starlette:
         Route("/jobs/{job_id}/result", job_result_http),
         Route("/jobs/{job_id}/cancel", cancel_job_http, methods=["POST"]),
         Route("/get-map-visualization", map_routes.create_visualization, methods=["POST"]),
+        Route("/set-map-progress", set_map_progress_http, methods=["POST"]),
         Route("/maps/session/{map_session_id}/{token}", map_routes.viewer),
         Route("/maps/session/{map_session_id}/{token}/render-payload", map_routes.render_payload),
         Route("/maps/session/{map_session_id}/{token}/state", map_routes.state),
@@ -878,3 +892,71 @@ def _unauthorized_if_needed(request: Request, auth: APIKeyAuth) -> JSONResponse 
     if auth.authenticate(request.headers.get("Authorization", "")):
         return None
     return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+
+def _set_map_progress(state: AppState, payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        map_session_id = payload.get("map_session_id")
+        if not map_session_id or not isinstance(map_session_id, str):
+            return {
+                "ok": False,
+                "error": {
+                    "code": "INVALID_REQUEST",
+                    "message": "map_session_id is required",
+                },
+            }
+        state_val = payload.get("state")
+        if state_val not in {"running", "done", "error", "idle"}:
+            return {
+                "ok": False,
+                "error": {
+                    "code": "INVALID_PROGRESS_STATE",
+                    "message": f"Invalid state: {state_val}. Must be one of running, done, error, idle.",
+                },
+            }
+        percent = payload.get("percent")
+        if percent is not None:
+            if not isinstance(percent, int) or not (0 <= percent <= 100):
+                return {
+                    "ok": False,
+                    "error": {
+                        "code": "INVALID_PROGRESS_PERCENT",
+                        "message": "percent must be integer between 0 and 100 if provided",
+                    },
+                }
+        message = payload.get("message")
+        if not isinstance(message, str) or not message.strip():
+            return {
+                "ok": False,
+                "error": {
+                    "code": "INVALID_REQUEST",
+                    "message": "message is required",
+                },
+            }
+
+        event = {
+            "type": "progress",
+            "map_session_id": map_session_id,
+            "state": state_val,
+            "message": message,
+            "percent": percent,
+            "created_at": datetime.now(tz=UTC).isoformat().replace("+00:00", "Z"),
+        }
+        state.map_sessions.publish_event(map_session_id, event)
+        return {
+            "ok": True,
+            "map_session_id": map_session_id,
+            "state": state_val,
+            "message": message,
+        }
+    except MapVisualizationError as exc:
+        return {"ok": False, "error": exc.to_error()}
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("set_map_progress failed")
+        return {
+            "ok": False,
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "message": str(exc),
+            },
+        }
