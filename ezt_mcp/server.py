@@ -574,7 +574,7 @@ def build_app(config: ServerConfig) -> Starlette:
         if not isinstance(body, dict):
             body = {}
         async with timed_async_operation(logger, "http.set_map_progress"):
-            payload = await _set_map_progress(state, body)
+            payload = _set_map_progress(state, body)
             status_code = 200 if payload.get("ok") is True else 400
             return JSONResponse(payload, status_code=status_code)
 
