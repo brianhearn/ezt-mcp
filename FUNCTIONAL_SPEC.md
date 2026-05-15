@@ -1,7 +1,7 @@
 # FUNCTIONAL_SPEC.md — EZT MCP Functional Contract
 
-**Version:** 0.4.0
-**Date:** 2026-05-14
+**Version:** 0.4.1
+**Date:** 2026-05-15
 **Status:** Draft — open questions resolved for v1 surface
 
 This document defines EZT MCP's externally observable behavior for agent/client implementers. It specifies MCP tools, resources, prompts, caller-visible state rules, validation behavior, and acceptance criteria independent of implementation internals.
@@ -102,6 +102,7 @@ The following v1 tools always run as asynchronous jobs:
 - `auto_build`
 - `realign`
 - `analyze`
+- `create_territory_from_parts`
 
 The initial tool call returns a job reference, not the final compute result. A job reference includes:
 
@@ -169,7 +170,7 @@ Common error codes include:
 | `get_map_visualization` | Idempotent: open/return persistent per-user MC workspace URL (creates if none exists for user_id; returns existing otherwise). | MC-001 to MC-004, S001, S002, verification |
 | `request_part_selection` | First-class human spatial input request: switch/open the MC on a part layer, prompt Monica to select parts, and return a selection task reference. | MC-004 to MC-006, S001 |
 | `get_part_selection` | Retrieve the committed part selection from a selection task, including part IDs and awareness metadata. | MC-004 to MC-006, post-selection analysis/list workflows |
-| `create_territory_from_parts` | Create or update one territory in a TAL from explicit selected part IDs plus agent-collected territory metadata. | MC-005, manual territory construction |
+| `create_territory_from_parts` | Create or update one territory from explicit selected part IDs plus agent-collected territory metadata. Returns a queued job reference; completed result appends a new TAL using the Direct Build pipeline. | MC-005, manual territory construction |
 | `query_parts` | Find parts by attribute filter predicate or explicit ID list; returns part_id + generic attribute bag only (no geometry). Paginated. | metadata enrichment, direct-build list construction, validation |
 | `set_map_state` | Deliberate low-level MC transitions (e.g. load different TAL, switch mode). Not used for routine job progress or as the primary selection API. | explicit workflow control |
 | `set_map_progress` | Best-effort live UX hint for an open MC session during long-running work; pushes a `progress` SSE event with `running`/`done`/`error`/`idle`, message, and optional percent. Job/status resources remain authoritative. | live map progress overlay |

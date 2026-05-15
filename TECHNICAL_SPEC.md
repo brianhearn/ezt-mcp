@@ -1,7 +1,7 @@
 # TECHNICAL_SPEC.md — EZT MCP Implementation Design
 
-**Version:** 0.4.0
-**Date:** 2026-05-14
+**Version:** 0.4.1
+**Date:** 2026-05-15
 **Status:** Draft — implementation architecture baseline
 
 This document defines how EZT MCP implements the external behavior in [FUNCTIONAL_SPEC.md](FUNCTIONAL_SPEC.md) while obeying the non-negotiables in [CONSTITUTION.md](CONSTITUTION.md). It owns internal architecture, data flow, storage choices, algorithm design, testing strategy, observability, and deployment mechanics.
@@ -360,6 +360,13 @@ Rules:
 - Results that include a TS should normally return a `ts_handle`; inline result payloads are allowed only under the configured size threshold.
 - Job/result TTLs are short-lived transport conveniences, not durable customer storage.
 - Workers claim jobs with row locking / leases (`FOR UPDATE SKIP LOCKED`) and heartbeat progress; expired leases can be retried according to per-tool idempotency rules.
+- Current testbed implementation persists the short-lived queued request payload under `request_summary.request_payload` so startup workers can execute after the submission request returns. This is acceptable only as transient job state in the current dev/staging phase; before production hardening, move full TS/customer payloads to a dedicated TTL payload/cache store or result-handle-style table and keep `request_summary` as summary-only metadata.
+
+### 3.7.1 Current worker implementation notes
+
+The deployed implementation runs a startup `JobWorker` in `ezt_mcp/workers.py`. On submission, `direct_build` and `create_territory_from_parts` persist a queued job and return immediately. The worker claims queued rows from `transient.jobs`, dispatches by `tool_name`, runs the Direct Build worker pipeline, updates job progress/results, and publishes best-effort Map Component progress events when the queued request includes `map_session_id`.
+
+This removes per-request compute tasks from the HTTP/MCP submission path while preserving the existing job status/result contract. Remaining production hardening items are retry/recovery for workers that die after a job has transitioned to running, stronger full-payload storage boundaries, and multi-worker fairness/backoff controls.
 
 ### 3.8 Map sessions (persistent per-user workspace + SSE)
 

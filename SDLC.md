@@ -1,7 +1,7 @@
 # SDLC.md — EZT MCP Documentation Model
 
-**Version:** 0.1.1
-**Date:** 2026-05-13
+**Version:** 0.1.2
+**Date:** 2026-05-15
 **Status:** Draft — documentation governance
 
 This document defines the repository's SDLC documents and their boundaries. The goal is to keep each document useful, current, and non-redundant. When adding or editing docs, put information in the one document that owns it and link to that document from elsewhere instead of copying details.
@@ -160,12 +160,14 @@ This document defines the repository's SDLC documents and their boundaries. The 
 - performance/scaling considerations
 - observability/logging design
 - test implementation strategy
+- current implementation notes and known hardening gaps when they affect how future agents should continue work
 
 **Does not own:**
 - product intent
 - user-facing workflow prose except references to scenarios/spec sections
 - canonical external contracts already owned by Functional Spec
 - changelog/history
+- long-form work logs or handoff notes that belong in memory/session-state or CHANGELOG
 
 **Rule of thumb:** if changing it would not require a client/agent behavior change, it probably belongs in Technical Spec, not Functional Spec.
 

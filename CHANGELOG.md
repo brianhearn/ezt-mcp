@@ -12,7 +12,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added persisted queued job payloads plus a startup `JobWorker` that claims queued `direct_build` / `create_territory_from_parts` jobs from `transient.jobs` instead of running per-request compute via process-local task submission.
 - Wired Direct Build worker phases to publish best-effort MC progress events when `map_session_id` is supplied.
 - Added `scripts/zip_scalability.py` for read-only real ZIP scalability benchmarking against staging PostGIS.
-- Verified real FL ZIP benchmark: 1000 ZIPs / 20 territories fetched in ~0.954s, built in ~0.844s, total ~1.798s.
+- Updated Functional/Technical/SDLC docs for the queued worker/create-territory implementation and current hardening gaps.
+- Verified real FL ZIP benchmark locally and after deploy; deployed run: 1000 ZIPs / 20 territories fetched in ~0.822s, built in ~0.828s, total ~1.650s.
 
 ### Changed (2026-05-15) — MC themes, progress, and durable-session deployment path
 - Added MC light/dark theme support driven by `presentation.style_overrides.theme`; dark remains the default for development/testing unless explicitly requested.
