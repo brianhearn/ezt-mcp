@@ -261,14 +261,71 @@ function sessionParts() {
   return { sessionId: match ? match[1] : "", token };
 }
 
+// ─── Theme-aware basemap paint values (from DESIGN.md tokens) ───────────────
+const BASEMAP_PAINTS = {
+  dark: {
+    background:     "#101418",
+    earth:          "#11181f",
+    landcover:      "#172318",
+    landuse:        "#15202a",
+    water:          "#172b3a",
+    boundary:       "#3b4858",
+    roadMinor:      "#334252",
+    roadMajor:      "#4d6176",
+    building:       "#2d3844",
+    buildingOutline:"#465566",
+    textPlace:      "#9dafc3",
+    textRoad:       "#7f91a6",
+    textPoi:        "#8fa1b6",
+    halo:           "#101418",
+    // territory fill opacity per DESIGN.md
+    territoryFill:  0.55,
+    territoryLabel: "#f6f8fb",
+    territoryLabelHalo: "#101418",
+    outlineColor:   "#f6f8fb",
+  },
+  light: {
+    background:     "#f8fafc",
+    earth:          "#e8ecef",
+    landcover:      "#dde8d8",
+    landuse:        "#e5eae8",
+    water:          "#b3d4e8",
+    boundary:       "#b0bec5",
+    roadMinor:      "#cfd8dc",
+    roadMajor:      "#b0bec5",
+    building:       "#dde2e6",
+    buildingOutline:"#c0c9cf",
+    textPlace:      "#455a64",
+    textRoad:       "#607d8b",
+    textPoi:        "#546e7a",
+    halo:           "#f8fafc",
+    // territory fill opacity per DESIGN.md
+    territoryFill:  0.35,
+    territoryLabel: "#0f172a",
+    territoryLabelHalo: "#f8fafc",
+    outlineColor:   "#334155",
+  },
+};
+
+function resolvedTheme(payload) {
+  const t = payload && payload.theme;
+  return t === "light" ? "light" : "dark";
+}
+
+function applyTheme(payload) {
+  document.documentElement.dataset.theme = resolvedTheme(payload);
+}
+
 function baseStyle(payload) {
+  const theme = resolvedTheme(payload);
+  const p = BASEMAP_PAINTS[theme];
   const basemapUrl = payload.basemap && payload.basemap.url;
   const style = {
     version: 8,
     glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
     sources: {},
     layers: [
-      { id: "background", type: "background", paint: { "background-color": "#101418" } },
+      { id: "background", type: "background", paint: { "background-color": p.background } },
     ],
   };
 
@@ -283,35 +340,35 @@ function baseStyle(payload) {
         type: "fill",
         source: "basemap",
         "source-layer": "earth",
-        paint: { "fill-color": "#11181f" },
+        paint: { "fill-color": p.earth },
       },
       {
         id: "basemap-landcover",
         type: "fill",
         source: "basemap",
         "source-layer": "landcover",
-        paint: { "fill-color": "#172318", "fill-opacity": 0.35 },
+        paint: { "fill-color": p.landcover, "fill-opacity": 0.35 },
       },
       {
         id: "basemap-landuse",
         type: "fill",
         source: "basemap",
         "source-layer": "landuse",
-        paint: { "fill-color": "#15202a", "fill-opacity": 0.42 },
+        paint: { "fill-color": p.landuse, "fill-opacity": 0.42 },
       },
       {
         id: "basemap-water",
         type: "fill",
         source: "basemap",
         "source-layer": "water",
-        paint: { "fill-color": "#172b3a" },
+        paint: { "fill-color": p.water },
       },
       {
         id: "basemap-boundaries",
         type: "line",
         source: "basemap",
         "source-layer": "boundaries",
-        paint: { "line-color": "#3b4858", "line-width": 0.7, "line-opacity": 0.55 },
+        paint: { "line-color": p.boundary, "line-width": 0.7, "line-opacity": 0.55 },
       },
       {
         id: "basemap-roads-minor",
@@ -321,7 +378,7 @@ function baseStyle(payload) {
         minzoom: 8,
         filter: ["!in", "kind", "highway", "major_road"],
         paint: {
-          "line-color": "#334252",
+          "line-color": p.roadMinor,
           "line-width": ["interpolate", ["linear"], ["zoom"], 8, 0.25, 12, 0.8, 15, 1.4],
           "line-opacity": ["interpolate", ["linear"], ["zoom"], 8, 0.25, 12, 0.65],
         },
@@ -333,7 +390,7 @@ function baseStyle(payload) {
         "source-layer": "roads",
         filter: ["in", "kind", "highway", "major_road"],
         paint: {
-          "line-color": "#4d6176",
+          "line-color": p.roadMajor,
           "line-width": ["interpolate", ["linear"], ["zoom"], 3, 0.45, 8, 1.1, 12, 2.4],
           "line-opacity": 0.72,
         },
@@ -345,9 +402,9 @@ function baseStyle(payload) {
         "source-layer": "buildings",
         minzoom: 11,
         paint: {
-          "fill-color": "#2d3844",
+          "fill-color": p.building,
           "fill-opacity": ["interpolate", ["linear"], ["zoom"], 11, 0.2, 14, 0.55],
-          "fill-outline-color": "#465566",
+          "fill-outline-color": p.buildingOutline,
         },
       },
       {
@@ -361,8 +418,8 @@ function baseStyle(payload) {
           "text-size": ["interpolate", ["linear"], ["zoom"], 4, 10, 10, 13],
         },
         paint: {
-          "text-color": "#9dafc3",
-          "text-halo-color": "#101418",
+          "text-color": p.textPlace,
+          "text-halo-color": p.halo,
           "text-halo-width": 1,
         },
       },
@@ -378,8 +435,8 @@ function baseStyle(payload) {
           "text-size": 10,
         },
         paint: {
-          "text-color": "#7f91a6",
-          "text-halo-color": "#101418",
+          "text-color": p.textRoad,
+          "text-halo-color": p.halo,
           "text-halo-width": 1,
         },
       },
@@ -394,8 +451,8 @@ function baseStyle(payload) {
           "text-size": 10,
         },
         paint: {
-          "text-color": "#8fa1b6",
-          "text-halo-color": "#101418",
+          "text-color": p.textPoi,
+          "text-halo-color": p.halo,
           "text-halo-width": 1,
         },
       },
@@ -430,13 +487,14 @@ function addTerritoryLayers(map, payload) {
         "line-opacity": 0.32,
       },
     });
+    const tp = BASEMAP_PAINTS[resolvedTheme(payload)];
     map.addLayer({
       id: "territory-fill",
       type: "fill",
       source: "territories",
       paint: {
         "fill-color": ["coalesce", ["get", "_render_color"], "#2F80ED"],
-        "fill-opacity": 0.5,
+        "fill-opacity": tp.territoryFill,
       },
     });
     map.addLayer({
@@ -444,7 +502,7 @@ function addTerritoryLayers(map, payload) {
       type: "line",
       source: "territories",
       paint: {
-        "line-color": "#f6f8fb",
+        "line-color": tp.outlineColor,
         "line-width": 1.4,
         "line-opacity": 0.9,
       },
@@ -460,8 +518,8 @@ function addTerritoryLayers(map, payload) {
         "text-allow-overlap": false,
       },
       paint: {
-        "text-color": "#f6f8fb",
-        "text-halo-color": "#101418",
+        "text-color": tp.territoryLabel,
+        "text-halo-color": tp.territoryLabelHalo,
         "text-halo-width": 1.5,
       },
     });
@@ -573,6 +631,7 @@ async function main() {
   }
 
   const payload = await loadPayload();
+  applyTheme(payload);
   applyPayload(payload, { refit: false });
 
   attachTalSelectHandler(byId("tal-select"));

@@ -7,6 +7,7 @@ import pytest
 from ezt_mcp.map_component.sessions import (
     InMemoryMapSessionStore,
     MapVisualizationError,
+    _resolved_theme,
     build_render_payload,
 )
 
@@ -188,6 +189,133 @@ def test_session_store_returns_new_tab_response_and_validates_token():
     assert result["session_exists"] is False
     assert result["active_tal_summary"]["territory_count"] == 2
     assert store.get_session(session.map_session_id, session.token) is session
+
+
+# ─── Theme tests ──────────────────────────────────────────────────────────────
+
+
+def test_resolved_theme_defaults_to_dark():
+    assert _resolved_theme({}) == "dark"
+    assert _resolved_theme({"style_overrides": {}}) == "dark"
+    assert _resolved_theme({"style_overrides": {"theme": "bogus"}}) == "dark"
+
+
+def test_resolved_theme_light():
+    assert _resolved_theme({"style_overrides": {"theme": "light"}}) == "light"
+
+
+def test_resolved_theme_explicit_dark():
+    assert _resolved_theme({"style_overrides": {"theme": "dark"}}) == "dark"
+
+
+def test_resolved_theme_fallback():
+    assert _resolved_theme({}, fallback="light") == "light"
+    # explicit override wins over fallback
+    assert _resolved_theme({"style_overrides": {"theme": "dark"}}, fallback="light") == "dark"
+
+
+def test_build_render_payload_includes_theme_dark_by_default():
+    payload = build_render_payload(
+        sample_ts(),
+        active_tal_id="tal-current",
+        public_base_url="https://expertpack.ai/mcp",
+    )
+    assert payload["theme"] == "dark"
+
+
+def test_build_render_payload_includes_theme_light():
+    payload = build_render_payload(
+        sample_ts(),
+        active_tal_id="tal-current",
+        public_base_url="https://expertpack.ai/mcp",
+        theme="light",
+    )
+    assert payload["theme"] == "light"
+
+
+def test_session_store_persists_theme_from_presentation():
+    store = InMemoryMapSessionStore()
+    session = store.create_session(
+        {
+            "ts": sample_ts(),
+            "mode": "view",
+            "active_tal_id": "tal-current",
+            "presentation": {"style_overrides": {"theme": "light"}},
+        },
+        public_base_url="https://expertpack.ai/mcp",
+    )
+    assert session.theme == "light"
+    assert session.render_payload["theme"] == "light"
+
+
+def test_session_store_theme_defaults_to_dark_without_override():
+    store = InMemoryMapSessionStore()
+    session = store.create_session(
+        {"ts": sample_ts(), "mode": "view", "active_tal_id": "tal-current"},
+        public_base_url="https://expertpack.ai/mcp",
+    )
+    assert session.theme == "dark"
+    assert session.render_payload["theme"] == "dark"
+
+
+def test_session_store_theme_persists_across_refresh_without_re_specifying():
+    """Theme set at creation is preserved on refresh if not overridden."""
+    from datetime import UTC, datetime
+
+    store = InMemoryMapSessionStore()
+    now = datetime.now(tz=UTC)
+    session = store.create_session(
+        {
+            "ts": sample_ts(),
+            "mode": "view",
+            "active_tal_id": "tal-current",
+            "presentation": {"style_overrides": {"theme": "light"}},
+        },
+        public_base_url="https://expertpack.ai/mcp",
+        now=now,
+    )
+    assert session.theme == "light"
+
+    # Refresh without specifying theme — should retain "light" via fallback
+    session.refresh_from_request(
+        {"ts": sample_ts(), "mode": "view", "active_tal_id": "tal-current"},
+        public_base_url="https://expertpack.ai/mcp",
+        now=now,
+    )
+    assert session.theme == "light"
+    assert session.render_payload["theme"] == "light"
+
+
+def test_session_store_theme_can_be_changed_on_refresh():
+    """Theme override on refresh replaces the stored theme."""
+    from datetime import UTC, datetime
+
+    store = InMemoryMapSessionStore()
+    now = datetime.now(tz=UTC)
+    session = store.create_session(
+        {
+            "ts": sample_ts(),
+            "mode": "view",
+            "active_tal_id": "tal-current",
+            "presentation": {"style_overrides": {"theme": "light"}},
+        },
+        public_base_url="https://expertpack.ai/mcp",
+        now=now,
+    )
+    assert session.theme == "light"
+
+    session.refresh_from_request(
+        {
+            "ts": sample_ts(),
+            "mode": "view",
+            "active_tal_id": "tal-current",
+            "presentation": {"style_overrides": {"theme": "dark"}},
+        },
+        public_base_url="https://expertpack.ai/mcp",
+        now=now,
+    )
+    assert session.theme == "dark"
+    assert session.render_payload["theme"] == "dark"
 
 
 def test_session_store_rejects_truncated_unicode_token_without_type_error():

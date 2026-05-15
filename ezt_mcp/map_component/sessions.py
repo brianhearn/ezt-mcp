@@ -52,6 +52,7 @@ class MapVisualizationSession:
     expires_at: datetime
     state_resource_uri: str
     user_id: str = DEFAULT_USER_ID
+    theme: str = "dark"
     selection_resource_uri: str | None = None
     pending_job_reference: dict[str, Any] | None = None
     committed_selection: dict[str, Any] | None = None
@@ -127,30 +128,30 @@ class MapVisualizationSession:
                 "INVALID_TS",
                 "A full TS payload is required until TS handle resolution is implemented.",
             )
+        req_presentation = (
+            request.get("presentation")
+            if isinstance(request.get("presentation"), Mapping)
+            else {}
+        )
+        theme = _resolved_theme(req_presentation, fallback=self.theme)
         render_payload = build_render_payload(
             copy.deepcopy(dict(ts)),
             active_tal_id=request.get("active_tal_id"),
             mode=mode,
-            presentation=(
-                request.get("presentation")
-                if isinstance(request.get("presentation"), Mapping)
-                else {}
-            ),
+            presentation=req_presentation,
             public_base_url=public_base_url,
+            theme=theme,
         )
         ttl_seconds = _bounded_ttl(request.get("expiry_seconds"))
         previous_mode = self.mode
         self.mode = mode
+        self.theme = theme
         self.active_tal_id = render_payload["active_tal"]["tal_id"]
         self.active_tal_label = render_payload["active_tal"].get("label")
         self.ts_identity = render_payload["ts_identity"]
         self.render_payload = render_payload
         self.ts = copy.deepcopy(dict(ts))
-        self.presentation = (
-            dict(request.get("presentation"))
-            if isinstance(request.get("presentation"), Mapping)
-            else {}
-        )
+        self.presentation = dict(req_presentation)
         self.public_base_url = public_base_url
         self.expires_at = now + timedelta(seconds=ttl_seconds)
         self.updated_at = now
@@ -241,16 +242,19 @@ class InMemoryMapSessionStore:
                 "A full TS payload is required until TS handle resolution is implemented.",
             )
         ts_copy = copy.deepcopy(dict(ts))
+        req_presentation = (
+            request.get("presentation")
+            if isinstance(request.get("presentation"), Mapping)
+            else {}
+        )
+        theme = _resolved_theme(req_presentation)
         render_payload = build_render_payload(
             ts_copy,
             active_tal_id=request.get("active_tal_id"),
             mode=mode,
-            presentation=(
-                request.get("presentation")
-                if isinstance(request.get("presentation"), Mapping)
-                else {}
-            ),
+            presentation=req_presentation,
             public_base_url=public_base_url,
+            theme=theme,
         )
         ttl_seconds = _bounded_ttl(request.get("expiry_seconds"))
         map_session_id = f"msess_{secrets.token_urlsafe(16)}"
@@ -266,16 +270,13 @@ class InMemoryMapSessionStore:
             map_session_id=map_session_id,
             token=token,
             mode=mode,
+            theme=theme,
             active_tal_id=render_payload["active_tal"]["tal_id"],
             active_tal_label=render_payload["active_tal"].get("label"),
             ts_identity=render_payload["ts_identity"],
             render_payload=render_payload,
             ts=ts_copy,
-            presentation=(
-                dict(request.get("presentation"))
-                if isinstance(request.get("presentation"), Mapping)
-                else {}
-            ),
+            presentation=dict(req_presentation),
             public_base_url=public_base_url,
             created_at=now,
             updated_at=now,
@@ -516,6 +517,7 @@ class InMemoryMapSessionStore:
             mode=session.mode,
             presentation=session.presentation,
             public_base_url=session.public_base_url,
+            theme=session.theme,
         )
         session.active_tal_id = render_payload["active_tal"]["tal_id"]
         session.active_tal_label = render_payload["active_tal"].get("label")
@@ -544,6 +546,7 @@ def build_render_payload(
     mode: str = "view",
     presentation: Mapping[str, Any] | None = None,
     public_base_url: str = "",
+    theme: str = "dark",
 ) -> dict[str, Any]:
     """Extract the active TAL as a browser render payload."""
     if ts.get("type") != "FeatureCollection" or not isinstance(ts.get("features"), list):
@@ -604,6 +607,7 @@ def build_render_payload(
     return {
         "map_session_id": None,
         "mode": mode,
+        "theme": theme,
         "basemap": {
             "type": "pmtiles",
             "url": f"{public_base_url.rstrip('/')}/assets/tiles/us-basemap.pmtiles",
@@ -921,6 +925,16 @@ def _safe_token_equal(actual: str, supplied: str) -> bool:
 
 def _drop_none(payload: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in payload.items() if value is not None}
+
+
+def _resolved_theme(presentation: Mapping[str, Any], *, fallback: str = "dark") -> str:
+    """Extract and validate the theme from presentation.style_overrides.theme."""
+    overrides = presentation.get("style_overrides") if isinstance(presentation, Mapping) else None
+    if isinstance(overrides, Mapping):
+        raw = overrides.get("theme")
+        if raw in ("dark", "light"):
+            return raw
+    return fallback
 
 
 def _isoformat_z(value: datetime | None) -> str | None:
