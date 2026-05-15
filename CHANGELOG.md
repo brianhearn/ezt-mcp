@@ -7,6 +7,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-15) — MC themes, progress, and durable-session deployment path
+- Added MC light/dark theme support driven by `presentation.style_overrides.theme`; dark remains the default for development/testing unless explicitly requested.
+- Added `set_map_progress` plus `POST /set-map-progress` to push best-effort `progress` SSE events to open MC sessions, rendering a bottom-center progress overlay with message, optional percent bar, and running/done/error/idle states.
+- Added Postgres-backed `AsyncpgMapSessionStore` and `scripts/migrate_map_sessions.py` for `transient.map_sessions`; service uses it automatically when the table exists and falls back to in-memory sessions otherwise.
+- Deployed to `https://expertpack.ai/mcp/` and verified health, dark MC render payload, and progress events. Durable sessions are currently blocked by DB DDL permissions: `ezt_mcp_app` cannot create `transient.map_sessions`; Matt was emailed the required SQL/grants.
+
 ### Changed (2026-05-14) — Map Component customer labels and i18n
 - Replaced visible MC chrome text that said “TAL” with customer-facing “alignment” labels while preserving internal `tal_*` API and payload field names.
 - Added resolved `presentation.chrome_labels` defaults/overrides so MC chrome labels can be internationalized via presentation metadata or request-time overrides instead of hardcoded viewer strings.

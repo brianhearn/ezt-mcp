@@ -221,14 +221,17 @@ Basemap PMTiles should be treated separately from part-layer PMTiles. The prefer
 
 ---
 
-## SSE Command Channel (new)
+## SSE Command Channel (updated)
 
 Server pushes via SSE (one connection per active persistent MC session):
 - `mode_changed` (e.g. `select_parts`, `job_progress`, `view_tal`)
 - `tal_updated` (with new `tal_id`, TS identity)
-- `job_progress` / `job_complete` / `job_failed`
+- `progress` (best-effort UI hint from `set_map_progress`: `{state, message, percent?}`)
+- `job_progress` / `job_complete` / `job_failed` (durable job state remains authoritative)
 - `selection_prompt` (for AWAITING_USER_SELECTION jobs)
 - `session_expired` / `revoked`
+
+The MC renders `progress` events as a small bottom-center overlay that does not obscure territory geometry. `running` stays visible, `done` briefly flashes success then hides, `error` briefly shows danger styling then hides, and `idle` hides immediately. This is intentionally a live UX indicator only; job/status resources remain the authoritative source for long-running work.
 
 ## MC→server Event POSTs (new)
 

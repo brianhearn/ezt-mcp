@@ -172,6 +172,7 @@ Common error codes include:
 | `create_territory_from_parts` | Create or update one territory in a TAL from explicit selected part IDs plus agent-collected territory metadata. | MC-005, manual territory construction |
 | `query_parts` | Find parts by attribute filter predicate or explicit ID list; returns part_id + generic attribute bag only (no geometry). Paginated. | metadata enrichment, direct-build list construction, validation |
 | `set_map_state` | Deliberate low-level MC transitions (e.g. load different TAL, switch mode). Not used for routine job progress or as the primary selection API. | explicit workflow control |
+| `set_map_progress` | Best-effort live UX hint for an open MC session during long-running work; pushes a `progress` SSE event with `running`/`done`/`error`/`idle`, message, and optional percent. Job/status resources remain authoritative. | live map progress overlay |
 | `get_map_selection` | Backward-compatible/session-level alias for latest committed selection. Prefer `get_part_selection` for first-class selection workflows. | compatibility/helper |
 
 V1 TS cache behavior is implicit. Public tools may accept and return TS handles, but `ts_cache_put` is not a public v1 MCP tool.

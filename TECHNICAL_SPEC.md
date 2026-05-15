@@ -366,29 +366,35 @@ Rules:
 ```sql
 transient.map_sessions (
   map_session_id text primary key,
-  customer_id uuid not null,
+  token text not null,
+  user_id text not null,
   mode text not null,
-  ts_handle text,
+  theme text not null default 'dark',
+  active_tal_id text not null,
+  active_tal_label text,
   ts_identity jsonb not null,
-  active_tal_id text,
+  render_payload jsonb not null,
+  ts jsonb not null,
   presentation jsonb not null default '{}',
-  interaction_flags jsonb not null default '{}',
-  state jsonb not null default '{}',
+  public_base_url text not null default '',
+  state_resource_uri text not null,
+  selection_resource_uri text,
+  pending_job_reference jsonb,
+  committed_selection jsonb,
+  active_selection_task_id text,
   created_at timestamptz not null,
-  expires_at timestamptz not null,
-  revoked_at timestamptz
-)
-
-transient.map_session_events (
-  event_id text primary key,
-  map_session_id text not null references transient.map_sessions(map_session_id),
-  event_type text not null,
-  payload jsonb not null,
-  created_at timestamptz not null
+  updated_at timestamptz,
+  expires_at timestamptz not null
 )
 ```
 
-The TS referenced by a map session must remain short-lived. A read-only boss link or select-mode session is not durable storage.
+The current implementation enforces one active unexpired map session per `user_id`. `AsyncpgMapSessionStore` reconstructs the browser render payload from the persisted source TS, active TAL, presentation, and theme so render payloads do not become stale after code changes. SSE queues remain process-local and best-effort; durable row state is authoritative for session survival across service restarts.
+
+`theme` is session-level presentation state. Agents set it with `presentation.style_overrides.theme` (`dark` or `light`); `dark` is the default for development/testing and for callers that do not explicitly request light.
+
+A future `transient.map_session_events` table may persist cross-process browser push history if the deployment becomes horizontally scaled. For the current single-process deploy/testbed, live SSE fanout is in-process only and progress events are advisory UI hints.
+
+The TS referenced by a map session must remain short-lived. A read-only boss link or select-mode session is not durable customer storage.
 
 ---
 
