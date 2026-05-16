@@ -1,7 +1,7 @@
 # SDLC.md — EZT MCP Documentation Model
 
-**Version:** 0.1.2
-**Date:** 2026-05-15
+**Version:** 0.1.3
+**Date:** 2026-05-16
 **Status:** Draft — documentation governance
 
 This document defines the repository's SDLC documents and their boundaries. The goal is to keep each document useful, current, and non-redundant. When adding or editing docs, put information in the one document that owns it and link to that document from elsewhere instead of copying details.
@@ -346,7 +346,15 @@ Avoid creating overlapping alternatives such as `ARCHITECTURE.md`, `PRODUCT.md`,
 
 ## Current Guidance for Next Phase
 
-The immediate next phase is implementation around the now-stable v1 contracts. Prioritize a minimal `get_map_visualization` loop early, because geometry-producing tools need visual verification on the MC before their outputs can be trusted. The external contracts to preserve are:
+The immediate next phase is implementation hardening around the now-working Direct Build / Map Component testbed. Preserve the external v1 contracts while tightening internals. Current priorities:
+
+- keep `get_map_visualization` as the stable public tool name for read-only/share/select map visualization;
+- maintain MC visual smoke coverage for every deploy that touches job, map-session, or progress paths;
+- keep transient queue details in `TECHNICAL_SPEC.md`, not in Functional Spec unless caller-visible behavior changes;
+- keep migration/operator status in `CHANGELOG.md` and memory/session-state, not scattered across core docs;
+- after Matt/admin applies `migrations/003_job_payloads_limits.sql`, deploy commit `0c61c32`, restart, and run health + MC progress smoke before claiming live hardening is active.
+
+External contracts to preserve:
 
 - TS input/output behavior
 - `get_map_visualization` as the stable public tool name for read-only/share/select map visualization
