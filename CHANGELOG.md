@@ -8,6 +8,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Changed (2026-05-16) — scalability, TAL IDs, and queue recovery
+- Added `transient.job_payloads` plus job `payload_handle` metadata so full queued request payloads are stored outside `request_summary`.
+- Added configurable transient job limits (`jobs.max_queued_jobs_per_customer`, `jobs.max_active_jobs_per_customer`) with `JOB_LIMIT_EXCEEDED` responses.
+- Added retry hardening for stale running-job reclaim: attempt counts, max attempts, retry backoff, and `JOB_ATTEMPTS_EXHAUSTED` failure.
 - Extended `scripts/zip_scalability.py` with `--state ALL` national sampling for larger real ZIP benchmarks.
 - Verified national ZIP scalability on staging: 5k / 50 territories in ~5.65s, 10k / 100 in ~13.77s, 20k / 200 in ~27.65s, and full 33,715 ZIPs / 337 in ~50.39s with no warnings.
 - Added caller-supplied Direct Build TAL IDs via `tal_id` / `requested_tal_id`, including format validation and collision rejection against existing TS TAL IDs.

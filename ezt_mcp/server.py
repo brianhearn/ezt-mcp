@@ -30,6 +30,7 @@ from .jobs import (
     InMemoryJobRepository,
     InvalidJobTransitionError,
     JobAccessError,
+    JobLimitExceededError,
     submission_response,
 )
 from .part_selection import (
@@ -475,7 +476,13 @@ def build_app(config: ServerConfig) -> Starlette:
                 state.part_layers_repo = AsyncpgPartLayerRepository(state.pool)
                 state.parts_repo = AsyncpgPartsRepository(state.pool)
                 if await _transient_jobs_available(state.pool):
-                    state.jobs_repo = AsyncpgJobRepository(state.pool)
+                    state.jobs_repo = AsyncpgJobRepository(
+                        state.pool,
+                        max_queued_jobs_per_customer=config.jobs.max_queued_jobs_per_customer,
+                        max_active_jobs_per_customer=config.jobs.max_active_jobs_per_customer,
+                        default_max_attempts=config.jobs.max_attempts,
+                        retry_backoff_seconds=config.jobs.retry_backoff_seconds,
+                    )
                 else:
                     logger.warning(
                         "transient.jobs migration is not available; "
@@ -905,6 +912,14 @@ async def _submit_and_run_direct_build(
         # This keeps submissions durable across request completion and avoids
         # process-local per-request asyncio.create_task execution.
         return submission_response(job)
+    except JobLimitExceededError as exc:
+        return _job_error_payload(
+            exc.code,
+            str(exc),
+            limit_name=exc.limit_name,
+            limit=exc.limit,
+            current=exc.current,
+        )
     except RuntimeError as exc:
         return _job_error_payload("UNSUPPORTED_OPERATION", str(exc))
 
@@ -1072,6 +1087,8 @@ def _status_for_tool_error(payload: dict[str, Any]) -> int:
         return 400
     if code in {"UNKNOWN_PART_LAYER", "UNKNOWN_PART_ID"}:
         return 404
+    if code == "JOB_LIMIT_EXCEEDED":
+        return 429
     if code == "UNSUPPORTED_OPERATION":
         return 501
     return 500

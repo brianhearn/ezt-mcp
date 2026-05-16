@@ -136,3 +136,15 @@ def test_cancel_marks_terminal_cancelled():
     assert cancelled.status == "cancelled"
     assert cancelled.cancel_requested is True
     assert cancelled.status_resource()["phase"] == "cancelled"
+
+
+def test_in_memory_job_repo_enforces_active_limit():
+    repo = InMemoryJobRepository(max_active_jobs_per_customer=1)
+    context = CustomerContext(customer_id="cust-a")
+    repo.submit(context, tool_name="direct_build")
+
+    with pytest.raises(Exception) as exc:
+        repo.submit(context, tool_name="direct_build")
+
+    assert getattr(exc.value, "code", None) == "JOB_LIMIT_EXCEEDED"
+    assert getattr(exc.value, "limit_name", None) == "max_active_jobs_per_customer"

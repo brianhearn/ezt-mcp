@@ -364,11 +364,11 @@ Rules:
 
 ### 3.7.1 Current worker implementation notes
 
-The deployed implementation runs a startup `JobWorker` in `ezt_mcp/workers.py`. On submission, `direct_build` and `create_territory_from_parts` persist a queued job and return immediately. The worker claims queued rows from `transient.jobs`, dispatches by `tool_name`, runs the Direct Build worker pipeline, updates job progress/results, and publishes best-effort Map Component progress events when the queued request includes `map_session_id`.
+The deployed implementation runs a startup `JobWorker` in `ezt_mcp/workers.py`. On submission, `direct_build` and `create_territory_from_parts` persist a queued job and return immediately. Full queued request payloads are stored in `transient.job_payloads` and referenced from `transient.jobs.payload_handle` / `request_summary.payload_handle`; `request_summary` remains summary metadata only. The worker claims eligible rows from `transient.jobs`, dispatches by `tool_name`, hydrates the payload, runs the Direct Build worker pipeline, updates job progress/results, and publishes best-effort Map Component progress events when the queued request includes `map_session_id`.
 
-Claims set/extend a lease. If a worker dies after a job has transitioned to `running`, a later worker may reclaim the job once `lease_expires_at` has passed. Reclaimed jobs keep the same `job_id` and are re-executed from their transient request payload; Direct Build/create-territory execution must therefore remain idempotent with respect to the current transient TS/result model.
+Claims set/extend a lease. If a worker dies after a job has transitioned to `running`, a later worker may reclaim the job once `lease_expires_at` has passed and `next_attempt_at` has arrived. Reclaimed jobs keep the same `job_id`, increment `attempt_count`, use configurable backoff, and fail with `JOB_ATTEMPTS_EXHAUSTED` once `max_attempts` is reached. Direct Build/create-territory execution must remain idempotent with respect to the transient TS/result model.
 
-This removes per-request compute tasks from the HTTP/MCP submission path while preserving the existing job status/result contract. Remaining production hardening items are stronger full-payload storage boundaries, explicit retry/attempt limits, and multi-worker fairness/backoff controls.
+Submission enforces configurable per-customer limits for active jobs and queued jobs. This removes per-request compute tasks from the HTTP/MCP submission path while preserving the existing job status/result contract. Remaining production hardening items are cross-customer round-robin scheduling across multiple customers and operational cleanup of expired payload/result rows.
 
 ### 3.8 Map sessions (persistent per-user workspace + SSE)
 

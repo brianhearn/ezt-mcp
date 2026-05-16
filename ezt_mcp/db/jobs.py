@@ -15,6 +15,7 @@ from ezt_mcp.jobs import (
     CustomerContext,
     InvalidJobTransitionError,
     JobAccessError,
+    JobLimitExceededError,
     JobRecord,
     JobStatus,
     _bounded_ttl,
@@ -24,8 +25,20 @@ from ezt_mcp.jobs import (
 class AsyncpgJobRepository:
     """Persist async job control-plane state in ``transient`` tables."""
 
-    def __init__(self, pool: Any):
+    def __init__(
+        self,
+        pool: Any,
+        *,
+        max_queued_jobs_per_customer: int = 100,
+        max_active_jobs_per_customer: int = 20,
+        default_max_attempts: int = 3,
+        retry_backoff_seconds: int = 60,
+    ):
         self._pool = pool
+        self.max_queued_jobs_per_customer = max(1, int(max_queued_jobs_per_customer))
+        self.max_active_jobs_per_customer = max(1, int(max_active_jobs_per_customer))
+        self.default_max_attempts = max(1, int(default_max_attempts))
+        self.retry_backoff_seconds = max(0, int(retry_backoff_seconds))
 
     async def submit(
         self,
@@ -38,28 +51,40 @@ class AsyncpgJobRepository:
         required_input: Mapping[str, Any] | None = None,
         request_payload: Mapping[str, Any] | None = None,
         ttl_seconds: int = DEFAULT_JOB_TTL_SECONDS,
+        max_attempts: int | None = None,
         now: datetime | None = None,
     ) -> JobRecord:
         now = now or datetime.now(tz=UTC)
         job_id = f"job_{secrets.token_urlsafe(18)}"
         expires_at = now + timedelta(seconds=_bounded_ttl(ttl_seconds))
-        request_summary = {}
+        max_attempts_value = max(1, int(max_attempts or self.default_max_attempts))
+        request_summary: dict[str, Any] = {}
         if required_input:
             request_summary["required_input"] = dict(required_input)
-        if request_payload:
-            request_summary["request_payload"] = dict(request_payload)
         async with self._pool.acquire() as conn:
             async with conn.transaction():
+                await self._enforce_customer_limits(conn, context, tool_name=tool_name)
+                payload_handle = None
+                payload_bytes = 0
+                payload: bytes | None = None
+                if request_payload:
+                    payload_handle = f"jpay_{secrets.token_urlsafe(18)}"
+                    payload = json.dumps(dict(request_payload)).encode("utf-8")
+                    payload_bytes = len(payload)
+                    request_summary["payload_handle"] = payload_handle
+                    request_summary["payload_bytes"] = payload_bytes
                 await conn.execute(
                     """
                     insert into transient.jobs (
                       job_id, customer_id, key_id, tool_name, status, phase,
                       status_message, progress, total, poll_interval_ms,
-                      request_summary, created_at, last_progress_at, expires_at
+                      request_summary, created_at, last_progress_at, expires_at,
+                      max_attempts, payload_handle
                     ) values (
                       $1, $2::uuid, $3::uuid, $4, $5, $6,
                       $7, 0, null, $8,
-                      $9::jsonb, $10, $10, $11
+                      $9::jsonb, $10, $10, $11,
+                      $12, $13
                     )
                     """,
                     job_id,
@@ -73,7 +98,25 @@ class AsyncpgJobRepository:
                     json.dumps(request_summary),
                     now,
                     expires_at,
+                    max_attempts_value,
+                    payload_handle,
                 )
+                if payload_handle and payload is not None:
+                    await conn.execute(
+                        """
+                        insert into transient.job_payloads (
+                          payload_handle, job_id, customer_id, content_type,
+                          payload_compressed, payload_bytes, created_at, expires_at
+                        ) values ($1, $2, $3::uuid, 'application/json', $4, $5, $6, $7)
+                        """,
+                        payload_handle,
+                        job_id,
+                        context.customer_id,
+                        payload,
+                        payload_bytes,
+                        now,
+                        expires_at,
+                    )
                 await _insert_event(
                     conn,
                     job_id=job_id,
@@ -100,8 +143,44 @@ class AsyncpgJobRepository:
             created_at=now,
             last_progress_at=now,
             expires_at=expires_at,
+            max_attempts=max_attempts_value,
         )
 
+    async def _enforce_customer_limits(
+        self, conn: Any, context: CustomerContext, *, tool_name: str
+    ) -> None:
+        active_count = int(await conn.fetchval(
+            """
+            select count(*)
+            from transient.jobs
+            where customer_id = $1::uuid
+              and status in ('queued', 'running', 'input_required', 'awaiting_user_selection')
+            """,
+            context.customer_id,
+        ) or 0)
+        if active_count >= self.max_active_jobs_per_customer:
+            raise JobLimitExceededError(
+                "Customer has too many active jobs.",
+                limit_name="max_active_jobs_per_customer",
+                limit=self.max_active_jobs_per_customer,
+                current=active_count,
+            )
+        queued_count = int(await conn.fetchval(
+            """
+            select count(*)
+            from transient.jobs
+            where customer_id = $1::uuid and status = 'queued' and tool_name = $2
+            """,
+            context.customer_id,
+            tool_name,
+        ) or 0)
+        if queued_count >= self.max_queued_jobs_per_customer:
+            raise JobLimitExceededError(
+                "Customer has too many queued jobs for this tool.",
+                limit_name="max_queued_jobs_per_customer",
+                limit=self.max_queued_jobs_per_customer,
+                current=queued_count,
+            )
 
     async def claim_next(
         self,
@@ -112,7 +191,7 @@ class AsyncpgJobRepository:
         lease_seconds: int = 300,
         now: datetime | None = None,
     ) -> JobRecord | None:
-        """Atomically claim the next queued job for a background worker."""
+        """Atomically claim the next queued/retryable job for a background worker."""
         now = now or datetime.now(tz=UTC)
         lease_expires_at = now + timedelta(seconds=max(30, int(lease_seconds)))
         async with self._pool.acquire() as conn:
@@ -124,11 +203,16 @@ class AsyncpgJobRepository:
                     where customer_id = $1::uuid
                       and (
                         status = 'queued'
-                        or (status = 'running' and lease_expires_at is not null and lease_expires_at <= $2)
+                        or (
+                          status = 'running'
+                          and lease_expires_at is not null
+                          and lease_expires_at <= $2
+                          and (next_attempt_at is null or next_attempt_at <= $2)
+                        )
                       )
                       and expires_at > $2
                       and ($3::text[] is null or tool_name = any($3::text[]))
-                    order by priority asc, created_at asc
+                    order by priority asc, coalesce(next_attempt_at, created_at) asc, created_at asc
                     for update skip locked
                     limit 1
                     """,
@@ -139,9 +223,18 @@ class AsyncpgJobRepository:
                 if row is None:
                     return None
                 job = _row_to_job(row)
+                is_reclaim = job.status == "running"
+                next_attempt = (
+                    now + timedelta(seconds=self.retry_backoff_seconds * max(1, job.attempt_count + 1))
+                    if is_reclaim and self.retry_backoff_seconds
+                    else None
+                )
+                if is_reclaim and job.attempt_count >= job.max_attempts:
+                    await self._fail_exhausted_attempts(conn, context, job, now=now)
+                    return None
                 claim_message = (
                     "Stale running job reclaimed by worker."
-                    if job.status == "running"
+                    if is_reclaim
                     else "Job claimed by worker."
                 )
                 await conn.execute(
@@ -149,7 +242,9 @@ class AsyncpgJobRepository:
                     update transient.jobs
                     set status = 'running', phase = case when status = 'queued' then phase else 'reclaimed' end,
                         leased_by = $3, lease_expires_at = $4, started_at = coalesce(started_at, $5),
-                        last_progress_at = $5
+                        last_progress_at = $5,
+                        attempt_count = case when status = 'running' then attempt_count + 1 else attempt_count end,
+                        next_attempt_at = $6
                     where job_id = $1 and customer_id = $2::uuid
                     """,
                     job.job_id,
@@ -157,6 +252,7 @@ class AsyncpgJobRepository:
                     worker_id,
                     lease_expires_at,
                     now,
+                    next_attempt,
                 )
                 await _insert_event(
                     conn,
@@ -167,10 +263,82 @@ class AsyncpgJobRepository:
                     progress=job.progress,
                     total=job.total,
                     message=claim_message,
-                    details={"worker_id": worker_id},
+                    details={
+                        "worker_id": worker_id,
+                        "attempt_count": job.attempt_count + (1 if is_reclaim else 0),
+                        "max_attempts": job.max_attempts,
+                    },
                     created_at=now,
                 )
-                return job
+                updated_row = {
+                    **dict(row),
+                    "attempt_count": job.attempt_count + (1 if is_reclaim else 0),
+                    "leased_by": worker_id,
+                    "lease_expires_at": lease_expires_at,
+                    "next_attempt_at": next_attempt,
+                }
+                return await self._hydrate_request_payload(conn, _row_to_job(updated_row))
+
+    async def _fail_exhausted_attempts(
+        self, conn: Any, context: CustomerContext, job: JobRecord, *, now: datetime
+    ) -> None:
+        error = {
+            "code": "JOB_ATTEMPTS_EXHAUSTED",
+            "message": "Job exceeded retry attempts after stale worker leases.",
+            "details": {"attempt_count": job.attempt_count, "max_attempts": job.max_attempts},
+            "retryable": False,
+            "user_action_required": False,
+        }
+        await conn.execute(
+            """
+            update transient.jobs
+            set status = 'failed', phase = 'failed', error = $3::jsonb,
+                completed_at = $4, last_progress_at = $4
+            where job_id = $1 and customer_id = $2::uuid
+            """,
+            job.job_id,
+            context.customer_id,
+            json.dumps(error),
+            now,
+        )
+        await _insert_event(
+            conn,
+            job_id=job.job_id,
+            customer_id=context.customer_id,
+            event_type="error",
+            phase="failed",
+            progress=job.progress,
+            total=job.total,
+            message=error["message"],
+            details=error,
+            created_at=now,
+        )
+
+    async def _hydrate_request_payload(self, conn: Any, job: JobRecord) -> JobRecord:
+        summary_row = await conn.fetchrow(
+            "select request_summary from transient.jobs where job_id = $1 and customer_id = $2::uuid",
+            job.job_id,
+            job.customer_id,
+        )
+        request_summary = _jsonb_to_dict(_row_get(summary_row, "request_summary"))
+        payload_handle = request_summary.get("payload_handle") or getattr(job, "payload_handle", None)
+        if not payload_handle:
+            return job
+        row = await conn.fetchrow(
+            """
+            select payload_compressed
+            from transient.job_payloads
+            where payload_handle = $1 and job_id = $2 and customer_id = $3::uuid
+            """,
+            payload_handle,
+            job.job_id,
+            job.customer_id,
+        )
+        if row is not None:
+            decoded = json.loads(bytes(row["payload_compressed"]).decode("utf-8"))
+            if isinstance(decoded, dict):
+                job.request_payload = decoded
+        return job
 
     async def get(
         self, context: CustomerContext, job_id: str, *, now: datetime | None = None
@@ -205,7 +373,7 @@ class AsyncpgJobRepository:
                 job.phase = "expired"
                 job.completed_at = now
                 job.last_progress_at = now
-            return job
+            return await self._hydrate_request_payload(conn, job)
 
     async def update_progress(
         self,
@@ -244,7 +412,7 @@ class AsyncpgJobRepository:
                     update transient.jobs
                     set status = $3, phase = $4, progress = $5, total = $6,
                         status_message = $7, result_summary = $8::jsonb,
-                        started_at = $9, last_progress_at = $10
+                        started_at = $9, last_progress_at = $10, lease_expires_at = greatest(coalesce(lease_expires_at, $10), $10 + interval '5 minutes')
                     where job_id = $1 and customer_id = $2::uuid
                     """,
                     job_id,
@@ -521,7 +689,19 @@ def _row_to_job(row: Any) -> JobRecord:
         completed_at=_as_utc(row["completed_at"]),
         expires_at=_as_utc(row["expires_at"]),
         cancel_requested=bool(row["cancel_requested"]),
+        attempt_count=int(_row_get(row, "attempt_count", 0) or 0),
+        max_attempts=int(_row_get(row, "max_attempts", 3) or 3),
+        leased_by=_row_get(row, "leased_by"),
+        lease_expires_at=_as_utc(_row_get(row, "lease_expires_at")),
+        next_attempt_at=_as_utc(_row_get(row, "next_attempt_at")),
     )
+
+
+def _row_get(row: Any, key: str, default: Any = None) -> Any:
+    try:
+        return row[key]
+    except (KeyError, IndexError, TypeError):
+        return default
 
 
 def _jsonb_to_dict(value: Any) -> dict[str, Any]:

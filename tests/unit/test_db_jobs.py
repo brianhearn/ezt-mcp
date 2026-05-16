@@ -42,6 +42,7 @@ class FakeConn:
         self.jobs = {}
         self.events = []
         self.results = {}
+        self.payloads = {}
         self.exec_calls = []
 
     def transaction(self):
@@ -66,6 +67,10 @@ class FakeConn:
                 "request_summary": __import__("json").loads(args[8]),
                 "result_summary": {},
                 "result_handle": None,
+                "attempt_count": 0,
+                "max_attempts": args[11] if len(args) > 11 else 3,
+                "next_attempt_at": None,
+                "payload_handle": args[12] if len(args) > 12 else None,
                 "error": None,
                 "cancel_requested": False,
                 "started_at": None,
@@ -76,6 +81,13 @@ class FakeConn:
             }
         elif normalized.startswith("insert into transient.job_events"):
             self.events.append(args)
+        elif normalized.startswith("insert into transient.job_payloads"):
+            self.payloads[args[0]] = {
+                "payload_handle": args[0],
+                "job_id": args[1],
+                "customer_id": UUID(args[2]),
+                "payload_compressed": args[3],
+            }
         elif normalized.startswith("insert into transient.job_results"):
             self.results[args[0]] = {
                 "result_handle": args[0],
@@ -114,10 +126,8 @@ class FakeConn:
             elif "set status = 'expired'" in normalized:
                 job.update({"status": "expired", "phase": "expired", "completed_at": args[2], "last_progress_at": args[2]})
             elif "leased_by = $3" in normalized:
-                if job["status"] == "queued":
-                    phase = job["phase"]
-                else:
-                    phase = "reclaimed"
+                was_running = job["status"] == "running"
+                phase = job["phase"] if job["status"] == "queued" else "reclaimed"
                 job.update({
                     "status": "running",
                     "phase": phase,
@@ -125,6 +135,8 @@ class FakeConn:
                     "lease_expires_at": args[3],
                     "started_at": job.get("started_at") or args[4],
                     "last_progress_at": args[4],
+                    "attempt_count": job.get("attempt_count", 0) + (1 if was_running else 0),
+                    "next_attempt_at": args[5] if len(args) > 5 else None,
                 })
             elif "set status = 'failed'" in normalized:
                 job.update({"status": "failed", "phase": "failed", "error": __import__("json").loads(args[2]), "completed_at": args[3], "last_progress_at": args[3]})
@@ -144,6 +156,7 @@ class FakeConn:
                         job["status"] == "running"
                         and job.get("lease_expires_at") is not None
                         and job["lease_expires_at"] <= args[1]
+                        and (job.get("next_attempt_at") is None or job["next_attempt_at"] <= args[1])
                     )
                 )
                 and job["expires_at"] > args[1]
@@ -151,11 +164,21 @@ class FakeConn:
             ]
             candidates.sort(key=lambda item: item["created_at"])
             return dict(candidates[0]) if candidates else None
+        if normalized.startswith("select request_summary from transient.jobs"):
+            job = self.jobs.get(args[0])
+            if job is None or str(job["customer_id"]) != args[1]:
+                return None
+            return {"request_summary": job.get("request_summary")}
         if "from transient.jobs" in normalized:
             job = self.jobs.get(args[0])
             if job is None or str(job["customer_id"]) != args[1]:
                 return None
             return dict(job)
+        if "from transient.job_payloads" in normalized:
+            payload = self.payloads.get(args[0])
+            if payload and payload["job_id"] == args[1] and str(payload["customer_id"]) == args[2]:
+                return payload
+            return None
         if "from transient.job_results" in normalized:
             result = self.results.get(args[0])
             if result and result["job_id"] == args[1] and str(result["customer_id"]) == args[2]:
@@ -164,8 +187,13 @@ class FakeConn:
         return None
 
     async def fetchval(self, sql, *args):
+        normalized = " ".join(sql.split()).lower()
         if "from transient.job_events" in sql:
             return len([event for event in self.events if event[1] == args[0] and event[2] == args[1]]) + 1
+        if "count(*)" in normalized and "from transient.jobs" in normalized:
+            if "status = 'queued'" in normalized and "tool_name = $2" in normalized:
+                return len([job for job in self.jobs.values() if str(job["customer_id"]) == args[0] and job["status"] == "queued" and job["tool_name"] == args[1]])
+            return len([job for job in self.jobs.values() if str(job["customer_id"]) == args[0] and job["status"] in {"queued", "running", "input_required", "awaiting_user_selection"}])
         return None
 
 
@@ -303,3 +331,93 @@ def test_asyncpg_job_repo_claim_next_reclaims_stale_running_job():
     assert stored["status"] == "running"
     assert stored["phase"] == "reclaimed"
     assert stored["leased_by"] == "worker-2"
+
+
+def test_asyncpg_job_repo_stores_request_payload_outside_request_summary():
+    repo, conn = _repo()
+    context = CustomerContext(customer_id="11111111-1111-1111-1111-111111111111")
+    now = datetime(2026, 5, 13, 21, 0, tzinfo=UTC)
+
+    job = asyncio.run(
+        repo.submit(
+            context,
+            tool_name="direct_build",
+            request_payload={"part_layer": "us_zips", "assignments": [{"part_id": "A"}]},
+            now=now,
+        )
+    )
+
+    stored = conn.jobs[job.job_id]
+    assert "request_payload" not in stored["request_summary"]
+    payload_handle = stored["request_summary"]["payload_handle"]
+    assert payload_handle in conn.payloads
+    hydrated = asyncio.run(repo.get(context, job.job_id))
+    assert hydrated.request_payload == {"part_layer": "us_zips", "assignments": [{"part_id": "A"}]}
+
+
+def test_asyncpg_job_repo_enforces_active_job_limit():
+    repo = AsyncpgJobRepository(FakePool(FakeConn()), max_active_jobs_per_customer=1)
+    context = CustomerContext(customer_id="11111111-1111-1111-1111-111111111111")
+    asyncio.run(repo.submit(context, tool_name="direct_build"))
+
+    with pytest.raises(Exception) as exc:
+        asyncio.run(repo.submit(context, tool_name="direct_build"))
+
+    assert getattr(exc.value, "code", None) == "JOB_LIMIT_EXCEEDED"
+    assert getattr(exc.value, "limit_name", None) == "max_active_jobs_per_customer"
+
+
+def test_asyncpg_job_repo_reclaim_honors_backoff_and_attempt_limit():
+    repo = AsyncpgJobRepository(
+        FakePool(FakeConn()),
+        default_max_attempts=2,
+        retry_backoff_seconds=60,
+    )
+    conn = repo._pool.conn
+    context = CustomerContext(customer_id="11111111-1111-1111-1111-111111111111")
+    now = datetime(2026, 5, 13, 21, 0, tzinfo=UTC)
+    job = asyncio.run(repo.submit(context, tool_name="direct_build", now=now, max_attempts=2))
+    conn.jobs[job.job_id].update(
+        {
+            "status": "running",
+            "phase": "dissolve",
+            "started_at": now,
+            "leased_by": "worker-dead",
+            "lease_expires_at": now + timedelta(seconds=30),
+            "attempt_count": 0,
+            "max_attempts": 2,
+        }
+    )
+
+    claimed = asyncio.run(
+        repo.claim_next(
+            context,
+            worker_id="worker-2",
+            tool_names=["direct_build"],
+            now=now + timedelta(seconds=31),
+        )
+    )
+    assert claimed is not None
+    assert claimed.attempt_count == 1
+    assert conn.jobs[job.job_id]["next_attempt_at"] == now + timedelta(seconds=31 + 60)
+
+    conn.jobs[job.job_id].update(
+        {
+            "status": "running",
+            "lease_expires_at": now + timedelta(seconds=40),
+            "attempt_count": 2,
+            "max_attempts": 2,
+            "next_attempt_at": now + timedelta(seconds=41),
+        }
+    )
+    exhausted = asyncio.run(
+        repo.claim_next(
+            context,
+            worker_id="worker-3",
+            tool_names=["direct_build"],
+            now=now + timedelta(seconds=120),
+        )
+    )
+    assert exhausted is None
+    assert conn.jobs[job.job_id]["status"] == "failed"
+    assert conn.jobs[job.job_id]["error"]["code"] == "JOB_ATTEMPTS_EXHAUSTED"

@@ -37,6 +37,15 @@ class DissolveConfig(BaseModel):
     max_clusters: int = 30
 
 
+class JobsConfig(BaseModel):
+    """Transient async job limits and retry behavior."""
+
+    max_queued_jobs_per_customer: int = 100
+    max_active_jobs_per_customer: int = 20
+    max_attempts: int = 3
+    retry_backoff_seconds: int = 60
+
+
 class ServerConfig(BaseModel):
     """Top-level server configuration."""
 
@@ -47,6 +56,7 @@ class ServerConfig(BaseModel):
     auth: AuthConfig = Field(default_factory=AuthConfig)
     map_visualization: MapVisualizationConfig = Field(default_factory=MapVisualizationConfig)
     dissolve: DissolveConfig = Field(default_factory=DissolveConfig)
+    jobs: JobsConfig = Field(default_factory=JobsConfig)
 
     @property
     def database_url(self) -> str | None:
@@ -72,6 +82,7 @@ def load_config(config_path: str | Path) -> ServerConfig:
     auth_raw = raw.get("auth", {}) or {}
     map_visualization_raw = raw.get("map_visualization", {}) or {}
     dissolve_raw = raw.get("dissolve", {}) or {}
+    jobs_raw = raw.get("jobs", {}) or {}
 
     env_api_key = os.environ.get("EZT_MCP_API_KEY")
     api_keys = list(auth_raw.get("api_keys") or [])
@@ -114,6 +125,28 @@ def load_config(config_path: str | Path) -> ServerConfig:
                 os.environ.get("EZT_MCP_DISSOLVE_MAX_CLUSTERS")
                 or dissolve_raw.get("max_clusters")
                 or 30
+            ),
+        ),
+        jobs=JobsConfig(
+            max_queued_jobs_per_customer=int(
+                os.environ.get("EZT_MCP_MAX_QUEUED_JOBS_PER_CUSTOMER")
+                or jobs_raw.get("max_queued_jobs_per_customer")
+                or 100
+            ),
+            max_active_jobs_per_customer=int(
+                os.environ.get("EZT_MCP_MAX_ACTIVE_JOBS_PER_CUSTOMER")
+                or jobs_raw.get("max_active_jobs_per_customer")
+                or 20
+            ),
+            max_attempts=int(
+                os.environ.get("EZT_MCP_JOB_MAX_ATTEMPTS")
+                or jobs_raw.get("max_attempts")
+                or 3
+            ),
+            retry_backoff_seconds=int(
+                os.environ.get("EZT_MCP_JOB_RETRY_BACKOFF_SECONDS")
+                or jobs_raw.get("retry_backoff_seconds")
+                or 60
             ),
         ),
     )

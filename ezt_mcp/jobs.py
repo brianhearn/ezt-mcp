@@ -48,6 +48,17 @@ class InvalidJobTransitionError(ValueError):
         self.code = "INVALID_JOB_STATE"
 
 
+class JobLimitExceededError(RuntimeError):
+    """Raised when a customer exceeds configured transient job limits."""
+
+    def __init__(self, message: str, *, limit_name: str, limit: int, current: int):
+        super().__init__(message)
+        self.limit_name = limit_name
+        self.limit = limit
+        self.current = current
+        self.code = "JOB_LIMIT_EXCEEDED"
+
+
 @dataclass(frozen=True)
 class CustomerContext:
     """Authenticated customer/key context used for job isolation checks."""
@@ -81,6 +92,11 @@ class JobRecord:
     started_at: datetime | None = None
     completed_at: datetime | None = None
     cancel_requested: bool = False
+    attempt_count: int = 0
+    max_attempts: int = 3
+    leased_by: str | None = None
+    lease_expires_at: datetime | None = None
+    next_attempt_at: datetime | None = None
 
     def reference(self) -> dict[str, Any]:
         payload = {
@@ -97,6 +113,8 @@ class JobRecord:
             "poll_interval_ms": self.poll_interval_ms,
             "created_at": _isoformat_z(self.created_at),
             "expires_at": _isoformat_z(self.expires_at),
+            "attempt_count": self.attempt_count,
+            "max_attempts": self.max_attempts,
         }
         if self.required_input:
             payload["required_input"] = self.required_input
@@ -121,6 +139,11 @@ class JobRecord:
             "last_progress_at": _isoformat_z(self.last_progress_at),
             "completed_at": _isoformat_z(self.completed_at),
             "expires_at": _isoformat_z(self.expires_at),
+            "attempt_count": self.attempt_count,
+            "max_attempts": self.max_attempts,
+            "leased_by": self.leased_by,
+            "lease_expires_at": _isoformat_z(self.lease_expires_at),
+            "next_attempt_at": _isoformat_z(self.next_attempt_at),
         }
         if self.required_input:
             payload["required_input"] = self.required_input
@@ -146,8 +169,17 @@ class JobRecord:
 class InMemoryJobRepository:
     """Customer-scoped in-memory job repository for the v1 skeleton."""
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        max_queued_jobs_per_customer: int = 100,
+        max_active_jobs_per_customer: int = 20,
+        default_max_attempts: int = 3,
+    ):
         self._jobs: dict[str, JobRecord] = {}
+        self.max_queued_jobs_per_customer = max(1, int(max_queued_jobs_per_customer))
+        self.max_active_jobs_per_customer = max(1, int(max_active_jobs_per_customer))
+        self.default_max_attempts = max(1, int(default_max_attempts))
 
     def submit(
         self,
@@ -160,9 +192,11 @@ class InMemoryJobRepository:
         required_input: Mapping[str, Any] | None = None,
         request_payload: Mapping[str, Any] | None = None,
         ttl_seconds: int = DEFAULT_JOB_TTL_SECONDS,
+        max_attempts: int | None = None,
         now: datetime | None = None,
     ) -> JobRecord:
         now = now or datetime.now(tz=UTC)
+        self._enforce_customer_limits(context, tool_name=tool_name)
         job = JobRecord(
             job_id=f"job_{secrets.token_urlsafe(18)}",
             customer_id=context.customer_id,
@@ -177,9 +211,38 @@ class InMemoryJobRepository:
             created_at=now,
             last_progress_at=now,
             expires_at=now + timedelta(seconds=_bounded_ttl(ttl_seconds)),
+            max_attempts=max(1, int(max_attempts or self.default_max_attempts)),
         )
         self._jobs[job.job_id] = job
         return job
+
+    def _enforce_customer_limits(self, context: CustomerContext, *, tool_name: str) -> None:
+        active_count = sum(
+            1
+            for job in self._jobs.values()
+            if job.customer_id == context.customer_id and job.status not in TERMINAL_STATUSES
+        )
+        if active_count >= self.max_active_jobs_per_customer:
+            raise JobLimitExceededError(
+                "Customer has too many active jobs.",
+                limit_name="max_active_jobs_per_customer",
+                limit=self.max_active_jobs_per_customer,
+                current=active_count,
+            )
+        queued_count = sum(
+            1
+            for job in self._jobs.values()
+            if job.customer_id == context.customer_id
+            and job.status == "queued"
+            and job.tool_name == tool_name
+        )
+        if queued_count >= self.max_queued_jobs_per_customer:
+            raise JobLimitExceededError(
+                "Customer has too many queued jobs for this tool.",
+                limit_name="max_queued_jobs_per_customer",
+                limit=self.max_queued_jobs_per_customer,
+                current=queued_count,
+            )
 
     def get(self, context: CustomerContext, job_id: str, *, now: datetime | None = None) -> JobRecord:
         job = self._jobs.get(job_id)
