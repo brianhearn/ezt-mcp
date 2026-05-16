@@ -30,7 +30,7 @@
   --tal-label-color:   #00d4aa;
   --success: #22c55e;
   --danger: #ef4444;
-
+}
 
 /* ─── Design tokens: light ───────────────────────────────────────────────── */
 :root[data-theme="light"] {
@@ -63,7 +63,7 @@
   --tal-label-color:   #009e7a;
   --success: #22c55e;
   --danger: #ef4444;
-
+}
 
 /* ─── Layout ─────────────────────────────────────────────────────────────── */
 html,
