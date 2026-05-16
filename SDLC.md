@@ -1,6 +1,6 @@
 # SDLC.md — EZT MCP Documentation Model
 
-**Version:** 0.1.3
+**Version:** 0.1.4
 **Date:** 2026-05-16
 **Status:** Draft — documentation governance
 
@@ -349,10 +349,11 @@ Avoid creating overlapping alternatives such as `ARCHITECTURE.md`, `PRODUCT.md`,
 The immediate next phase is implementation hardening around the now-working Direct Build / Map Component testbed. Preserve the external v1 contracts while tightening internals. Current priorities:
 
 - keep `get_map_visualization` as the stable public tool name for read-only/share/select map visualization;
-- maintain MC visual smoke coverage for every deploy that touches job, map-session, or progress paths;
+- maintain MC visual smoke coverage for every deploy that touches job, map-session, progress, CSS, or render-payload paths;
+- convert the manual live Direct Build smoke into `scripts/smoke_direct_build.py` so every deploy can validate real PostGIS ZIP geometry, queued job completion, `geometry_summary`, TAL metadata, and Map Component URL creation;
 - keep transient queue details in `TECHNICAL_SPEC.md`, not in Functional Spec unless caller-visible behavior changes;
 - keep migration/operator status in `CHANGELOG.md` and memory/session-state, not scattered across core docs;
-- after Matt/admin applies `migrations/003_job_payloads_limits.sql`, deploy commit `0c61c32`, restart, and run health + MC progress smoke before claiming live hardening is active.
+- treat the pre-migration job schema compatibility path as temporary scaffolding only. After Matt/admin applies `migrations/003_job_payloads_limits.sql`, verify the schema, run health + MC/Direct Build smokes, then remove the compatibility fallback instead of keeping it as a permanent mode.
 
 External contracts to preserve:
 

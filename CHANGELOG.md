@@ -7,6 +7,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-16) — Direct Build live geometry and Map Component render fix
+- Added reusable synthetic geometry fixtures for Direct Build/dissolve tests plus a `SyntheticPartsRepository` test double.
+- Added `DissolvedHierarchy.bbox` and `DissolvedHierarchy.summary()`; Direct Build completed results now include `geometry_summary`, and TAL metadata includes `geometry_backend` plus `bbox`.
+- Updated Direct Build schemas/examples and unit coverage for geometry summary, flat/hierarchical bbox, and shared synthetic fixtures.
+- Deployed current main to `https://expertpack.ai/mcp/` and verified live Direct Build against real PostGIS `us_zips` completed with leaf + rollup `MultiPolygon` output, `geometry_summary`, and Map Component URL creation.
+- Fixed Map Component CSS theme blocks missing closing braces, which prevented full-screen map layout from applying; redeployed and verified Brian could load the map successfully.
+- Updated SDLC next-phase guidance to require deploy smokes for CSS/render-payload paths and to convert the manual Direct Build smoke into a reusable script.
+
 ### Changed (2026-05-16) — scalability, TAL IDs, and queue recovery
 - Added temporary pre-migration compatibility mode so staging can deploy/test queue hardening before migration 003 lands; when `transient.job_payloads` / attempt columns are absent, queued payloads fall back to legacy `request_summary` storage and stale-running reclaim is disabled.
 - Added worker-driven cleanup for expired transient job payloads/results and terminal job rows, keeping `transient.job_payloads` / `transient.job_results` bounded after migration 003 lands.
