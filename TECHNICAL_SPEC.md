@@ -360,7 +360,8 @@ Rules:
 - Results that include a TS should normally return a `ts_handle`; inline result payloads are allowed only under the configured size threshold.
 - Job/result TTLs are short-lived transport conveniences, not durable customer storage.
 - Workers claim jobs with row locking / leases (`FOR UPDATE SKIP LOCKED`) and heartbeat progress; expired leases can be retried according to per-tool idempotency rules.
-- Current testbed implementation persists the short-lived queued request payload under `request_summary.request_payload` so startup workers can execute after the submission request returns. This is acceptable only as transient job state in the current dev/staging phase; before production hardening, move full TS/customer payloads to a dedicated TTL payload/cache store or result-handle-style table and keep `request_summary` as summary-only metadata.
+- Full queued request payloads are stored in `transient.job_payloads`; `request_summary` may reference `payload_handle`/payload size metadata but must not embed full customer payloads.
+- Expired transient job payloads/results and terminal job rows are removed by worker-driven cleanup so TTL storage remains bounded.
 
 ### 3.7.1 Current worker implementation notes
 
@@ -368,7 +369,7 @@ The deployed implementation runs a startup `JobWorker` in `ezt_mcp/workers.py`. 
 
 Claims set/extend a lease. If a worker dies after a job has transitioned to `running`, a later worker may reclaim the job once `lease_expires_at` has passed and `next_attempt_at` has arrived. Reclaimed jobs keep the same `job_id`, increment `attempt_count`, use configurable backoff, and fail with `JOB_ATTEMPTS_EXHAUSTED` once `max_attempts` is reached. Direct Build/create-territory execution must remain idempotent with respect to the transient TS/result model.
 
-Submission enforces configurable per-customer limits for active jobs and queued jobs. This removes per-request compute tasks from the HTTP/MCP submission path while preserving the existing job status/result contract. Remaining production hardening items are cross-customer round-robin scheduling across multiple customers and operational cleanup of expired payload/result rows.
+Submission enforces configurable per-customer limits for active jobs and queued jobs. This removes per-request compute tasks from the HTTP/MCP submission path while preserving the existing job status/result contract. Workers periodically call `cleanup_expired()` to expire stale non-terminal jobs and delete expired `transient.job_payloads`, `transient.job_results`, and terminal job rows. Remaining production hardening item: cross-customer round-robin scheduling across multiple customers.
 
 ### 3.8 Map sessions (persistent per-user workspace + SSE)
 

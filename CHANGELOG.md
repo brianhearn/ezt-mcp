@@ -8,6 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Changed (2026-05-16) — scalability, TAL IDs, and queue recovery
+- Added worker-driven cleanup for expired transient job payloads/results and terminal job rows, keeping `transient.job_payloads` / `transient.job_results` bounded after migration 003 lands.
 - Added `transient.job_payloads` plus job `payload_handle` metadata so full queued request payloads are stored outside `request_summary`.
 - Added configurable transient job limits (`jobs.max_queued_jobs_per_customer`, `jobs.max_active_jobs_per_customer`) with `JOB_LIMIT_EXCEEDED` responses.
 - Added retry hardening for stale running-job reclaim: attempt counts, max attempts, retry backoff, and `JOB_ATTEMPTS_EXHAUSTED` failure.

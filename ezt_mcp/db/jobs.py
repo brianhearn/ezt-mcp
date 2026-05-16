@@ -565,6 +565,58 @@ class AsyncpgJobRepository:
             )
         return await self.get(context, job_id, now=now)
 
+    async def cleanup_expired(self, *, now: datetime | None = None) -> dict[str, int]:
+        """Delete expired transient job payloads/results and terminal job records.
+
+        Job rows are the parent records for events, payloads, and result payloads.
+        Deleting expired terminal jobs after deleting expired payload/result rows keeps
+        transient storage bounded without touching active/retryable jobs. Expired
+        non-terminal jobs are first marked ``expired`` so they are no longer claimable.
+        """
+        now = now or datetime.now(tz=UTC)
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    """
+                    update transient.jobs
+                    set status = 'expired', phase = 'expired', completed_at = $1,
+                        last_progress_at = $1
+                    where status not in ('completed', 'failed', 'cancelled', 'expired')
+                      and expires_at < $1
+                    """,
+                    now,
+                )
+                deleted_payloads = await _execute_deleted_count(
+                    conn,
+                    """
+                    delete from transient.job_payloads
+                    where expires_at < $1
+                    """,
+                    now,
+                )
+                deleted_results = await _execute_deleted_count(
+                    conn,
+                    """
+                    delete from transient.job_results
+                    where expires_at < $1
+                    """,
+                    now,
+                )
+                deleted_jobs = await _execute_deleted_count(
+                    conn,
+                    """
+                    delete from transient.jobs
+                    where status in ('completed', 'failed', 'cancelled', 'expired')
+                      and expires_at < $1
+                    """,
+                    now,
+                )
+        return {
+            "deleted_job_payloads": deleted_payloads,
+            "deleted_job_results": deleted_results,
+            "deleted_jobs": deleted_jobs,
+        }
+
     async def cancel(
         self, context: CustomerContext, job_id: str, *, now: datetime | None = None
     ) -> JobRecord:
@@ -599,6 +651,15 @@ class AsyncpgJobRepository:
                     created_at=now,
                 )
         return await self.get(context, job_id, now=now)
+
+
+async def _execute_deleted_count(conn: Any, sql: str, *args: Any) -> int:
+    result = await conn.execute(sql, *args)
+    if isinstance(result, str):
+        parts = result.split()
+        if parts and parts[-1].isdigit():
+            return int(parts[-1])
+    return 0
 
 
 async def _fetch_job_for_update(conn: Any, context: CustomerContext, job_id: str) -> Any:

@@ -52,3 +52,33 @@ def test_job_worker_claims_queued_payload_and_publishes_progress():
     assert completed.status == "completed"
     assert completed.result["ok"] is True
     assert [event[1] for event in events] == ["running", "running", "running", "done"]
+
+
+def test_job_worker_runs_expired_cleanup_before_claiming_job():
+    context = CustomerContext(customer_id="cust-1")
+    repo = InMemoryJobRepository()
+    repo.submit(
+        context,
+        tool_name="direct_build",
+        request_payload={
+            "part_layer": "us_zips",
+            "tal_label": "Worker TAL",
+            "assignments": [{"part_id": "A", "territory_path": ["North"]}],
+        },
+    )
+    cleanup_calls = []
+
+    async def cleanup_expired(**kwargs):
+        cleanup_calls.append(kwargs)
+        return {"deleted_jobs": 0}
+
+    repo.cleanup_expired = cleanup_expired  # type: ignore[attr-defined]
+
+    async def run_once():
+        worker = JobWorker(context=context, jobs_repo=repo, parts_repo=FakePartsRepository())
+        await worker._cleanup_expired_if_due()
+        assert cleanup_calls
+        claimed = await worker._claim_next()
+        await worker._run_job(claimed)
+
+    asyncio.run(run_once())

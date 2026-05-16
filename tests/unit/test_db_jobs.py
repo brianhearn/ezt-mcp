@@ -96,6 +96,11 @@ class FakeConn:
                 "payload_compressed": args[3],
             }
         elif normalized.startswith("update transient.jobs"):
+            if "where status not in" in normalized:
+                for job in self.jobs.values():
+                    if job["status"] not in {"completed", "failed", "cancelled", "expired"} and job["expires_at"] < args[0]:
+                        job.update({"status": "expired", "phase": "expired", "completed_at": args[0], "last_progress_at": args[0]})
+                return "UPDATE 1"
             job = self.jobs[args[0]]
             if "set status = $3, phase = $4" in normalized:
                 job.update(
@@ -142,6 +147,26 @@ class FakeConn:
                 job.update({"status": "failed", "phase": "failed", "error": __import__("json").loads(args[2]), "completed_at": args[3], "last_progress_at": args[3]})
             elif "set cancel_requested = true" in normalized:
                 job.update({"cancel_requested": True, "status": "cancelled", "phase": "cancelled", "status_message": "Cancelled.", "completed_at": args[2], "last_progress_at": args[2]})
+        elif normalized.startswith("delete from transient.job_payloads"):
+            expired = [key for key, payload in self.payloads.items() if self.jobs[payload["job_id"]]["expires_at"] < args[0]]
+            for key in expired:
+                del self.payloads[key]
+            return f"DELETE {len(expired)}"
+        elif normalized.startswith("delete from transient.job_results"):
+            expired = [key for key, result in self.results.items() if self.jobs[result["job_id"]]["expires_at"] < args[0]]
+            for key in expired:
+                del self.results[key]
+            return f"DELETE {len(expired)}"
+        elif normalized.startswith("delete from transient.jobs"):
+            expired = [
+                key
+                for key, job in self.jobs.items()
+                if job["status"] in {"completed", "failed", "cancelled", "expired"}
+                and job["expires_at"] < args[0]
+            ]
+            for key in expired:
+                del self.jobs[key]
+            return f"DELETE {len(expired)}"
         return "OK"
 
     async def fetchrow(self, sql, *args):
@@ -421,3 +446,46 @@ def test_asyncpg_job_repo_reclaim_honors_backoff_and_attempt_limit():
     assert exhausted is None
     assert conn.jobs[job.job_id]["status"] == "failed"
     assert conn.jobs[job.job_id]["error"]["code"] == "JOB_ATTEMPTS_EXHAUSTED"
+
+
+def test_asyncpg_job_repo_cleanup_expired_removes_transient_payloads_results_and_jobs():
+    repo, conn = _repo()
+    context = CustomerContext(customer_id="11111111-1111-1111-1111-111111111111")
+    now = datetime(2026, 5, 13, 21, 0, tzinfo=UTC)
+    old = asyncio.run(
+        repo.submit(
+            context,
+            tool_name="direct_build",
+            request_payload={"part_layer": "us_zips", "assignments": [{"part_id": "A"}]},
+            ttl_seconds=60,
+            now=now,
+        )
+    )
+    asyncio.run(
+        repo.complete(
+            context,
+            old.job_id,
+            result={"ok": True, "result": {"tal_id": "tal-old"}},
+            now=now + timedelta(seconds=10),
+        )
+    )
+    active = asyncio.run(
+        repo.submit(
+            context,
+            tool_name="direct_build",
+            request_payload={"part_layer": "us_zips", "assignments": [{"part_id": "B"}]},
+            now=now + timedelta(seconds=30),
+        )
+    )
+
+    summary = asyncio.run(repo.cleanup_expired(now=now + timedelta(seconds=61)))
+
+    assert summary == {
+        "deleted_job_payloads": 1,
+        "deleted_job_results": 1,
+        "deleted_jobs": 1,
+    }
+    assert old.job_id not in conn.jobs
+    assert active.job_id in conn.jobs
+    assert len(conn.payloads) == 1
+    assert len(conn.results) == 0
