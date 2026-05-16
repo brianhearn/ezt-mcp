@@ -181,6 +181,18 @@ def test_set_state_updates(mock_pool, store):
     conn.execute.assert_called()
 
 
+def test_subscribe_validates_async_session_and_queues_connected_event(mock_pool, store):
+    _, conn = mock_pool
+    conn.fetchrow.return_value = session_row()
+
+    queue = asyncio.run(store.subscribe("msess-123"))
+
+    connected = queue.get_nowait()
+    assert connected["type"] == "connected"
+    assert connected["map_session_id"] == "msess-123"
+    assert connected["state"]["map_session_id"] == "msess-123"
+
+
 def test_publish_event_fans_to_queue(store):
     queue = asyncio.Queue()
     store._event_queues["msess-123"] = {queue}

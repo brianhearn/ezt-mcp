@@ -547,8 +547,9 @@ class AsyncpgMapSessionStore:
         # In full wiring it will be awaited elsewhere.
         raise NotImplementedError("Use async get_session then committed_selection for full durability.")
 
-    def subscribe(self, map_session_id: str) -> asyncio.Queue[dict[str, Any]]:
-        session = self.get_session(map_session_id)  # sync call - will block in async context but for SSE ok in practice
+    async def subscribe(self, map_session_id: str) -> asyncio.Queue[dict[str, Any]]:
+        # Validate session id but do not require browser token for server-side MCP/SSE wiring.
+        session = await self.get_session(map_session_id)
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=100)
         self._event_queues.setdefault(map_session_id, set()).add(queue)
         queue.put_nowait(

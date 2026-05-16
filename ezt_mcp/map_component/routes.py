@@ -111,7 +111,7 @@ class MapVisualizationRoutes:
     async def events(self, request: Request) -> StreamingResponse:
         try:
             session = await self._session_from_request(request)
-            queue = self.store.subscribe(session.map_session_id)
+            queue = await _maybe_await(self.store.subscribe(session.map_session_id))
         except MapVisualizationError as exc:
             return _error_response(exc, status_code=_status_for_error(exc))
 
