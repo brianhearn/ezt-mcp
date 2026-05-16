@@ -38,7 +38,8 @@ class FakePool:
 
 
 class FakeConn:
-    def __init__(self):
+    def __init__(self, *, migration_003: bool = True):
+        self.migration_003 = migration_003
         self.jobs = {}
         self.events = []
         self.results = {}
@@ -171,6 +172,14 @@ class FakeConn:
 
     async def fetchrow(self, sql, *args):
         normalized = " ".join(sql.split()).lower()
+        if "information_schema.tables" in normalized and "information_schema.columns" in normalized:
+            return {
+                "job_payloads": self.migration_003,
+                "jobs_attempt_count": self.migration_003,
+                "jobs_max_attempts": self.migration_003,
+                "jobs_next_attempt_at": self.migration_003,
+                "jobs_payload_handle": self.migration_003,
+            }
         if normalized.startswith("select * from transient.jobs") and "for update skip locked" in normalized:
             candidates = [
                 job for job in self.jobs.values()
@@ -222,8 +231,8 @@ class FakeConn:
         return None
 
 
-def _repo():
-    conn = FakeConn()
+def _repo(*, migration_003: bool = True):
+    conn = FakeConn(migration_003=migration_003)
     return AsyncpgJobRepository(FakePool(conn)), conn
 
 
@@ -489,3 +498,59 @@ def test_asyncpg_job_repo_cleanup_expired_removes_transient_payloads_results_and
     assert active.job_id in conn.jobs
     assert len(conn.payloads) == 1
     assert len(conn.results) == 0
+
+
+def test_asyncpg_job_repo_legacy_schema_stores_request_payload_in_summary_temporarily():
+    repo, conn = _repo(migration_003=False)
+    context = CustomerContext(customer_id="11111111-1111-1111-1111-111111111111")
+    now = datetime(2026, 5, 13, 21, 0, tzinfo=UTC)
+
+    job = asyncio.run(
+        repo.submit(
+            context,
+            tool_name="direct_build",
+            request_payload={"part_layer": "us_zips", "assignments": [{"part_id": "A"}]},
+            now=now,
+        )
+    )
+
+    stored = conn.jobs[job.job_id]
+    assert stored["payload_handle"] is None
+    assert stored["request_summary"]["payload_storage"] == "legacy_request_summary"
+    assert stored["request_summary"]["request_payload"] == {
+        "part_layer": "us_zips",
+        "assignments": [{"part_id": "A"}],
+    }
+    hydrated = asyncio.run(repo.get(context, job.job_id))
+    assert hydrated.request_payload == {"part_layer": "us_zips", "assignments": [{"part_id": "A"}]}
+
+
+def test_asyncpg_job_repo_legacy_schema_claims_only_queued_jobs_without_reclaim_columns():
+    repo, conn = _repo(migration_003=False)
+    context = CustomerContext(customer_id="11111111-1111-1111-1111-111111111111")
+    now = datetime(2026, 5, 13, 21, 0, tzinfo=UTC)
+    queued = asyncio.run(repo.submit(context, tool_name="direct_build", now=now))
+    running = asyncio.run(repo.submit(context, tool_name="direct_build", now=now + timedelta(seconds=1)))
+    conn.jobs[running.job_id].update(
+        {
+            "status": "running",
+            "phase": "dissolve",
+            "leased_by": "worker-dead",
+            "lease_expires_at": now - timedelta(seconds=1),
+        }
+    )
+
+    claimed = asyncio.run(
+        repo.claim_next(
+            context,
+            worker_id="worker-legacy",
+            tool_names=["direct_build"],
+            now=now + timedelta(seconds=2),
+        )
+    )
+
+    assert claimed is not None
+    assert claimed.job_id == queued.job_id
+    assert conn.jobs[queued.job_id]["status"] == "running"
+    assert conn.jobs[running.job_id]["status"] == "running"
+    assert conn.jobs[running.job_id]["leased_by"] == "worker-dead"
