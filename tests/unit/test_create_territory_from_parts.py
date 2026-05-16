@@ -30,6 +30,7 @@ def test_create_territory_from_parts_http_submits_and_completes_direct_build_job
                 "part_ids": ["32301", "32303", "32301"],
                 "territory_name": "North Florida",
                 "territory_path": ["East", "Southeast"],
+                "tal_id": "tal-selected-north-florida",
                 "conflict_policy": "move_from_existing",
             },
         )
@@ -48,7 +49,7 @@ def test_create_territory_from_parts_http_submits_and_completes_direct_build_job
         result = result_response.json()
         assert result["ok"] is True
         assert result["result"]["territory_count"] == 3
-        assert result["result"]["tal_id"] == "tal-north-florida"
+        assert result["result"]["tal_id"] == "tal-selected-north-florida"
 
 
 def _wait_for_job(client: TestClient, job_id: str, *, timeout_seconds: float = 2.0):

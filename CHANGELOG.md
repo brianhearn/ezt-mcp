@@ -7,6 +7,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-16) — scalability, TAL IDs, and queue recovery
+- Extended `scripts/zip_scalability.py` with `--state ALL` national sampling for larger real ZIP benchmarks.
+- Verified national ZIP scalability on staging: 5k / 50 territories in ~5.65s, 10k / 100 in ~13.77s, 20k / 200 in ~27.65s, and full 33,715 ZIPs / 337 in ~50.39s with no warnings.
+- Added caller-supplied Direct Build TAL IDs via `tal_id` / `requested_tal_id`, including format validation and collision rejection against existing TS TAL IDs.
+- Added stale running-job lease reclamation so expired `running` jobs can be reclaimed by a later worker instead of remaining stuck after worker death.
+
 ### Changed (2026-05-15) — create territory, queued worker, progress, and scalability
 - Implemented `create_territory_from_parts` as a real queued Direct Build-backed mutation path, including `POST /create-territory-from-parts` for HTTP smoke/dev use.
 - Added persisted queued job payloads plus a startup `JobWorker` that claims queued `direct_build` / `create_territory_from_parts` jobs from `transient.jobs` instead of running per-request compute via process-local task submission.

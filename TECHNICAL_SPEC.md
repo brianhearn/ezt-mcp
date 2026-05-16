@@ -366,7 +366,9 @@ Rules:
 
 The deployed implementation runs a startup `JobWorker` in `ezt_mcp/workers.py`. On submission, `direct_build` and `create_territory_from_parts` persist a queued job and return immediately. The worker claims queued rows from `transient.jobs`, dispatches by `tool_name`, runs the Direct Build worker pipeline, updates job progress/results, and publishes best-effort Map Component progress events when the queued request includes `map_session_id`.
 
-This removes per-request compute tasks from the HTTP/MCP submission path while preserving the existing job status/result contract. Remaining production hardening items are retry/recovery for workers that die after a job has transitioned to running, stronger full-payload storage boundaries, and multi-worker fairness/backoff controls.
+Claims set/extend a lease. If a worker dies after a job has transitioned to `running`, a later worker may reclaim the job once `lease_expires_at` has passed. Reclaimed jobs keep the same `job_id` and are re-executed from their transient request payload; Direct Build/create-territory execution must therefore remain idempotent with respect to the current transient TS/result model.
+
+This removes per-request compute tasks from the HTTP/MCP submission path while preserving the existing job status/result contract. Remaining production hardening items are stronger full-payload storage boundaries, explicit retry/attempt limits, and multi-worker fairness/backoff controls.
 
 ### 3.8 Map sessions (persistent per-user workspace + SSE)
 

@@ -95,6 +95,71 @@ def test_direct_build_appends_flat_tal_to_existing_ts():
     assert shape(territory_features[0]["geometry"]).is_valid
 
 
+def test_direct_build_honors_requested_tal_id_when_available():
+    request = {
+        "part_layer": "us_zips",
+        "tal_label": "Florida Sales Territories",
+        "tal_id": "tal-custom-fl-sales",
+        "assignments": [
+            {"part_id": "32003", "territory_path": ["North Florida"]},
+        ],
+    }
+
+    response = build_direct_tal(request, {"32003": square(0, 0)})
+
+    result = response["result"]
+    ts = result["ts"]
+    assert result["tal_id"] == "tal-custom-fl-sales"
+    assert ts["properties"]["active_tal_id"] == "tal-custom-fl-sales"
+    assert ts["properties"]["territory_alignment_layers"][0]["tal_id"] == "tal-custom-fl-sales"
+    assert ts["features"][0]["properties"]["tal_id"] == "tal-custom-fl-sales"
+
+
+def test_direct_build_rejects_requested_tal_id_collision():
+    request = {
+        "ts": {
+            "type": "FeatureCollection",
+            "features": [],
+            "properties": {
+                "territory_alignment_layers": [
+                    {"tal_id": "tal-existing", "label": "Existing", "part_layer": "us_zips"}
+                ]
+            },
+        },
+        "part_layer": "us_zips",
+        "tal_label": "Florida Sales Territories",
+        "tal_id": "tal-existing",
+        "assignments": [
+            {"part_id": "32003", "territory_path": ["North Florida"]},
+        ],
+    }
+
+    try:
+        build_direct_tal(request, {"32003": square(0, 0)})
+    except ValueError as exc:
+        assert "tal_id already exists" in str(exc)
+    else:
+        raise AssertionError("Expected requested tal_id collision to be rejected")
+
+
+def test_direct_build_rejects_invalid_requested_tal_id():
+    request = {
+        "part_layer": "us_zips",
+        "tal_label": "Florida Sales Territories",
+        "tal_id": "tal bad/id",
+        "assignments": [
+            {"part_id": "32003", "territory_path": ["North Florida"]},
+        ],
+    }
+
+    try:
+        build_direct_tal(request, {"32003": square(0, 0)})
+    except ValueError as exc:
+        assert "tal_id may contain only" in str(exc)
+    else:
+        raise AssertionError("Expected invalid requested tal_id to be rejected")
+
+
 def test_direct_build_creates_rollup_tal_and_warning():
     request = {
         "part_layer": "us_zips",

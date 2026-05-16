@@ -32,7 +32,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Benchmark Direct Build on real ZIP geometries")
     parser.add_argument("--database-url", default=os.environ.get("DATABASE_URL"))
     parser.add_argument("--part-layer", default="us_zips")
-    parser.add_argument("--state", default="FL", help="State/province filter for query_parts")
+    parser.add_argument(
+        "--state",
+        default="FL",
+        help="State/province filter for query_parts; use ALL to sample nationally",
+    )
     parser.add_argument("--limit", type=int, default=1000)
     parser.add_argument("--territories", type=int, default=10)
     parser.add_argument("--partition-threshold", type=int, default=10000)
@@ -107,18 +111,31 @@ async def main() -> int:
 async def _fetch_part_ids(pool: Any, part_layer: str, state: str, limit: int) -> list[str]:
     if part_layer != "us_zips":
         raise SystemExit("Current scalability script supports --part-layer us_zips only")
+
+    state_filter = state.strip().upper()
     async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            """
-            select zipcode::text as part_id
-            from geo.us_postal
-            where state = $1
-            order by zipcode
-            limit $2
-            """,
-            state,
-            limit,
-        )
+        if state_filter in {"", "ALL", "*"}:
+            rows = await conn.fetch(
+                """
+                select zipcode::text as part_id
+                from geo.us_postal
+                order by zipcode
+                limit $1
+                """,
+                limit,
+            )
+        else:
+            rows = await conn.fetch(
+                """
+                select zipcode::text as part_id
+                from geo.us_postal
+                where state = $1
+                order by zipcode
+                limit $2
+                """,
+                state_filter,
+                limit,
+            )
     return [str(row["part_id"]) for row in rows]
 
 

@@ -113,8 +113,19 @@ class FakeConn:
                 )
             elif "set status = 'expired'" in normalized:
                 job.update({"status": "expired", "phase": "expired", "completed_at": args[2], "last_progress_at": args[2]})
-            elif "set leased_by = $3" in normalized:
-                job.update({"leased_by": args[2], "lease_expires_at": args[3], "last_progress_at": args[4]})
+            elif "leased_by = $3" in normalized:
+                if job["status"] == "queued":
+                    phase = job["phase"]
+                else:
+                    phase = "reclaimed"
+                job.update({
+                    "status": "running",
+                    "phase": phase,
+                    "leased_by": args[2],
+                    "lease_expires_at": args[3],
+                    "started_at": job.get("started_at") or args[4],
+                    "last_progress_at": args[4],
+                })
             elif "set status = 'failed'" in normalized:
                 job.update({"status": "failed", "phase": "failed", "error": __import__("json").loads(args[2]), "completed_at": args[3], "last_progress_at": args[3]})
             elif "set cancel_requested = true" in normalized:
@@ -127,7 +138,14 @@ class FakeConn:
             candidates = [
                 job for job in self.jobs.values()
                 if str(job["customer_id"]) == args[0]
-                and job["status"] == "queued"
+                and (
+                    job["status"] == "queued"
+                    or (
+                        job["status"] == "running"
+                        and job.get("lease_expires_at") is not None
+                        and job["lease_expires_at"] <= args[1]
+                    )
+                )
                 and job["expires_at"] > args[1]
                 and (args[2] is None or job["tool_name"] in args[2])
             ]
@@ -223,7 +241,7 @@ def test_asyncpg_job_repo_expiry_on_access():
 
 
 def test_asyncpg_job_repo_claim_next_returns_oldest_matching_queued_job():
-    repo, _conn = _repo()
+    repo, conn = _repo()
     context = CustomerContext(customer_id="11111111-1111-1111-1111-111111111111")
     now = datetime(2026, 5, 13, 21, 0, tzinfo=UTC)
     first = asyncio.run(repo.submit(context, tool_name="direct_build", now=now))
@@ -240,3 +258,48 @@ def test_asyncpg_job_repo_claim_next_returns_oldest_matching_queued_job():
 
     assert claimed is not None
     assert claimed.job_id == first.job_id
+    stored = conn.jobs[first.job_id]
+    assert stored["status"] == "running"
+    assert stored["leased_by"] == "worker-1"
+
+
+def test_asyncpg_job_repo_claim_next_reclaims_stale_running_job():
+    repo, conn = _repo()
+    context = CustomerContext(customer_id="11111111-1111-1111-1111-111111111111")
+    now = datetime(2026, 5, 13, 21, 0, tzinfo=UTC)
+    job = asyncio.run(repo.submit(context, tool_name="direct_build", now=now))
+    conn.jobs[job.job_id].update(
+        {
+            "status": "running",
+            "phase": "dissolve",
+            "started_at": now,
+            "leased_by": "worker-dead",
+            "lease_expires_at": now + timedelta(seconds=30),
+        }
+    )
+
+    not_claimed = asyncio.run(
+        repo.claim_next(
+            context,
+            worker_id="worker-2",
+            tool_names=["direct_build"],
+            now=now + timedelta(seconds=29),
+        )
+    )
+    assert not_claimed is None
+
+    claimed = asyncio.run(
+        repo.claim_next(
+            context,
+            worker_id="worker-2",
+            tool_names=["direct_build"],
+            now=now + timedelta(seconds=31),
+        )
+    )
+
+    assert claimed is not None
+    assert claimed.job_id == job.job_id
+    stored = conn.jobs[job.job_id]
+    assert stored["status"] == "running"
+    assert stored["phase"] == "reclaimed"
+    assert stored["leased_by"] == "worker-2"

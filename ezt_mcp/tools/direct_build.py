@@ -44,7 +44,7 @@ def build_direct_tal(
     assignments = list(request.get("assignments") or [])
     part_layer = _required_string(request, "part_layer")
     tal_label = _required_string(request, "tal_label")
-    tal_id = _stable_tal_id(tal_label)
+    tal_id = _resolve_tal_id(request, tal_label)
     timestamp = now or datetime.now(tz=UTC)
 
     with timed_operation(
@@ -190,6 +190,42 @@ def _required_string(request: Mapping[str, Any], key: str) -> str:
     if value is None or not str(value).strip():
         raise ValueError(f"{key} is required")
     return str(value).strip()
+
+
+def _resolve_tal_id(request: Mapping[str, Any], tal_label: str) -> str:
+    requested_tal_id = str(request.get("tal_id") or request.get("requested_tal_id") or "").strip()
+    if not requested_tal_id:
+        return _stable_tal_id(tal_label)
+    _validate_tal_id(requested_tal_id)
+    _validate_tal_id_available(request.get("ts"), requested_tal_id)
+    return requested_tal_id
+
+
+def _validate_tal_id(tal_id: str) -> None:
+    if len(tal_id) > 128:
+        raise ValueError("tal_id must be 128 characters or fewer")
+    if not all(character.isalnum() or character in {"-", "_"} for character in tal_id):
+        raise ValueError("tal_id may contain only letters, numbers, hyphen, and underscore")
+
+
+def _validate_tal_id_available(source_ts: Any, tal_id: str) -> None:
+    if not isinstance(source_ts, Mapping):
+        return
+    properties = source_ts.get("properties")
+    existing_tal_ids: set[str] = set()
+    if isinstance(properties, Mapping):
+        for layer in properties.get("territory_alignment_layers") or []:
+            if isinstance(layer, Mapping) and layer.get("tal_id") is not None:
+                existing_tal_ids.add(str(layer["tal_id"]))
+        if properties.get("active_tal_id") is not None:
+            existing_tal_ids.add(str(properties["active_tal_id"]))
+    for feature in source_ts.get("features") or []:
+        if isinstance(feature, Mapping):
+            feature_properties = feature.get("properties")
+            if isinstance(feature_properties, Mapping) and feature_properties.get("tal_id") is not None:
+                existing_tal_ids.add(str(feature_properties["tal_id"]))
+    if tal_id in existing_tal_ids:
+        raise ValueError(f"tal_id already exists in the source TS: {tal_id}")
 
 
 def _stable_tal_id(label: str) -> str:

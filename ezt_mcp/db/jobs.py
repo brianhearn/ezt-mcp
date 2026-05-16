@@ -122,9 +122,11 @@ class AsyncpgJobRepository:
                     select *
                     from transient.jobs
                     where customer_id = $1::uuid
-                      and status = 'queued'
+                      and (
+                        status = 'queued'
+                        or (status = 'running' and lease_expires_at is not null and lease_expires_at <= $2)
+                      )
                       and expires_at > $2
-                      and (lease_expires_at is null or lease_expires_at <= $2)
                       and ($3::text[] is null or tool_name = any($3::text[]))
                     order by priority asc, created_at asc
                     for update skip locked
@@ -137,10 +139,16 @@ class AsyncpgJobRepository:
                 if row is None:
                     return None
                 job = _row_to_job(row)
+                claim_message = (
+                    "Stale running job reclaimed by worker."
+                    if job.status == "running"
+                    else "Job claimed by worker."
+                )
                 await conn.execute(
                     """
                     update transient.jobs
-                    set leased_by = $3, lease_expires_at = $4,
+                    set status = 'running', phase = case when status = 'queued' then phase else 'reclaimed' end,
+                        leased_by = $3, lease_expires_at = $4, started_at = coalesce(started_at, $5),
                         last_progress_at = $5
                     where job_id = $1 and customer_id = $2::uuid
                     """,
@@ -158,7 +166,7 @@ class AsyncpgJobRepository:
                     phase=job.phase,
                     progress=job.progress,
                     total=job.total,
-                    message="Job claimed by worker.",
+                    message=claim_message,
                     details={"worker_id": worker_id},
                     created_at=now,
                 )
