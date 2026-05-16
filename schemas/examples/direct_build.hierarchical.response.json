@@ -25,7 +25,19 @@
       "contiguity_repairs": 0,
       "changed_part_ids": []
     },
-    "invalid_parts": []
+    "invalid_parts": [],
+    "geometry_summary": {
+      "geometry_backend": "shapely",
+      "territory_count": 10,
+      "leaf_territory_count": 5,
+      "rollup_territory_count": 5,
+      "bbox": [
+        -124.8,
+        24.4,
+        -66.9,
+        49.4
+      ]
+    }
   },
   "warnings": [
     {

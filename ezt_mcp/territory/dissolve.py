@@ -121,6 +121,26 @@ class DissolvedHierarchy:
     def rollup_territories(self) -> tuple[TerritoryGeometry, ...]:
         return tuple(territory for territory in self.territories if not territory.is_leaf)
 
+    @property
+    def bbox(self) -> tuple[float, float, float, float] | None:
+        if not self.territories:
+            return None
+        min_x = min(territory.bbox[0] for territory in self.territories)
+        min_y = min(territory.bbox[1] for territory in self.territories)
+        max_x = max(territory.bbox[2] for territory in self.territories)
+        max_y = max(territory.bbox[3] for territory in self.territories)
+        return (min_x, min_y, max_x, max_y)
+
+    def summary(self) -> dict[str, Any]:
+        bbox = self.bbox
+        return {
+            "geometry_backend": self.backend,
+            "territory_count": len(self.territories),
+            "leaf_territory_count": len(self.leaf_territories),
+            "rollup_territory_count": len(self.rollup_territories),
+            "bbox": list(bbox) if bbox is not None else None,
+        }
+
     def to_feature_collection(self, *, simplified: bool = False) -> dict[str, Any]:
         return {
             "type": "FeatureCollection",

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 
-from shapely.geometry import Polygon
+from tests.fixtures.synthetic_geometry import grid_square_geometries
 from starlette.testclient import TestClient
 
 from ezt_mcp.config import ServerConfig
@@ -11,11 +11,7 @@ from ezt_mcp.server import build_app
 
 class FakePartsRepository:
     async def fetch_part_geometries(self, part_layer: str, part_ids: list[str]):
-        return {part_id: square(index, 0).__geo_interface__ for index, part_id in enumerate(part_ids)}
-
-
-def square(x: float, y: float, size: float = 1.0) -> Polygon:
-    return Polygon([(x, y), (x + size, y), (x + size, y + size), (x, y + size)])
+        return grid_square_geometries(part_ids, as_geojson=True)
 
 
 def test_create_territory_from_parts_http_submits_and_completes_direct_build_job():

@@ -104,6 +104,7 @@ def build_direct_tal(
                     "unassigned_part_count": 0,
                 },
                 "hierarchy_summary": hierarchy.summary(),
+                "geometry_summary": dissolved.summary(),
                 "repair_summary": {
                     "holes_filled": 0,
                     "contiguity_repairs": 0,
@@ -141,6 +142,8 @@ def _append_tal_to_ts(
         "part_layer": part_layer,
         "max_depth": max((territory.depth for territory in dissolved.territories), default=0),
         "territory_count": len(dissolved.territories),
+        "geometry_backend": dissolved.backend,
+        "bbox": list(dissolved.bbox) if dissolved.bbox is not None else None,
         "updated_at": updated_at.isoformat().replace("+00:00", "Z"),
     }
     properties = ts["properties"]

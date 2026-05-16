@@ -3,6 +3,8 @@ from __future__ import annotations
 import pytest
 from shapely.geometry import GeometryCollection, Polygon, shape
 
+from tests.fixtures.synthetic_geometry import grid_square_geometries, square
+
 from ezt_mcp.territory.dissolve import (
     DissolveOptions,
     DissolveValidationError,
@@ -10,17 +12,6 @@ from ezt_mcp.territory.dissolve import (
     dissolve_hierarchy_geometries,
 )
 from ezt_mcp.territory.hierarchy import materialize_assignment_tree
-
-
-def square(x: float, y: float, size: float = 1.0) -> Polygon:
-    return Polygon(
-        [
-            (x, y),
-            (x + size, y),
-            (x + size, y + size),
-            (x, y + size),
-        ]
-    )
 
 
 def test_dissolves_flat_leaf_territories_from_synthetic_squares():
@@ -203,3 +194,27 @@ def test_dissolve_options_control_simplification_and_partitioning():
     assert len(territory.geometry_simple.geoms[0].exterior.coords) <= len(
         territory.geometry.geoms[0].exterior.coords
     )
+
+
+def test_dissolved_hierarchy_exports_geometry_summary_bbox():
+    hierarchy = materialize_assignment_tree(
+        [
+            {"part_id": "A", "territory_path": ["West"]},
+            {"part_id": "B", "territory_path": ["East"]},
+        ],
+        tal_id="tal-summary",
+    )
+
+    dissolved = dissolve_hierarchy_geometries(
+        hierarchy,
+        grid_square_geometries(["A", "B"], columns=2, as_geojson=True),
+    )
+
+    assert dissolved.bbox == (0.0, 0.0, 2.0, 1.0)
+    assert dissolved.summary() == {
+        "geometry_backend": "shapely",
+        "territory_count": 2,
+        "leaf_territory_count": 2,
+        "rollup_territory_count": 0,
+        "bbox": [0.0, 0.0, 2.0, 1.0],
+    }

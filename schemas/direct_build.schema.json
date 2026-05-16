@@ -160,6 +160,38 @@
             "invalid_parts": {
               "type": "array",
               "items": { "type": "string" }
+            },
+            "geometry_summary": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "geometry_backend": {
+                  "type": "string"
+                },
+                "territory_count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "leaf_territory_count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "rollup_territory_count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "bbox": {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "minItems": 4,
+                  "maxItems": 4,
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              }
             }
           }
         }

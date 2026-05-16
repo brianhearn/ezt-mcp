@@ -2,20 +2,11 @@ from __future__ import annotations
 
 import re
 
-from shapely.geometry import Polygon, shape
+from shapely.geometry import shape
+
+from tests.fixtures.synthetic_geometry import square
 
 from ezt_mcp.tools.direct_build import build_direct_tal
-
-
-def square(x: float, y: float, size: float = 1.0) -> Polygon:
-    return Polygon(
-        [
-            (x, y),
-            (x + size, y),
-            (x + size, y + size),
-            (x, y + size),
-        ]
-    )
 
 
 def test_direct_build_appends_flat_tal_to_existing_ts():
@@ -65,6 +56,13 @@ def test_direct_build_appends_flat_tal_to_existing_ts():
         "rollup_territory_count": 0,
     }
     assert result["assignment_summary"]["assigned_part_count"] == 2
+    assert result["geometry_summary"] == {
+        "geometry_backend": "shapely",
+        "territory_count": 2,
+        "leaf_territory_count": 2,
+        "rollup_territory_count": 0,
+        "bbox": [0.0, 0.0, 4.0, 1.0],
+    }
     assert result["ts_identity"]["ts_id"] == "ts-existing"
     assert result["ts_identity"]["revision"] == 5
     assert re.fullmatch(r"sha256:[a-f0-9]{64}", result["ts_identity"]["content_hash"])
@@ -78,6 +76,8 @@ def test_direct_build_appends_flat_tal_to_existing_ts():
             "part_layer": "us_zips",
             "max_depth": 0,
             "territory_count": 2,
+            "geometry_backend": "shapely",
+            "bbox": [0.0, 0.0, 4.0, 1.0],
             "updated_at": result["ts_identity"]["updated_at"],
         }
     ]
@@ -184,6 +184,13 @@ def test_direct_build_creates_rollup_tal_and_warning():
         "max_depth": 1,
         "leaf_territory_count": 3,
         "rollup_territory_count": 2,
+    }
+    assert response["result"]["geometry_summary"] == {
+        "geometry_backend": "shapely",
+        "territory_count": 5,
+        "leaf_territory_count": 3,
+        "rollup_territory_count": 2,
+        "bbox": [0.0, 0.0, 5.0, 2.0],
     }
     assert response["warnings"] == [
         {
