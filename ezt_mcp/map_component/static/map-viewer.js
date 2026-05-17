@@ -516,6 +516,7 @@ function addTerritoryLayers(map, payload) {
         "text-size": 12,
         "text-font": ["Noto Sans Regular"],
         "text-allow-overlap": false,
+        "symbol-sort-key": ["coalesce", ["to-number", ["get", "_render_label_priority"]], 0],
       },
       paint: {
         "text-color": tp.territoryLabel,

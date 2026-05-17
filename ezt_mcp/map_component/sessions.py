@@ -594,9 +594,14 @@ def build_render_payload(
         view_name=_view_name(presentation, mode=mode),
         mode=mode,
     )
+    sorted_active_features = sorted(
+        active_features,
+        key=lambda feature: _render_priority(feature),
+        reverse=True,
+    )
     clean_active_features = [
         _feature_for_render(feature, index, role="active")
-        for index, feature in enumerate(active_features)
+        for index, feature in enumerate(sorted_active_features)
     ]
     clean_reference_features = [
         _feature_for_render(feature, index, role="reference")
@@ -808,6 +813,20 @@ def _tal_metadata(ts_properties: Mapping[str, Any]) -> dict[str, str | None]:
     return metadata
 
 
+def _render_priority(feature: Mapping[str, Any]) -> tuple[int, int]:
+    properties = feature.get("properties") if isinstance(feature.get("properties"), Mapping) else {}
+    is_leaf = properties.get("is_leaf")
+    if isinstance(is_leaf, str):
+        leaf_rank = 1 if is_leaf.lower() == "true" else 0
+    else:
+        leaf_rank = 1 if is_leaf is True else 0
+    try:
+        depth = int(properties.get("depth") or 0)
+    except (TypeError, ValueError):
+        depth = 0
+    return (leaf_rank, depth)
+
+
 def _feature_for_render(
     feature: Mapping[str, Any],
     index: int,
@@ -820,6 +839,8 @@ def _feature_for_render(
         "_render_label",
         properties.get("label") or properties.get("territory_id"),
     )
+    leaf_rank, depth = _render_priority(feature)
+    properties.setdefault("_render_label_priority", (0 if leaf_rank else 100) + depth)
     properties["_render_tal_role"] = role
     return {
         "type": "Feature",

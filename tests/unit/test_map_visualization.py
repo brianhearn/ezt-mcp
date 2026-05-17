@@ -81,6 +81,42 @@ def test_build_render_payload_filters_active_tal_and_bounds():
     assert payload["basemap"]["url"] == "https://expertpack.ai/mcp/assets/tiles/us-basemap.pmtiles"
 
 
+def test_build_render_payload_sorts_leaf_labels_above_rollups():
+    ts = {
+        "type": "FeatureCollection",
+        "properties": {
+            "active_tal_id": "tal-current",
+            "territory_alignment_layers": [
+                {"tal_id": "tal-current", "label": "Current Territories"}
+            ],
+        },
+        "features": [
+            square_feature("tal-current", "rollup", "Smoke", 0, 0),
+            square_feature("tal-current", "leaf-a", "North Central Florida", 0, 0),
+            square_feature("tal-current", "leaf-b", "Northeast Florida", 2, 0),
+        ],
+    }
+    ts["features"][0]["properties"].update({"is_leaf": False, "depth": 0})
+    ts["features"][1]["properties"].update({"is_leaf": True, "depth": 1})
+    ts["features"][2]["properties"].update({"is_leaf": True, "depth": 1})
+
+    payload = build_render_payload(
+        ts,
+        active_tal_id="tal-current",
+        mode="view",
+        public_base_url="https://expertpack.ai/mcp",
+    )
+
+    labels = [feature["properties"]["_render_label"] for feature in payload["geojson"]["features"]]
+    priorities = [
+        feature["properties"]["_render_label_priority"]
+        for feature in payload["geojson"]["features"]
+    ]
+    assert labels[:2] == ["North Central Florida", "Northeast Florida"]
+    assert labels[-1] == "Smoke"
+    assert priorities == [1, 1, 100]
+
+
 def test_build_render_payload_applies_presentation_template_and_overrides():
     ts = sample_ts()
     ts["properties"]["presentation"] = {

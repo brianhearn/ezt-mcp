@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed (2026-05-17) — Map leaf label priority
+- Sorted active Map Component render features and added label priority metadata so leaf territory labels render ahead of rollup labels when their polygons overlap.
+
 ### Changed (2026-05-17) — Repair policy skeleton
 - Added a no-op territory repair pipeline seam with `RepairPolicy`, `RepairSummary`, and `RepairResult`, wiring Direct Build `repair_summary` through the new module instead of hardcoded placeholders.
 
