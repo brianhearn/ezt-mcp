@@ -349,8 +349,10 @@ Avoid creating overlapping alternatives such as `ARCHITECTURE.md`, `PRODUCT.md`,
 The immediate next phase is implementation hardening around the now-working Direct Build / Map Component testbed. Preserve the external v1 contracts while tightening internals. Current priorities:
 
 - keep `get_map_visualization` as the stable public tool name for read-only/share/select map visualization;
-- maintain MC visual smoke coverage for every deploy that touches job, map-session, progress, CSS, or render-payload paths;
-- run `scripts/smoke_direct_build.py --base-url https://expertpack.ai/mcp` for deploys touching Direct Build, queued jobs, PostGIS geometry fetch/dissolve, TAL metadata, or Map Component render-payload creation;
+- maintain MC visual smoke coverage for every deploy that touches job, map-session, progress, CSS, render-payload, or part-layer overlay paths;
+- run `scripts/smoke_direct_build.py --base-url https://expertpack.ai/mcp` for deploys touching Direct Build, queued jobs, PostGIS geometry fetch/dissolve, TAL metadata, Map Component render-payload creation, or part-layer overlay metadata;
+- preserve the session-scoped part-layer model: each map session may expose one or more customer/workflow-valid part layers, but selection semantics are mutually exclusive through `active_part_layer`; selection commits must include both `part_layer` and `part_ids`;
+- treat the current `us_zips.pmtiles` archive as a first working overlay artifact, not the final production tiling pipeline. It proves PostGIS → PMTiles → MC overlay plumbing at z5-z8; next hardening should produce z9+ Designer-quality tiles with a proper operational pipeline (tippecanoe/Planetiler-style or an optimized builder);
 - keep transient queue details in `TECHNICAL_SPEC.md`, not in Functional Spec unless caller-visible behavior changes;
 - keep migration/operator status in `CHANGELOG.md` and memory/session-state, not scattered across core docs;
 - treat the pre-migration job schema compatibility path as temporary scaffolding only. After Matt/admin applies `migrations/003_job_payloads_limits.sql`, verify the schema, run health + MC/Direct Build smokes, then remove the compatibility fallback instead of keeping it as a permanent mode.
