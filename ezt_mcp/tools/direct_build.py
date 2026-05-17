@@ -22,6 +22,7 @@ from ezt_mcp.territory.dissolve import (
     dissolve_hierarchy_geometries,
 )
 from ezt_mcp.territory.hierarchy import materialize_assignment_tree
+from ezt_mcp.territory.repair import repair_dissolved_hierarchy
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ def build_direct_tal(
     part_layer = _required_string(request, "part_layer")
     tal_label = _required_string(request, "tal_label")
     tal_id = _resolve_tal_id(request, tal_label)
+    repair_policy = request.get("repair_policy", "default")
     timestamp = now or datetime.now(tz=UTC)
 
     with timed_operation(
@@ -70,6 +72,18 @@ def build_direct_tal(
                 options=dissolve_options,
             )
 
+        with timed_operation(
+            logger,
+            "tools.direct_build.repair",
+            tal_id=tal_id,
+            repair_policy=str(repair_policy or "default"),
+        ):
+            repair_result = repair_dissolved_hierarchy(
+                dissolved,
+                policy=repair_policy,
+            )
+            dissolved = repair_result.hierarchy
+
         ts = _append_tal_to_ts(
             request.get("ts"),
             tal_id=tal_id,
@@ -89,6 +103,7 @@ def build_direct_tal(
                     "message": "Created hierarchy rollup territories from territory_path values.",
                 }
             )
+        warnings.extend(repair_result.warnings)
 
         return {
             "ok": True,
@@ -105,11 +120,7 @@ def build_direct_tal(
                 },
                 "hierarchy_summary": hierarchy.summary(),
                 "geometry_summary": dissolved.summary(),
-                "repair_summary": {
-                    "holes_filled": 0,
-                    "contiguity_repairs": 0,
-                    "changed_part_ids": [],
-                },
+                "repair_summary": repair_result.summary.to_dict(),
                 "invalid_parts": [],
             },
             "warnings": warnings,

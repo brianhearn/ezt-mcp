@@ -8,7 +8,6 @@ from tests.fixtures.synthetic_geometry import square
 
 from ezt_mcp.tools.direct_build import build_direct_tal
 
-
 def test_direct_build_appends_flat_tal_to_existing_ts():
     request = {
         "ts": {
@@ -94,7 +93,6 @@ def test_direct_build_appends_flat_tal_to_existing_ts():
     assert all(feature["properties"]["is_leaf"] for feature in territory_features)
     assert shape(territory_features[0]["geometry"]).is_valid
 
-
 def test_direct_build_honors_requested_tal_id_when_available():
     request = {
         "part_layer": "us_zips",
@@ -113,7 +111,6 @@ def test_direct_build_honors_requested_tal_id_when_available():
     assert ts["properties"]["active_tal_id"] == "tal-custom-fl-sales"
     assert ts["properties"]["territory_alignment_layers"][0]["tal_id"] == "tal-custom-fl-sales"
     assert ts["features"][0]["properties"]["tal_id"] == "tal-custom-fl-sales"
-
 
 def test_direct_build_rejects_requested_tal_id_collision():
     request = {
@@ -141,7 +138,6 @@ def test_direct_build_rejects_requested_tal_id_collision():
     else:
         raise AssertionError("Expected requested tal_id collision to be rejected")
 
-
 def test_direct_build_rejects_invalid_requested_tal_id():
     request = {
         "part_layer": "us_zips",
@@ -158,7 +154,6 @@ def test_direct_build_rejects_invalid_requested_tal_id():
         assert "tal_id may contain only" in str(exc)
     else:
         raise AssertionError("Expected invalid requested tal_id to be rejected")
-
 
 def test_direct_build_creates_rollup_tal_and_warning():
     request = {
@@ -208,3 +203,39 @@ def test_direct_build_creates_rollup_tal_and_warning():
     assert by_id["tal-us-sales-hierarchy-west-northwest"]["properties"][
         "parent_territory_id"
     ] == "tal-us-sales-hierarchy-west"
+
+
+def test_direct_build_uses_requested_repair_policy_skeleton():
+    request = {
+        "part_layer": "us_zips",
+        "tal_label": "Repair Policy Smoke",
+        "repair_policy": "report_only",
+        "assignments": [
+            {"part_id": "32003", "territory_path": ["North Florida"]},
+        ],
+    }
+
+    response = build_direct_tal(request, {"32003": square(0, 0)})
+
+    assert response["result"]["repair_summary"] == {
+        "holes_filled": 0,
+        "contiguity_repairs": 0,
+        "changed_part_ids": [],
+    }
+
+def test_direct_build_rejects_unknown_repair_policy():
+    request = {
+        "part_layer": "us_zips",
+        "tal_label": "Repair Policy Smoke",
+        "repair_policy": "aggressive",
+        "assignments": [
+            {"part_id": "32003", "territory_path": ["North Florida"]},
+        ],
+    }
+
+    try:
+        build_direct_tal(request, {"32003": square(0, 0)})
+    except ValueError as exc:
+        assert "repair_policy must be one of" in str(exc)
+    else:
+        raise AssertionError("Expected unknown repair policy to be rejected")

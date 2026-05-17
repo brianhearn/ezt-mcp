@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-17) — Repair policy skeleton
+- Added a no-op territory repair pipeline seam with `RepairPolicy`, `RepairSummary`, and `RepairResult`, wiring Direct Build `repair_summary` through the new module instead of hardcoded placeholders.
+
 ### Changed (2026-05-17) — Direct Build smoke automation
 - Added `scripts/smoke_direct_build.py` to submit a tiny live queued Direct Build, poll completion, verify `geometry_summary`, TAL metadata, feature geometry/types/labels, and optionally create/verify a Map Component URL/render payload.
 
