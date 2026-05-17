@@ -60,6 +60,12 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         default=True,
         help="Create and verify a Map Component URL from the completed TS (default: true).",
     )
+    parser.add_argument(
+        "--part-layer-overlay",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Request the built part layer as a Map Component PMTiles overlay (default: true).",
+    )
     parser.add_argument("--user-id")
     parser.add_argument("--json", action="store_true", help="Emit JSON only.")
     return parser.parse_args(argv)
@@ -116,6 +122,7 @@ def smoke(args: argparse.Namespace) -> dict[str, Any]:
             ts=result["ts"],
             tal_id=tal_id,
             user_id=args.user_id or f"direct-build-smoke-{stamp}",
+            part_layers=[args.part_layer] if args.part_layer_overlay else None,
         )
 
     return {
@@ -248,6 +255,7 @@ def create_and_verify_map_visualization(
     ts: dict[str, Any],
     tal_id: str,
     user_id: str,
+    part_layers: list[str] | None = None,
 ) -> dict[str, Any]:
     created = request_json(
         "POST",
@@ -260,6 +268,7 @@ def create_and_verify_map_visualization(
             "presentation": {"style_overrides": {"theme": "dark"}},
             "expiry_seconds": 900,
             "user_id": user_id,
+            **({"part_layers": part_layers, "active_part_layer": part_layers[0]} if part_layers else {}),
         },
     )
     require_ok(created, "create map visualization")
@@ -276,12 +285,21 @@ def create_and_verify_map_visualization(
     bounds = render_payload.get("bounds")
     if bounds is not None:
         assert_bbox(bounds, "render_payload.bounds")
+    part_layer_payloads = render_payload.get("part_layers") or []
+    if part_layers:
+        require(part_layer_payloads, "render payload part_layers are required")
+        require(
+            render_payload.get("active_part_layer") == part_layers[0],
+            "render payload active_part_layer mismatch",
+        )
     return {
         "map_session_id": map_result.get("map_session_id"),
         "map_url": map_url,
         "expires_at": map_result.get("expires_at"),
         "render_feature_count": len(features),
         "render_bounds": bounds,
+        "active_part_layer": render_payload.get("active_part_layer"),
+        "part_layers": [layer.get("part_layer") for layer in part_layer_payloads],
     }
 
 
@@ -396,6 +414,8 @@ def print_human(summary: dict[str, Any]) -> None:
     if summary.get("map"):
         print(f"map_session_id={summary['map']['map_session_id']}")
         print(f"map_render_feature_count={summary['map']['render_feature_count']}")
+        print(f"map_active_part_layer={summary['map']['active_part_layer']}")
+        print(f"map_part_layers={summary['map']['part_layers']}")
         print(f"map_url={summary['map']['map_url']}")
 
 

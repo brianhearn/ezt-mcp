@@ -25,6 +25,26 @@
         }
       }
     },
+    "partLayerRequest": {
+      "title": "Map Component Part Layer Overlay Request",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["part_layer"],
+          "properties": {
+            "part_layer": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
     "interactionFlags": {
       "title": "Allowed Interaction Flags for select Mode",
       "type": "object",
@@ -72,6 +92,15 @@
             "interaction_flags": {
               "$ref": "#/$defs/interactionFlags",
               "description": "Only meaningful in select mode."
+            },
+            "part_layers": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/partLayerRequest" },
+              "description": "Session-scoped part layers available to the Map Component. Selection workflows treat them as mutually exclusive choices; only active_part_layer is selectable at a time."
+            },
+            "active_part_layer": {
+              "type": "string",
+              "description": "Initial active part layer for overlay/selection. Must be one of part_layers when supplied."
             }
           }
         }

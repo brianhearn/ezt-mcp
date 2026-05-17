@@ -12,6 +12,8 @@ from typing import Any, Mapping
 
 from shapely.geometry import shape
 
+from .part_layers import resolve_part_layer_tiles
+
 DEFAULT_SESSION_TTL_SECONDS = 3600
 DEFAULT_USER_ID = "default-user"
 
@@ -141,6 +143,8 @@ class MapVisualizationSession:
             presentation=req_presentation,
             public_base_url=public_base_url,
             theme=theme,
+            part_layers=request.get("part_layers"),
+            active_part_layer=request.get("active_part_layer"),
         )
         ttl_seconds = _bounded_ttl(request.get("expiry_seconds"))
         previous_mode = self.mode
@@ -255,6 +259,8 @@ class InMemoryMapSessionStore:
             presentation=req_presentation,
             public_base_url=public_base_url,
             theme=theme,
+            part_layers=request.get("part_layers"),
+            active_part_layer=request.get("active_part_layer"),
         )
         ttl_seconds = _bounded_ttl(request.get("expiry_seconds"))
         map_session_id = f"msess_{secrets.token_urlsafe(16)}"
@@ -547,6 +553,8 @@ def build_render_payload(
     presentation: Mapping[str, Any] | None = None,
     public_base_url: str = "",
     theme: str = "dark",
+    part_layers: Any = None,
+    active_part_layer: Any = None,
 ) -> dict[str, Any]:
     """Extract the active TAL as a browser render payload."""
     if ts.get("type") != "FeatureCollection" or not isinstance(ts.get("features"), list):
@@ -609,6 +617,13 @@ def build_render_payload(
     ]
     bounds = _feature_collection_bounds(clean_active_features + clean_reference_features)
     tal_label = _tal_label(properties, requested_tal)
+    default_part_layer = _tal_part_layer(properties, requested_tal)
+    part_layer_tiles, resolved_active_part_layer = resolve_part_layer_tiles(
+        part_layers if part_layers is not None else properties.get("part_layers"),
+        public_base_url=public_base_url,
+        active_part_layer=active_part_layer or properties.get("active_part_layer"),
+        default_part_layer=default_part_layer,
+    )
     return {
         "map_session_id": None,
         "mode": mode,
@@ -633,6 +648,8 @@ def build_render_payload(
             clean_reference_features,
             active_tal_id=requested_tal,
         ),
+        "part_layers": part_layer_tiles,
+        "active_part_layer": resolved_active_part_layer,
         "bounds": bounds,
         "presentation": presentation_payload,
         "geojson": {
@@ -882,6 +899,16 @@ def _single_tal_id(ts: Mapping[str, Any]) -> str | None:
     }
     tal_ids.discard(None)
     return str(next(iter(tal_ids))) if len(tal_ids) == 1 else None
+
+
+def _tal_part_layer(properties: Mapping[str, Any], tal_id: str) -> str | None:
+    layers = properties.get("territory_alignment_layers")
+    if isinstance(layers, list):
+        for layer in layers:
+            if isinstance(layer, Mapping) and layer.get("tal_id") == tal_id:
+                part_layer = layer.get("part_layer")
+                return str(part_layer) if part_layer is not None else None
+    return None
 
 
 def _tal_label(properties: Mapping[str, Any], tal_id: str) -> str | None:

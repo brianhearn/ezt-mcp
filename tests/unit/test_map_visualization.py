@@ -79,6 +79,8 @@ def test_build_render_payload_filters_active_tal_and_bounds():
     assert reference_role == "reference"
     assert payload["geojson"]["features"][0]["properties"]["part_ids"] == '["T-WEST"]'
     assert payload["basemap"]["url"] == "https://expertpack.ai/mcp/assets/tiles/us-basemap.pmtiles"
+    assert payload["part_layers"] == []
+    assert payload["active_part_layer"] is None
 
 
 def test_build_render_payload_sorts_leaf_labels_above_rollups():
@@ -115,6 +117,50 @@ def test_build_render_payload_sorts_leaf_labels_above_rollups():
     assert labels[:2] == ["North Central Florida", "Northeast Florida"]
     assert labels[-1] == "Smoke"
     assert priorities == [1, 1, 100]
+
+
+def test_build_render_payload_includes_session_scoped_part_layers_from_request():
+    payload = build_render_payload(
+        sample_ts(),
+        active_tal_id="tal-current",
+        mode="select",
+        public_base_url="https://expertpack.ai/mcp",
+        part_layers=["us_zips"],
+        active_part_layer="us_zips",
+    )
+
+    assert payload["active_part_layer"] == "us_zips"
+    assert payload["part_layers"] == [
+        {
+            "part_layer": "us_zips",
+            "label": "US ZIP Codes",
+            "url": "https://expertpack.ai/mcp/assets/tiles/parts/us_zips.pmtiles",
+            "source_layer": "parts",
+            "part_id_property": "part_id",
+            "label_property": "part_id",
+            "default_visible": True,
+            "selectable": True,
+            "minzoom": 5,
+            "label_minzoom": 7,
+            "bounds": [-125.0, 24.5, -66.5, 49.5],
+            "mutually_exclusive_group": "part_layer",
+        }
+    ]
+
+
+def test_build_render_payload_infers_part_layer_from_active_tal_metadata():
+    ts = sample_ts()
+    ts["properties"]["territory_alignment_layers"][0]["part_layer"] = "us_zips"
+
+    payload = build_render_payload(
+        ts,
+        active_tal_id="tal-current",
+        mode="view",
+        public_base_url="https://expertpack.ai/mcp",
+    )
+
+    assert payload["active_part_layer"] == "us_zips"
+    assert payload["part_layers"][0]["part_layer"] == "us_zips"
 
 
 def test_build_render_payload_applies_presentation_template_and_overrides():

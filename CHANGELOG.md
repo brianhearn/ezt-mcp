@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added (2026-05-17) — US ZIP PMTiles part overlay
+- Added session-scoped Map Component part-layer metadata, a US ZIP PMTiles manifest, browser overlay control, and MapLibre PMTiles layers for mutually-exclusive part overlays.
+- Added `scripts/build_part_layer_pmtiles.py` to generate `us_zips.pmtiles` from canonical PostGIS `geo.us_postal` geometry.
+
 ### Fixed (2026-05-17) — Map leaf label priority
 - Sorted active Map Component render features and added label priority metadata so leaf territory labels render ahead of rollup labels when their polygons overlap.
 

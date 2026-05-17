@@ -89,6 +89,7 @@ function renderPanel(payload) {
     summaryEl.append(dt, dd);
   }
   renderLegend(payload);
+  renderPartLayerControl(payload);
   if (debugEl) debugEl.hidden = !debugEnabled(payload);
 }
 
@@ -114,6 +115,64 @@ function renderTalSwitcher(payload) {
     option.selected = tal.tal_id === payload.active_tal.tal_id;
     select.append(option);
   }
+}
+
+
+function renderPartLayerControl(payload) {
+  const { wrapper, select } = ensurePartLayerControl();
+  if (!wrapper || !select) return;
+  const layers = Array.isArray(payload.part_layers) ? payload.part_layers : [];
+  wrapper.hidden = layers.length === 0;
+  select.innerHTML = "";
+
+  const none = document.createElement("option");
+  none.value = "";
+  none.textContent = "No part overlay";
+  none.selected = !payload.active_part_layer;
+  select.append(none);
+
+  for (const layer of layers) {
+    const option = document.createElement("option");
+    option.value = layer.part_layer;
+    option.textContent = layer.label || layer.part_layer;
+    option.selected = layer.part_layer === payload.active_part_layer;
+    select.append(option);
+  }
+}
+
+function ensurePartLayerControl() {
+  let wrapper = byId("part-layer-control");
+  let select = byId("part-layer-select");
+  if (wrapper && select) return { wrapper, select };
+
+  wrapper = document.createElement("div");
+  wrapper.className = "tal-control part-layer-control";
+  wrapper.id = "part-layer-control";
+  wrapper.hidden = true;
+  const label = document.createElement("label");
+  label.htmlFor = "part-layer-select";
+  label.textContent = "Part overlay";
+  select = document.createElement("select");
+  select.id = "part-layer-select";
+  select.setAttribute("aria-label", "Part overlay layer");
+  wrapper.append(label, select);
+  document.body.append(wrapper);
+  attachPartLayerSelectHandler(select);
+  return { wrapper, select };
+}
+
+function attachPartLayerSelectHandler(select) {
+  if (!select || select.dataset.eztPartLayerHandlerAttached === "true") return;
+  select.dataset.eztPartLayerHandlerAttached = "true";
+  select.addEventListener("change", (event) => {
+    setActivePartLayer(event.target.value || null);
+  });
+}
+
+function setActivePartLayer(partLayerId) {
+  if (!currentMap || !currentPayload) return;
+  currentPayload.active_part_layer = partLayerId;
+  updatePartLayerVisibility(currentMap, currentPayload);
 }
 
 function ensureTalControl() {
@@ -461,8 +520,71 @@ function baseStyle(payload) {
   return style;
 }
 
+
+function addPartLayerSourcesAndLayers(map, payload) {
+  const layers = Array.isArray(payload.part_layers) ? payload.part_layers : [];
+  for (const layer of layers) {
+    const sourceId = partLayerSourceId(layer.part_layer);
+    const boundaryId = partLayerBoundaryId(layer.part_layer);
+    const labelId = partLayerLabelId(layer.part_layer);
+    if (map.getSource(sourceId)) continue;
+    map.addSource(sourceId, {
+      type: "vector",
+      url: `pmtiles://${layer.url}`,
+    });
+    map.addLayer({
+      id: boundaryId,
+      type: "line",
+      source: sourceId,
+      "source-layer": layer.source_layer || "parts",
+      minzoom: layer.minzoom ?? 5,
+      layout: { visibility: "none" },
+      paint: {
+        "line-color": "#f8fafc",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 5, 0.35, 9, 0.75, 12, 1.1],
+        "line-opacity": 0.72,
+      },
+    });
+    map.addLayer({
+      id: labelId,
+      type: "symbol",
+      source: sourceId,
+      "source-layer": layer.source_layer || "parts",
+      minzoom: layer.label_minzoom ?? 8,
+      layout: {
+        visibility: "none",
+        "text-field": ["coalesce", ["get", layer.label_property || "part_id"], ["get", "part_id"], ["get", "partcode"], ""],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 8, 9, 12, 11],
+        "text-font": ["Noto Sans Regular"],
+        "text-allow-overlap": false,
+      },
+      paint: {
+        "text-color": "#e2e8f0",
+        "text-halo-color": "#0f172a",
+        "text-halo-width": 1.2,
+      },
+    });
+  }
+}
+
+function updatePartLayerVisibility(map, payload) {
+  const layers = Array.isArray(payload.part_layers) ? payload.part_layers : [];
+  for (const layer of layers) {
+    const visible = layer.part_layer === payload.active_part_layer ? "visible" : "none";
+    for (const layerId of [partLayerBoundaryId(layer.part_layer), partLayerLabelId(layer.part_layer)]) {
+      if (map.getLayer(layerId)) map.setLayoutProperty(layerId, "visibility", visible);
+    }
+  }
+  renderPartLayerControl(payload);
+}
+
+function partLayerSourceId(partLayerId) { return `part-layer-${partLayerId}`; }
+function partLayerBoundaryId(partLayerId) { return `part-layer-${partLayerId}-boundary`; }
+function partLayerLabelId(partLayerId) { return `part-layer-${partLayerId}-labels`; }
+
 function addTerritoryLayers(map, payload) {
   try {
+    addPartLayerSourcesAndLayers(map, payload);
     map.addSource("reference-territories", {
       type: "geojson",
       data: referenceGeojson(payload),
@@ -528,6 +650,8 @@ function addTerritoryLayers(map, payload) {
     debugMessage("Failed to add territory layers", errorDetails(error));
     throw error;
   }
+
+  updatePartLayerVisibility(map, payload);
 
   map.on("click", "territory-fill", (event) => {
     const feature = event.features && event.features[0];

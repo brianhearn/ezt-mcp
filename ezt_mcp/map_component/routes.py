@@ -169,30 +169,22 @@ class MapVisualizationRoutes:
         )
 
     async def pmtiles_asset(self, request: Request) -> Response:
-        tile_path = _static_path("tiles/us-basemap.pmtiles")
-        if not tile_path.exists():
-            return JSONResponse(
-                {
-                    "ok": False,
-                    "error": {
-                        "code": "UNSUPPORTED_OPERATION",
-                        "message": "US basemap PMTiles is not installed on this dev server yet.",
-                        "details": {
-                            "expected_path": "/assets/tiles/us-basemap.pmtiles",
-                            "next_step": (
-                                "Install a US-only PMTiles basemap or configure static tile hosting."
-                            ),
-                        },
-                        "retryable": False,
-                        "user_action_required": True,
-                    },
-                },
-                status_code=404,
-            )
-        return FileResponse(
-            tile_path,
-            media_type="application/octet-stream",
+        return _pmtiles_file_response(
+            "tiles/us-basemap.pmtiles",
+            public_path="/assets/tiles/us-basemap.pmtiles",
+            missing_message="US basemap PMTiles is not installed on this dev server yet.",
             filename="us-basemap.pmtiles",
+        )
+
+    async def part_pmtiles_asset(self, request: Request) -> Response:
+        part_layer = request.path_params["part_layer"]
+        if part_layer != "us_zips":
+            return Response("Not found", status_code=404)
+        return _pmtiles_file_response(
+            f"tiles/parts/{part_layer}.pmtiles",
+            public_path=f"/assets/tiles/parts/{part_layer}.pmtiles",
+            missing_message=f"Part-layer PMTiles is not installed: {part_layer}.",
+            filename=f"{part_layer}.pmtiles",
         )
 
     async def _session_from_request(self, request: Request):
@@ -217,6 +209,38 @@ def _sse_event(event: Mapping[str, Any]) -> str:
     event_type = str(event.get("type") or "message")
     data = json.dumps(dict(event), separators=(",", ":"))
     return f"event: {event_type}\ndata: {data}\n\n"
+
+
+def _pmtiles_file_response(
+    asset_name: str,
+    *,
+    public_path: str,
+    missing_message: str,
+    filename: str,
+) -> Response:
+    tile_path = _static_path(asset_name)
+    if not tile_path.exists():
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": {
+                    "code": "UNSUPPORTED_OPERATION",
+                    "message": missing_message,
+                    "details": {
+                        "expected_path": public_path,
+                        "next_step": "Generate or install the PMTiles archive.",
+                    },
+                    "retryable": False,
+                    "user_action_required": True,
+                },
+            },
+            status_code=404,
+        )
+    return FileResponse(
+        tile_path,
+        media_type="application/octet-stream",
+        filename=filename,
+    )
 
 
 def _static_text(asset_name: str) -> str:
