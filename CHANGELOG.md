@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added (2026-05-18) — PowerBI ZIP alignment Direct Build fixture
+- Added `scripts/build_direct_from_excel.py` to convert Excel ZIP-to-territory sheets into Direct Build assignment requests with duplicate-conflict summaries.
+- Added PowerBI demo ZIP2Terr fixture outputs under `examples/`: strict conflict summary plus first-wins Direct Build request/summary.
+- Live-tested the fixture as a large Direct Build regression: 33,487 ZIPs present in `geo.us_postal` completed into an 88-territory TAL (80 leaves + 8 rollups). Recorded that the source sheet has 16 conflicting duplicate ZIP assignments, 7,589 ZIPs without current polygon geometry, and that full public submission currently hits nginx `413 Request Entity Too Large`.
+
 ### Changed (2026-05-18) — cooperative job cancellation + MC cancel UX
 - Promoted queued-job cancellation to a first-class cooperative outcome: Direct Build now publishes `cancelled` MC progress events, returns `JOB_CANCELLED`, and preserves terminal `cancelled` status instead of overwriting it as `failed`.
 - Added cancellation checkpoints before/after expensive Direct Build stages and chunked large part-geometry fetches so large requests can observe cancellation between chunks.
