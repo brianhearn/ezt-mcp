@@ -192,7 +192,9 @@ Initial template registry:
 - `executive_review` — stakeholder-facing read-only view. Prioritizes clean title/subtitle, concise summary metrics, and legend. Debug is off by default.
 - `selection` — spatial input view for Part Selection workflows. Prioritizes user instructions, active layer/context, selected count, and commit/cancel affordances. Debug is off by default.
 
-The upper-left panel is a context panel selected/configured by the resolved presentation template. The agent can provide context (title, subtitle, summary items, legend hints, debug flag) through TS presentation metadata or request-time presentation overrides, but the MC owns layout, typography, and product chrome.
+The upper-left panel is a context panel selected/configured by the resolved presentation template. The agent can provide context (title, subtitle, summary items, custom content, legend hints, debug flag) through TS presentation metadata or request-time presentation overrides, but the MC owns layout, typography, and product chrome. Custom content should live as a bounded panel block adjacent to summary and Layer-Legend content, not as arbitrary HTML injected into the map.
+
+Point-layer presentation is intentionally headless. Monica/the agent decides the point-layer styling, filtering, classification, labels, and narrative context before calling EZT MCP; MC renders that resolved configuration. MC v1 may expose visibility and class toggles because those are presentation filters, but it should not expose controls that author new style/filter/classification rules.
 
 Out of scope for v1 unless later specs add them: full symbology editor, complex filter builder, hotspots, clustering, print layouts, and Designer-level layer administration. These Designer capabilities may still inform TS presentation metadata shape, but MC v1 should only expose resolved layer visibility, simple filters/class visibility, classification legend rows, and point/territory/part overlay toggles.
 
