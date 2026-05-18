@@ -1,0 +1,18 @@
+{
+  "part_layer": "us_zips",
+  "tal_label": "PowerBI Demo ZIP2Terr",
+  "tal_id": "tal-powerbi-demo-zip2terr",
+  "assignments": [],
+  "source": {
+    "type": "excel_sheet",
+    "path": "tests/PowerBI_Demo_V5.xlsx",
+    "sheet": "ZIP2Terr",
+    "part_column": "Postal Code",
+    "path_columns": [
+      "Divison",
+      "Region",
+      "Territory"
+    ],
+    "duplicate_policy": "error"
+  }
+}

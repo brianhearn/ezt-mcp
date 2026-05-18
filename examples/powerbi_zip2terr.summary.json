@@ -1,0 +1,291 @@
+{
+  "ok": false,
+  "excel": "tests/PowerBI_Demo_V5.xlsx",
+  "sheet": "ZIP2Terr",
+  "headers": [
+    "Postal Code",
+    "Territory",
+    "Region",
+    "Divison"
+  ],
+  "row_count": 41092,
+  "assignment_count": 0,
+  "unique_part_count": 41076,
+  "invalid_row_count": 0,
+  "exact_duplicate_count": 0,
+  "duplicate_conflict_count": 16,
+  "duplicate_policy": "error",
+  "path_depth": 3,
+  "territory_count": 80,
+  "rollup_path_count": 6,
+  "top_territories": [
+    [
+      "WT0010",
+      1678
+    ],
+    [
+      "NE0003",
+      1411
+    ],
+    [
+      "NE0008",
+      1292
+    ],
+    [
+      "MW0003",
+      1238
+    ],
+    [
+      "SE0003",
+      1228
+    ],
+    [
+      "WT0011",
+      1163
+    ],
+    [
+      "NE0015",
+      1083
+    ],
+    [
+      "NE0006",
+      1074
+    ],
+    [
+      "NE0010",
+      962
+    ],
+    [
+      "MW0010",
+      892
+    ]
+  ],
+  "duplicate_conflicts": [
+    {
+      "part_id": "16840",
+      "previous_territory_path": [
+        "East",
+        "Northeast",
+        "NE0010"
+      ],
+      "conflicting_territory_path": [
+        "East",
+        "Northeast",
+        "NE0011"
+      ],
+      "row_number": 5857
+    },
+    {
+      "part_id": "19472",
+      "previous_territory_path": [
+        "East",
+        "Northeast",
+        "NE0003"
+      ],
+      "conflicting_territory_path": [
+        "East",
+        "Northeast",
+        "NE0011"
+      ],
+      "row_number": 6008
+    },
+    {
+      "part_id": "17763",
+      "previous_territory_path": [
+        "East",
+        "Northeast",
+        "NE0011"
+      ],
+      "conflicting_territory_path": [
+        "East",
+        "Northeast",
+        "NE0014"
+      ],
+      "row_number": 6802
+    },
+    {
+      "part_id": "49839",
+      "previous_territory_path": [
+        "East",
+        "Midwest",
+        "MW0006"
+      ],
+      "conflicting_territory_path": [
+        "East",
+        "Midwest",
+        "MW0005"
+      ],
+      "row_number": 14593
+    },
+    {
+      "part_id": "49864",
+      "previous_territory_path": [
+        "East",
+        "Midwest",
+        "MW0006"
+      ],
+      "conflicting_territory_path": [
+        "East",
+        "Midwest",
+        "MW0005"
+      ],
+      "row_number": 14595
+    },
+    {
+      "part_id": "38578",
+      "previous_territory_path": [
+        "East",
+        "Southeast",
+        "SE0011"
+      ],
+      "conflicting_territory_path": [
+        "East",
+        "Southeast",
+        "SE0010"
+      ],
+      "row_number": 26850
+    },
+    {
+      "part_id": "70659",
+      "previous_territory_path": [
+        "East",
+        "Southeast",
+        "SE0004"
+      ],
+      "conflicting_territory_path": [
+        "East",
+        "Southeast",
+        "SE0006"
+      ],
+      "row_number": 29355
+    },
+    {
+      "part_id": "75053",
+      "previous_territory_path": [
+        "West",
+        "Southwest",
+        "SW0007"
+      ],
+      "conflicting_territory_path": [
+        "West",
+        "Southwest",
+        "SW0002"
+      ],
+      "row_number": 32842
+    },
+    {
+      "part_id": "75050",
+      "previous_territory_path": [
+        "West",
+        "Southwest",
+        "SW0007"
+      ],
+      "conflicting_territory_path": [
+        "West",
+        "Southwest",
+        "SW0002"
+      ],
+      "row_number": 33066
+    },
+    {
+      "part_id": "74350",
+      "previous_territory_path": [
+        "West",
+        "Southwest",
+        "SW0003"
+      ],
+      "conflicting_territory_path": [
+        "West",
+        "Southwest",
+        "SW0004"
+      ],
+      "row_number": 35480
+    },
+    {
+      "part_id": "74340",
+      "previous_territory_path": [
+        "West",
+        "Southwest",
+        "SW0003"
+      ],
+      "conflicting_territory_path": [
+        "West",
+        "Southwest",
+        "SW0004"
+      ],
+      "row_number": 35728
+    },
+    {
+      "part_id": "77464",
+      "previous_territory_path": [
+        "West",
+        "Southwest",
+        "SW0001"
+      ],
+      "conflicting_territory_path": [
+        "West",
+        "Southwest",
+        "SW0012"
+      ],
+      "row_number": 36369
+    },
+    {
+      "part_id": "79369",
+      "previous_territory_path": [
+        "West",
+        "Southwest",
+        "SW0009"
+      ],
+      "conflicting_territory_path": [
+        "West",
+        "Southwest",
+        "SW0011"
+      ],
+      "row_number": 36827
+    },
+    {
+      "part_id": "51363",
+      "previous_territory_path": [
+        "East",
+        "Upper Midwest",
+        "UM0003"
+      ],
+      "conflicting_territory_path": [
+        "East",
+        "Upper Midwest",
+        "UM0011"
+      ],
+      "row_number": 38822
+    },
+    {
+      "part_id": "50227",
+      "previous_territory_path": [
+        "East",
+        "Upper Midwest",
+        "UM0011"
+      ],
+      "conflicting_territory_path": [
+        "East",
+        "Upper Midwest",
+        "UM0004"
+      ],
+      "row_number": 40215
+    },
+    {
+      "part_id": "56591",
+      "previous_territory_path": [
+        "East",
+        "Upper Midwest",
+        "UM0001"
+      ],
+      "conflicting_territory_path": [
+        "East",
+        "Upper Midwest",
+        "UM0008"
+      ],
+      "row_number": 40967
+    }
+  ],
+  "invalid_rows": [],
+  "request_output_safe": false
+}
