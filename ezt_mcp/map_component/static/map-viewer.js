@@ -3,6 +3,12 @@ const debugEl = document.getElementById("debug");
 const debugMessages = [];
 let currentPayload = null;
 let currentMap = null;
+const layerState = {
+  territories: true,
+  referenceTals: true,
+  pointLayers: {},
+  pointClasses: {},
+};
 
 function byId(id) {
   return document.getElementById(id);
@@ -88,8 +94,8 @@ function renderPanel(payload) {
     dd.textContent = item.value;
     summaryEl.append(dt, dd);
   }
-  renderLegend(payload);
-  renderPartLayerControl(payload);
+  renderCustomContent(payload);
+  renderLayerLegend(payload);
   if (debugEl) debugEl.hidden = !debugEnabled(payload);
 }
 
@@ -115,64 +121,6 @@ function renderTalSwitcher(payload) {
     option.selected = tal.tal_id === payload.active_tal.tal_id;
     select.append(option);
   }
-}
-
-
-function renderPartLayerControl(payload) {
-  const { wrapper, select } = ensurePartLayerControl();
-  if (!wrapper || !select) return;
-  const layers = Array.isArray(payload.part_layers) ? payload.part_layers : [];
-  wrapper.hidden = layers.length === 0;
-  select.innerHTML = "";
-
-  const none = document.createElement("option");
-  none.value = "";
-  none.textContent = "No part overlay";
-  none.selected = !payload.active_part_layer;
-  select.append(none);
-
-  for (const layer of layers) {
-    const option = document.createElement("option");
-    option.value = layer.part_layer;
-    option.textContent = layer.label || layer.part_layer;
-    option.selected = layer.part_layer === payload.active_part_layer;
-    select.append(option);
-  }
-}
-
-function ensurePartLayerControl() {
-  let wrapper = byId("part-layer-control");
-  let select = byId("part-layer-select");
-  if (wrapper && select) return { wrapper, select };
-
-  wrapper = document.createElement("div");
-  wrapper.className = "tal-control part-layer-control";
-  wrapper.id = "part-layer-control";
-  wrapper.hidden = true;
-  const label = document.createElement("label");
-  label.htmlFor = "part-layer-select";
-  label.textContent = "Part overlay";
-  select = document.createElement("select");
-  select.id = "part-layer-select";
-  select.setAttribute("aria-label", "Part overlay layer");
-  wrapper.append(label, select);
-  document.body.append(wrapper);
-  attachPartLayerSelectHandler(select);
-  return { wrapper, select };
-}
-
-function attachPartLayerSelectHandler(select) {
-  if (!select || select.dataset.eztPartLayerHandlerAttached === "true") return;
-  select.dataset.eztPartLayerHandlerAttached = "true";
-  select.addEventListener("change", (event) => {
-    setActivePartLayer(event.target.value || null);
-  });
-}
-
-function setActivePartLayer(partLayerId) {
-  if (!currentMap || !currentPayload) return;
-  currentPayload.active_part_layer = partLayerId;
-  updatePartLayerVisibility(currentMap, currentPayload);
 }
 
 function ensureTalControl() {
@@ -270,28 +218,279 @@ function shortBounds(bounds) {
   return bounds.map((value) => Number(value).toFixed(2)).join(", ");
 }
 
-function renderLegend(payload) {
+function renderCustomContent(payload) {
+  const customEl = ensureCustomContentContainer();
+  if (!customEl) return;
+  const presentation = payload.presentation || {};
+  const panel = presentation.panel || {};
+  const content = panel.custom_content || presentation.custom_content;
+  customEl.innerHTML = "";
+  customEl.hidden = !content;
+  if (!content) return;
+
+  const title = content.title || content.heading;
+  if (title) {
+    const h = document.createElement("div");
+    h.className = "custom-content-title";
+    h.textContent = title;
+    customEl.append(h);
+  }
+  const body = content.text || content.body || content.markdown;
+  if (body) {
+    const p = document.createElement("div");
+    p.className = "custom-content-body";
+    p.textContent = body;
+    customEl.append(p);
+  }
+  if (Array.isArray(content.items)) {
+    const list = document.createElement("ul");
+    list.className = "custom-content-list";
+    for (const item of content.items) {
+      const li = document.createElement("li");
+      if (typeof item === "object" && item !== null) {
+        li.textContent = [item.label || item.name, item.value].filter(Boolean).join(": ");
+      } else {
+        li.textContent = String(item);
+      }
+      list.append(li);
+    }
+    customEl.append(list);
+  }
+}
+
+function ensureCustomContentContainer() {
+  let customEl = byId("custom-content");
+  if (customEl) return customEl;
+  const summaryEl = byId("summary");
+  if (!summaryEl || !summaryEl.parentElement) return null;
+  customEl = document.createElement("div");
+  customEl.id = "custom-content";
+  customEl.className = "custom-content";
+  customEl.hidden = true;
+  summaryEl.insertAdjacentElement("afterend", customEl);
+  return customEl;
+}
+
+function renderLayerLegend(payload) {
   const legendEl = byId("legend");
   const itemsEl = byId("legend-items");
   if (!legendEl || !itemsEl) return;
-  const presentation = payload.presentation || {};
-  const legendItems = Array.isArray(presentation.legend_items)
-    ? presentation.legend_items
-    : defaultLegendItems(payload);
-  legendEl.hidden = !legendVisible(payload) || legendItems.length === 0;
+  const rows = layerLegendRows(payload);
+  legendEl.hidden = !legendVisible(payload) || rows.length === 0;
   itemsEl.innerHTML = "";
-  for (const item of legendItems) {
-    const row = document.createElement("div");
-    row.className = "legend-item";
-    const swatch = document.createElement("span");
-    swatch.className = "legend-swatch";
-    swatch.style.background = item.color || "#2F80ED";
-    const label = document.createElement("span");
-    label.textContent = item.label || item.value || "Territory";
-    row.append(swatch, label);
-    itemsEl.append(row);
+  for (const rowDef of rows) itemsEl.append(renderLayerLegendRow(rowDef, payload));
+}
+
+function layerLegendRows(payload) {
+  const rows = [];
+  rows.push({
+    kind: "territories",
+    id: "territories",
+    label: payload.active_tal.label || payload.active_tal.tal_id || "Active territories",
+    swatch: defaultTerritorySwatch(payload),
+    visible: layerState.territories !== false,
+    count: payload.active_tal.territory_count,
+    classes: territoryLegendClasses(payload),
+  });
+  if (hasReferenceTals(payload)) {
+    rows.push({
+      kind: "referenceTals",
+      id: "referenceTals",
+      label: chromeLabel(payload, "reference_alignments_legend", "Other alignments (dimmed)"),
+      swatch: "#94a3b8",
+      visible: layerState.referenceTals !== false,
+      count: payload.reference_geojson.features.length,
+    });
+  }
+  for (const layer of Array.isArray(payload.point_layers) ? payload.point_layers : []) {
+    ensurePointLayerState(layer);
+    rows.push({
+      kind: "pointLayer",
+      id: layer.point_layer,
+      label: layer.label || layer.point_layer,
+      swatch: pointLayerColor(layer),
+      visible: layerState.pointLayers[layer.point_layer] !== false,
+      count: layer.feature_count,
+      classes: pointLayerClasses(layer),
+      filtered: hasLayerFilters(layer),
+      minzoom: layer.minzoom,
+      maxzoom: layer.maxzoom,
+    });
+  }
+  for (const layer of Array.isArray(payload.part_layers) ? payload.part_layers : []) {
+    rows.push({
+      kind: "partLayer",
+      id: layer.part_layer,
+      label: layer.label || layer.part_layer,
+      swatch: "#cbd5e1",
+      visible: layer.part_layer === payload.active_part_layer,
+      count: null,
+      minzoom: layer.minzoom,
+    });
+  }
+  return rows;
+}
+
+function renderLayerLegendRow(rowDef, payload) {
+  const row = document.createElement("div");
+  row.className = `layer-legend-row layer-kind-${rowDef.kind}`;
+  row.dataset.layerKind = rowDef.kind;
+  row.dataset.layerId = rowDef.id;
+  if (!rowDef.visible) row.classList.add("is-hidden-layer");
+
+  const main = document.createElement("div");
+  main.className = "layer-legend-main";
+
+  const toggle = document.createElement("input");
+  toggle.type = "checkbox";
+  toggle.checked = Boolean(rowDef.visible);
+  toggle.setAttribute("aria-label", `Toggle ${rowDef.label}`);
+  toggle.addEventListener("change", () => toggleLayer(rowDef, toggle.checked));
+
+  const swatch = document.createElement("span");
+  swatch.className = rowDef.kind === "pointLayer" ? "legend-swatch point-swatch" : "legend-swatch";
+  swatch.style.background = rowDef.swatch || "#2F80ED";
+
+  const labelWrap = document.createElement("div");
+  labelWrap.className = "layer-legend-label-wrap";
+  const label = document.createElement("span");
+  label.className = "layer-legend-label";
+  label.textContent = rowDef.label;
+  labelWrap.append(label);
+  const metaParts = [];
+  if (rowDef.count != null) metaParts.push(`${rowDef.count} features`);
+  if (rowDef.filtered) metaParts.push("filtered");
+  if (rowDef.minzoom != null) metaParts.push(`z${rowDef.minzoom}+`);
+  if (rowDef.maxzoom != null) metaParts.push(`≤z${rowDef.maxzoom}`);
+  if (metaParts.length) {
+    const meta = document.createElement("span");
+    meta.className = "layer-legend-meta";
+    meta.textContent = metaParts.join(" • ");
+    labelWrap.append(meta);
+  }
+
+  main.append(toggle, swatch, labelWrap);
+  row.append(main);
+
+  if (rowDef.kind === "pointLayer" && Array.isArray(rowDef.classes) && rowDef.classes.length) {
+    const classes = document.createElement("div");
+    classes.className = "layer-class-list";
+    for (const classDef of rowDef.classes) classes.append(renderClassRow(rowDef, classDef));
+    row.append(classes);
+  }
+  return row;
+}
+
+function renderClassRow(rowDef, classDef) {
+  const row = document.createElement("label");
+  row.className = "layer-class-row";
+  const toggle = document.createElement("input");
+  toggle.type = "checkbox";
+  toggle.checked = classVisible(rowDef.id, classDef.id);
+  toggle.addEventListener("change", () => togglePointClass(rowDef.id, classDef.id, toggle.checked));
+  const swatch = document.createElement("span");
+  swatch.className = "legend-swatch";
+  swatch.style.background = classDef.color || rowDef.swatch || "#2F80ED";
+  const label = document.createElement("span");
+  label.textContent = classDef.label || classDef.id;
+  row.append(toggle, swatch, label);
+  return row;
+}
+
+function defaultTerritorySwatch(payload) {
+  const item = defaultLegendItems(payload)[0];
+  return item && item.color ? item.color : "#2F80ED";
+}
+
+function territoryLegendClasses(payload) {
+  const presentation = payload.presentation || {};
+  if (Array.isArray(presentation.legend_items)) {
+    return presentation.legend_items.map((item, index) => ({
+      id: String(item.id || item.value || item.label || index),
+      label: item.label || item.value || "Territory",
+      color: item.color || "#2F80ED",
+    }));
+  }
+  return [];
+}
+
+function pointLayerColor(layer) {
+  const style = layer.style || {};
+  return style.color || style.fill_color || "#00d4aa";
+}
+
+function hasLayerFilters(layer) {
+  return Boolean((Array.isArray(layer.filters) && layer.filters.length) || layer.filter);
+}
+
+function pointLayerClasses(layer) {
+  const cls = layer.classification || {};
+  const classes = Array.isArray(cls.classes)
+    ? cls.classes
+    : Array.isArray(cls.breaks) ? cls.breaks : [];
+  return classes.map((entry, index) => ({
+    id: String(entry.id || entry.value || entry.label || index),
+    label: entry.label || formatClassLabel(entry),
+    color: entry.color || entry.fill_color || entry.stroke_color || pointLayerColor(layer),
+  }));
+}
+
+function formatClassLabel(entry) {
+  if (entry.label) return entry.label;
+  if (entry.value != null) return String(entry.value);
+  if (entry.min != null || entry.max != null) {
+    return `${entry.min ?? "−∞"}–${entry.max ?? "+∞"}`;
+  }
+  return "Class";
+}
+
+function ensurePointLayerState(layer) {
+  const id = layer.point_layer;
+  if (layerState.pointLayers[id] == null) {
+    layerState.pointLayers[id] = layer.default_visible !== false;
+  }
+  if (!layerState.pointClasses[id]) layerState.pointClasses[id] = {};
+  for (const classDef of pointLayerClasses(layer)) {
+    if (layerState.pointClasses[id][classDef.id] == null) {
+      layerState.pointClasses[id][classDef.id] = true;
+    }
   }
 }
+
+function classVisible(layerId, classId) {
+  return (
+    !layerState.pointClasses[layerId] || layerState.pointClasses[layerId][classId] !== false
+  );
+}
+
+function toggleLayer(rowDef, visible) {
+  if (!currentMap || !currentPayload) return;
+  if (rowDef.kind === "territories") layerState.territories = visible;
+  if (rowDef.kind === "referenceTals") layerState.referenceTals = visible;
+  if (rowDef.kind === "pointLayer") layerState.pointLayers[rowDef.id] = visible;
+  if (rowDef.kind === "partLayer") {
+    const layer = (currentPayload.part_layers || []).find((item) => item.part_layer === rowDef.id);
+    const group = layer && layer.mutually_exclusive_group;
+    if (group) {
+      currentPayload.active_part_layer = visible ? rowDef.id : null;
+    } else {
+      layerState.partLayers = layerState.partLayers || {};
+      layerState.partLayers[rowDef.id] = visible;
+      currentPayload.active_part_layer = visible ? rowDef.id : null;
+    }
+  }
+  applyLayerVisibility(currentMap, currentPayload);
+  renderLayerLegend(currentPayload);
+}
+
+function togglePointClass(layerId, classId, visible) {
+  if (!currentMap || !currentPayload) return;
+  layerState.pointClasses[layerId] = layerState.pointClasses[layerId] || {};
+  layerState.pointClasses[layerId][classId] = visible;
+  updatePointLayerFilters(currentMap, currentPayload);
+  renderLayerLegend(currentPayload);
+}
+
 
 function defaultLegendItems(payload) {
   const geojson = payload.geojson;
@@ -576,16 +775,180 @@ function updatePartLayerVisibility(map, payload) {
       if (map.getLayer(layerId)) map.setLayoutProperty(layerId, "visibility", visible);
     }
   }
-  renderPartLayerControl(payload);
+}
+
+function applyLayerVisibility(map, payload) {
+  for (const layerId of ["territory-fill", "territory-outline", "territory-labels"]) {
+    if (map.getLayer(layerId)) map.setLayoutProperty(layerId, "visibility", layerState.territories === false ? "none" : "visible");
+  }
+  for (const layerId of ["reference-territory-fill", "reference-territory-outline"]) {
+    if (map.getLayer(layerId)) map.setLayoutProperty(layerId, "visibility", layerState.referenceTals === false ? "none" : "visible");
+  }
+  updatePartLayerVisibility(map, payload);
+  updatePointLayerFilters(map, payload);
+  renderLayerLegend(payload);
 }
 
 function partLayerSourceId(partLayerId) { return `part-layer-${partLayerId}`; }
 function partLayerBoundaryId(partLayerId) { return `part-layer-${partLayerId}-boundary`; }
 function partLayerLabelId(partLayerId) { return `part-layer-${partLayerId}-labels`; }
 
+function addPointLayerSourcesAndLayers(map, payload) {
+  const layers = Array.isArray(payload.point_layers) ? payload.point_layers : [];
+  if (!layers.length) return;
+  if (!map.getSource("points")) {
+    map.addSource("points", {
+      type: "geojson",
+      data: payload.point_geojson || { type: "FeatureCollection", features: [] },
+      promoteId: "_render_id",
+    });
+  }
+  for (const layer of layers) {
+    ensurePointLayerState(layer);
+    const layerId = pointLayerId(layer.point_layer);
+    if (map.getLayer(layerId)) continue;
+    map.addLayer({
+      id: layerId,
+      type: "circle",
+      source: "points",
+      minzoom: layer.minzoom ?? 0,
+      maxzoom: layer.maxzoom ?? 24,
+      layout: { visibility: layerState.pointLayers[layer.point_layer] === false ? "none" : "visible" },
+      paint: {
+        "circle-color": pointColorExpression(layer),
+        "circle-radius": pointRadiusExpression(layer),
+        "circle-opacity": (layer.style && layer.style.opacity) ?? 0.82,
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 1,
+        "circle-stroke-opacity": 0.72,
+      },
+      filter: pointLayerFilter(layer),
+    });
+  }
+}
+
+function updatePointLayerFilters(map, payload) {
+  const source = map.getSource("points");
+  if (source && payload.point_geojson) source.setData(payload.point_geojson);
+  for (const layer of Array.isArray(payload.point_layers) ? payload.point_layers : []) {
+    ensurePointLayerState(layer);
+    const layerId = pointLayerId(layer.point_layer);
+    if (!map.getLayer(layerId)) continue;
+    map.setLayoutProperty(layerId, "visibility", layerState.pointLayers[layer.point_layer] === false ? "none" : "visible");
+    map.setFilter(layerId, pointLayerFilter(layer));
+  }
+}
+
+function pointLayerId(layerId) { return `point-layer-${layerId}`; }
+
+function pointLayerFilter(layer) {
+  const filters = [["==", ["get", "point_layer"], layer.point_layer]];
+  for (const predicate of normalizedPredicates(layer.filters || layer.filter)) {
+    const expr = predicateExpression(predicate);
+    if (expr) filters.push(expr);
+  }
+  const classExpr = visibleClassExpression(layer);
+  if (classExpr) filters.push(classExpr);
+  return filters.length === 1 ? filters[0] : ["all", ...filters];
+}
+
+function normalizedPredicates(filters) {
+  if (!filters) return [];
+  if (Array.isArray(filters)) return filters;
+  if (typeof filters === "object") return [filters];
+  return [];
+}
+
+function predicateExpression(predicate) {
+  if (!predicate || typeof predicate !== "object") return null;
+  const field = predicate.field || predicate.column || predicate.property;
+  const op = predicate.op || predicate.operator || "eq";
+  const value = predicate.value;
+  if (!field) return null;
+  const get = ["get", field];
+  if (op === "eq") return ["==", get, value];
+  if (op === "neq") return ["!=", get, value];
+  if (op === "in") return ["in", get, ["literal", Array.isArray(value) ? value : [value]]];
+  if (op === "nin") return ["!", ["in", get, ["literal", Array.isArray(value) ? value : [value]]]];
+  if (op === "lt") return ["<", ["to-number", get], Number(value)];
+  if (op === "lte") return ["<=", ["to-number", get], Number(value)];
+  if (op === "gt") return [">", ["to-number", get], Number(value)];
+  if (op === "gte") return [">=", ["to-number", get], Number(value)];
+  if (op === "between") {
+    const min = Array.isArray(value) ? value[0] : predicate.min;
+    const max = Array.isArray(value) ? value[1] : predicate.max;
+    return ["all", [">=", ["to-number", get], Number(min)], ["<=", ["to-number", get], Number(max)]];
+  }
+  return null;
+}
+
+function visibleClassExpression(layer) {
+  const cls = layer.classification || {};
+  const field = cls.field || cls.property || cls.column;
+  const classes = Array.isArray(cls.classes)
+    ? cls.classes
+    : Array.isArray(cls.breaks) ? cls.breaks : [];
+  const visible = classes.filter((entry, index) => {
+    const classId = String(entry.id || entry.value || entry.label || index);
+    return classVisible(layer.point_layer, classId);
+  });
+  if (!field || visible.length === classes.length) return null;
+  if (!visible.length) return ["==", ["get", "__never__"], "__hidden__"];
+  return ["any", ...visible.map((entry) => classPredicate(field, entry))];
+}
+
+function classPredicate(field, entry) {
+  const get = ["get", field];
+  if (entry.value != null) return ["==", get, entry.value];
+  if (Array.isArray(entry.values)) return ["in", get, ["literal", entry.values]];
+  const parts = [];
+  if (entry.min != null) parts.push([">=", ["to-number", get], Number(entry.min)]);
+  if (entry.max != null) parts.push(["<", ["to-number", get], Number(entry.max)]);
+  return parts.length > 1 ? ["all", ...parts] : parts[0] || ["==", get, entry.label];
+}
+
+function pointColorExpression(layer) {
+  const base = pointLayerColor(layer);
+  const cls = layer.classification || {};
+  const field = cls.field || cls.property || cls.column;
+  const classes = Array.isArray(cls.classes)
+    ? cls.classes
+    : Array.isArray(cls.breaks) ? cls.breaks : [];
+  if (!field || !classes.length) return base;
+  const categorical = classes.every(
+    (entry) => entry.value != null || Array.isArray(entry.values)
+  );
+  if (categorical) {
+    const arms = [];
+    for (const entry of classes) {
+      const color = entry.color || entry.fill_color || base;
+      if (Array.isArray(entry.values)) {
+        for (const value of entry.values) arms.push(value, color);
+      } else {
+        arms.push(entry.value, color);
+      }
+    }
+    return ["match", ["get", field], ...arms, cls.default_color || base];
+  }
+  const stops = [];
+  for (const entry of classes) {
+    if (entry.min != null) stops.push(Number(entry.min), entry.color || entry.fill_color || base);
+  }
+  return stops.length
+    ? ["step", ["to-number", ["get", field]], cls.default_color || base, ...stops]
+    : base;
+}
+
+function pointRadiusExpression(layer) {
+  const style = layer.style || {};
+  if (typeof style.size === "number") return style.size;
+  return ["interpolate", ["linear"], ["zoom"], 3, 3, 9, 5, 13, 7];
+}
+
 function addTerritoryLayers(map, payload) {
   try {
     addPartLayerSourcesAndLayers(map, payload);
+    addPointLayerSourcesAndLayers(map, payload);
     map.addSource("reference-territories", {
       type: "geojson",
       data: referenceGeojson(payload),
@@ -652,7 +1015,14 @@ function addTerritoryLayers(map, payload) {
     throw error;
   }
 
-  updatePartLayerVisibility(map, payload);
+  applyLayerVisibility(map, payload);
+
+  for (const layer of Array.isArray(payload.point_layers) ? payload.point_layers : []) {
+    const layerId = pointLayerId(layer.point_layer);
+    map.on("click", layerId, (event) => showPointPopup(map, event, layer));
+    map.on("mouseenter", layerId, () => { map.getCanvas().style.cursor = "pointer"; });
+    map.on("mouseleave", layerId, () => { map.getCanvas().style.cursor = ""; });
+  }
 
   map.on("click", "territory-fill", (event) => {
     const feature = event.features && event.features[0];
@@ -672,6 +1042,32 @@ function addTerritoryLayers(map, payload) {
   });
   map.on("mouseenter", "territory-fill", () => { map.getCanvas().style.cursor = "pointer"; });
   map.on("mouseleave", "territory-fill", () => { map.getCanvas().style.cursor = ""; });
+}
+
+function showPointPopup(map, event, layer) {
+  const feature = event.features && event.features[0];
+  if (!feature) return;
+  const props = feature.properties || {};
+  const labelField = layer.label_field || "_render_label";
+  const title = props[labelField] || props._render_label || props.label || props.name || props.account_name || layer.label || "Location";
+  const rows = Object.entries(props)
+    .filter(([key]) => !key.startsWith("_") && !["feature_kind", "point_layer"].includes(key))
+    .slice(0, 8)
+    .map(([key, value]) => `<div><strong>${escapeHtml(key)}:</strong> ${escapeHtml(value)}</div>`)
+    .join("");
+  new maplibregl.Popup()
+    .setLngLat(event.lngLat)
+    .setHTML(`<strong>${escapeHtml(title)}</strong><div class="popup-subtitle">${escapeHtml(layer.label || layer.point_layer)}</div>${rows}`)
+    .addTo(map);
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function referenceGeojson(payload) {
@@ -807,6 +1203,8 @@ function applyPayload(payload, { refit = true } = {}) {
   renderProgress(payload); // reset progress to idle when new payload lands
   if (currentMap && currentMap.getSource("territories")) {
     updateTerritoryLayers(currentMap, payload);
+    updatePointLayerFilters(currentMap, payload);
+    applyLayerVisibility(currentMap, payload);
     if (refit) fitBounds(currentMap, payload.bounds);
   }
 }

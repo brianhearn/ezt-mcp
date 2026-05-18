@@ -248,6 +248,73 @@ def test_build_render_payload_includes_localizable_chrome_labels():
     assert labels["active_alignment_aria"] == "Active territory alignment"
 
 
+def test_build_render_payload_preserves_point_layers_for_mc_rendering():
+    ts = sample_ts()
+    ts["properties"]["point_layers"] = [
+        {
+            "point_layer": "accounts",
+            "label": "Accounts",
+            "label_field": "account_name",
+            "style": {"color": "#ff7a00", "size": 6, "opacity": 0.7},
+            "classification": {
+                "field": "segment",
+                "method": "categorical",
+                "classes": [
+                    {"value": "A", "label": "A accounts", "color": "#00d4aa"},
+                    {"value": "B", "label": "B accounts", "color": "#2f80ed"},
+                ],
+            },
+            "filters": [{"field": "revenue", "op": "gte", "value": 1000}],
+        }
+    ]
+    ts["features"].append(
+        {
+            "type": "Feature",
+            "properties": {
+                "feature_kind": "point",
+                "point_layer": "accounts",
+                "account_id": "acct-1",
+                "account_name": "Acme",
+                "segment": "A",
+                "revenue": 1500,
+            },
+            "geometry": {"type": "Point", "coordinates": [-95, 36]},
+        }
+    )
+
+    payload = build_render_payload(
+        ts,
+        active_tal_id="tal-current",
+        mode="view",
+        public_base_url="https://expertpack.ai/mcp",
+    )
+
+    assert payload["active_tal"]["territory_count"] == 2
+    assert len(payload["geojson"]["features"]) == 2
+    assert payload["point_layers"] == [
+        {
+            "point_layer": "accounts",
+            "label": "Accounts",
+            "feature_count": 1,
+            "default_visible": True,
+            "label_field": "account_name",
+            "style": {"color": "#ff7a00", "size": 6, "opacity": 0.7},
+            "classification": {
+                "field": "segment",
+                "method": "categorical",
+                "classes": [
+                    {"value": "A", "label": "A accounts", "color": "#00d4aa"},
+                    {"value": "B", "label": "B accounts", "color": "#2f80ed"},
+                ],
+            },
+            "filters": [{"field": "revenue", "op": "gte", "value": 1000}],
+        }
+    ]
+    assert payload["point_geojson"]["features"][0]["properties"]["account_name"] == "Acme"
+    assert payload["point_geojson"]["features"][0]["properties"]["_render_color"]
+    assert payload["bounds"] == [-100.0, 35.0, -79.0, 37.0]
+
+
 def test_session_store_returns_new_tab_response_and_validates_token():
     store = InMemoryMapSessionStore()
     session = store.create_session(

@@ -572,11 +572,14 @@ def build_render_payload(
             "active_tal_id is required when no single TAL can be inferred from the TS.",
         )
 
+    point_features = [feature for feature in ts["features"] if _is_point_feature(feature)]
+
     active_features = [
         feature
         for feature in ts["features"]
         if isinstance(feature, Mapping)
         and isinstance(feature.get("properties"), Mapping)
+        and not _is_point_feature(feature)
         and feature["properties"].get("tal_id") == requested_tal
         and feature.get("geometry")
     ]
@@ -592,6 +595,7 @@ def build_render_payload(
         for feature in ts["features"]
         if isinstance(feature, Mapping)
         and isinstance(feature.get("properties"), Mapping)
+        and not _is_point_feature(feature)
         and feature["properties"].get("tal_id") != requested_tal
         and feature.get("geometry")
     ]
@@ -615,7 +619,13 @@ def build_render_payload(
         _feature_for_render(feature, index, role="reference")
         for index, feature in enumerate(reference_features)
     ]
-    bounds = _feature_collection_bounds(clean_active_features + clean_reference_features)
+    clean_point_features = [
+        _point_feature_for_render(feature, index)
+        for index, feature in enumerate(point_features)
+    ]
+    bounds = _feature_collection_bounds(
+        clean_active_features + clean_reference_features + clean_point_features
+    )
     tal_label = _tal_label(properties, requested_tal)
     default_part_layer = _tal_part_layer(properties, requested_tal)
     part_layer_tiles, resolved_active_part_layer = resolve_part_layer_tiles(
@@ -650,6 +660,7 @@ def build_render_payload(
         ),
         "part_layers": part_layer_tiles,
         "active_part_layer": resolved_active_part_layer,
+        "point_layers": _point_layer_summaries(properties, clean_point_features),
         "bounds": bounds,
         "presentation": presentation_payload,
         "geojson": {
@@ -659,6 +670,10 @@ def build_render_payload(
         "reference_geojson": {
             "type": "FeatureCollection",
             "features": clean_reference_features,
+        },
+        "point_geojson": {
+            "type": "FeatureCollection",
+            "features": clean_point_features,
         },
     }
 
@@ -806,6 +821,125 @@ def _reference_tal_summaries(
         )
         if item["tal_id"] != active_tal_id
     ]
+
+
+def _is_point_feature(feature: Any) -> bool:
+    if not isinstance(feature, Mapping) or not feature.get("geometry"):
+        return False
+    properties = (
+        feature.get("properties") if isinstance(feature.get("properties"), Mapping) else {}
+    )
+    if properties.get("feature_kind") == "point" or properties.get("point_layer") is not None:
+        return True
+    geometry = feature.get("geometry") if isinstance(feature.get("geometry"), Mapping) else {}
+    return geometry.get("type") in {"Point", "MultiPoint"} and properties.get("tal_id") is None
+
+
+def _point_feature_for_render(feature: Mapping[str, Any], index: int) -> dict[str, Any]:
+    properties = dict(feature.get("properties") or {})
+    properties.setdefault("feature_kind", "point")
+    properties.setdefault("point_layer", "points")
+    properties.setdefault(
+        "_render_id",
+        properties.get("point_id") or properties.get("account_id") or f"point-{index}",
+    )
+    properties.setdefault("_render_color", _palette_color(index))
+    properties.setdefault(
+        "_render_label",
+        properties.get("label")
+        or properties.get("name")
+        or properties.get("account_name")
+        or properties.get("point_id"),
+    )
+    return {
+        "type": "Feature",
+        "properties": _json_safe_properties(properties),
+        "geometry": feature.get("geometry"),
+    }
+
+
+def _point_layer_summaries(
+    ts_properties: Mapping[str, Any],
+    point_features: list[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    counts: dict[str, int] = {}
+    for feature in point_features:
+        properties = (
+            feature.get("properties") if isinstance(feature.get("properties"), Mapping) else {}
+        )
+        layer_id = str(properties.get("point_layer") or "points")
+        counts[layer_id] = counts.get(layer_id, 0) + 1
+
+    metadata: dict[str, dict[str, Any]] = {}
+    layers = ts_properties.get("point_layers")
+    if isinstance(layers, list):
+        for layer in layers:
+            if not isinstance(layer, Mapping):
+                continue
+            raw_id = (
+                layer.get("point_layer")
+                or layer.get("layer_id")
+                or layer.get("id")
+                or layer.get("name")
+            )
+            if raw_id is None:
+                continue
+            layer_id = str(raw_id)
+            metadata[layer_id] = copy.deepcopy(dict(layer))
+
+    layer_ids = list(metadata) + [layer_id for layer_id in counts if layer_id not in metadata]
+    summaries: list[dict[str, Any]] = []
+    for index, layer_id in enumerate(layer_ids):
+        layer = metadata.get(layer_id, {})
+        style = layer.get("style") if isinstance(layer.get("style"), Mapping) else {}
+        classification = (
+            layer.get("classification")
+            if isinstance(layer.get("classification"), Mapping)
+            else None
+        )
+        filters = (
+            layer.get("filters")
+            if isinstance(layer.get("filters"), list)
+            else layer.get("filter")
+        )
+        summaries.append(
+            _drop_none(
+                {
+                    "point_layer": layer_id,
+                    "label": str(layer.get("label") or layer.get("title") or layer_id),
+                    "feature_count": counts.get(layer_id, 0),
+                    "default_visible": bool(
+                        layer.get("default_visible", layer.get("visible", True))
+                    ),
+                    "minzoom": layer.get("minzoom"),
+                    "maxzoom": layer.get("maxzoom"),
+                    "search_fields": (
+                        layer.get("search_fields")
+                        if isinstance(layer.get("search_fields"), list)
+                        else None
+                    ),
+                    "label_field": layer.get("label_field"),
+                    "style": _drop_none(
+                        {
+                            "color": (
+                                style.get("color")
+                                or style.get("fill_color")
+                                or style.get("stroke_color")
+                                or _palette_color(index)
+                            ),
+                            "size": style.get("size"),
+                            "opacity": style.get("opacity"),
+                            "shape": style.get("shape"),
+                        }
+                    ),
+                    "classification": (
+                        copy.deepcopy(dict(classification)) if classification else None
+                    ),
+                    "filters": copy.deepcopy(filters) if filters else None,
+                }
+            )
+        )
+    return summaries
 
 
 def _tal_feature_counts(features: list[Mapping[str, Any]]) -> dict[str, int]:

@@ -7,6 +7,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added (2026-05-18) — Map Component Layer-Legend and point-layer rendering
+- Added MC render-payload support for TS point layers: `point_layers` metadata summaries and `point_geojson` features now flow to the browser alongside active/reference TAL GeoJSON.
+- Replaced the simple legend with an integrated Layer-Legend UI for active territories, reference alignments, point layers, and part overlays, including visibility toggles, swatches, counts, filter hints, and point-class sub-row toggles.
+- Added headless point-layer styling/filter/classification rendering in the browser from TS presentation metadata: simple predicates (`eq`, `neq`, `in`, `nin`, `lt`, `lte`, `gt`, `gte`, `between`), categorical classes, and numeric break classes.
+- Added a custom-content block inside the MC panel so agent-authored narrative/summary content can coexist with the Layer-Legend without becoming a symbology editor.
+
 ### Changed (2026-05-18) — migration 003 landed; compatibility fallback removed
 - Confirmed `migrations/003_job_payloads_limits.sql` applied to staging DB by Matt Root (all 5 schema capability checks returned `true`).
 - Removed pre-migration compatibility fallback from `ezt_mcp/db/jobs.py`: deleted `_detect_schema_capabilities`, `schema_capabilities()`, `_schema_capabilities_for_conn()`, the `_schema_capabilities` cache field, and all pre-migration branch paths in `submit`, `claim_next`, and `cleanup_expired`.
