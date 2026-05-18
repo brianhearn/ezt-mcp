@@ -113,7 +113,7 @@ Used for upper management, Brian/developer verification, QA, and testing. Users 
 ### `select` mode — agent-assisted spatial selection
 Used by Monica or another territory designer during an agent workflow. Includes all `view` capabilities plus part selection primitives. The component emits the selected `part_layer` and `part_ids[]` to the agent, and the agent decides what MCP tool call to make. Select mode can be used with an existing TS/TAL for realign/analyze workflows, or with only a part layer for manual territory construction and list-return workflows.
 
-Current MVP: clicking an active PMTiles part (for example a ZIP) toggles its `part_id`, highlights the selected feature, updates the selected count, and Commit/Clear controls manage the local selection. Commit emits `{part_layer, part_ids, selection_method}` to the browser-safe selection endpoint; Enter remains a keyboard shortcut. Box/lasso remain planned follow-ups.
+Current MVP: clicking inside an active PMTiles part polygon (for example a ZIP) toggles its `part_id`, highlights the selected feature, updates the selected count, and Commit/Clear controls manage the local selection. Commit emits `{part_layer, part_ids, selection_method}` to the browser-safe selection endpoint, clears the local selection, and disables the controls; Enter remains a keyboard shortcut. Box/lasso remain planned follow-ups.
 
 ### Future `edit` mode — richer direct manipulation
 Potential future mode for richer map interactions, still mediated by the agent and MCP tools. Not required for v1.

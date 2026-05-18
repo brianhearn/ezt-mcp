@@ -808,6 +808,18 @@ function addPartLayerSourcesAndLayers(map, payload) {
       url: `pmtiles://${layer.url}`,
     });
     map.addLayer({
+      id: partLayerHitFillId(layer.part_layer),
+      type: "fill",
+      source: sourceId,
+      "source-layer": layer.source_layer || "parts",
+      minzoom: layer.minzoom ?? 5,
+      layout: { visibility: "none" },
+      paint: {
+        "fill-color": "#ffffff",
+        "fill-opacity": 0.01,
+      },
+    });
+    map.addLayer({
       id: selectedPartLayerFillId(layer.part_layer),
       type: "fill",
       source: sourceId,
@@ -860,7 +872,7 @@ function updatePartLayerVisibility(map, payload) {
   const layers = Array.isArray(payload.part_layers) ? payload.part_layers : [];
   for (const layer of layers) {
     const visible = layer.part_layer === payload.active_part_layer ? "visible" : "none";
-    for (const layerId of [selectedPartLayerFillId(layer.part_layer), partLayerBoundaryId(layer.part_layer), partLayerLabelId(layer.part_layer)]) {
+    for (const layerId of [partLayerHitFillId(layer.part_layer), selectedPartLayerFillId(layer.part_layer), partLayerBoundaryId(layer.part_layer), partLayerLabelId(layer.part_layer)]) {
       if (map.getLayer(layerId)) map.setLayoutProperty(layerId, "visibility", visible);
     }
   }
@@ -879,6 +891,7 @@ function applyLayerVisibility(map, payload) {
   renderLayerLegend(payload);
 }
 
+function partLayerHitFillId(partLayerId) { return `part-layer-${partLayerId}-hit-fill`; }
 function selectedPartLayerFillId(partLayerId) { return `part-layer-${partLayerId}-selected-fill`; }
 function partLayerSourceId(partLayerId) { return `part-layer-${partLayerId}`; }
 function partLayerBoundaryId(partLayerId) { return `part-layer-${partLayerId}-boundary`; }
@@ -1085,8 +1098,10 @@ async function commitSelectedParts() {
     const text = await response.text();
     throw new Error(`Selection commit failed (${response.status}): ${text}`);
   }
-  setStatus(`Selection committed: ${partIds.length} ${partIds.length === 1 ? "part" : "parts"}.`);
+  selectedPartIds = new Set();
+  if (currentMap) updateSelectedPartLayer(currentMap, currentPayload);
   renderPanel(currentPayload);
+  setStatus(`Selection committed: ${partIds.length} ${partIds.length === 1 ? "part" : "parts"}.`);
 }
 
 function togglePartSelection(map, event, layer) {
@@ -1112,15 +1127,15 @@ function togglePartSelection(map, event, layer) {
 
 function addPartLayerSelectionHandlers(map, payload) {
   for (const layer of Array.isArray(payload.part_layers) ? payload.part_layers : []) {
-    const boundaryId = partLayerBoundaryId(layer.part_layer);
-    if (!map.getLayer(boundaryId)) continue;
-    map.on("click", boundaryId, (event) => togglePartSelection(map, event, layer));
-    map.on("mouseenter", boundaryId, () => {
+    const hitId = partLayerHitFillId(layer.part_layer);
+    if (!map.getLayer(hitId)) continue;
+    map.on("click", hitId, (event) => togglePartSelection(map, event, layer));
+    map.on("mouseenter", hitId, () => {
       if (currentPayload && currentPayload.mode === "select" && layer.part_layer === currentPayload.active_part_layer) {
         map.getCanvas().style.cursor = "pointer";
       }
     });
-    map.on("mouseleave", boundaryId, () => { map.getCanvas().style.cursor = ""; });
+    map.on("mouseleave", hitId, () => { map.getCanvas().style.cursor = ""; });
   }
 }
 

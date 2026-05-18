@@ -8,7 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added (2026-05-18) — part-layer click selection MVP
-- Added Map Component select-mode click behavior for active PMTiles part layers: clicking a ZIP/part toggles its `part_id`, selected parts are highlighted, the panel selected count updates, and Commit/Clear controls manage the selected IDs. Enter remains a keyboard shortcut for commit.
+- Added Map Component select-mode click behavior for active PMTiles part layers: clicking inside a ZIP/part toggles its `part_id` via a transparent polygon hit layer, selected parts are highlighted, the panel selected count updates, and Commit/Clear controls manage the selected IDs. Enter remains a keyboard shortcut for commit.
 - Hardened selection commits so browser payloads include `part_layer` plus de-duplicated `part_ids`, and mismatched commits are rejected when they do not match the active map part layer or first-class selection task.
 
 ### Added (2026-05-18) — production US ZIP PMTiles builder
