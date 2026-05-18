@@ -709,12 +709,12 @@ function baseStyle(payload) {
         type: "line",
         source: "basemap",
         "source-layer": "roads",
-        minzoom: 9,
+        minzoom: 10,
         filter: ["!in", "kind", "highway", "major_road"],
         paint: {
           "line-color": p.roadMinor,
-          "line-width": ["interpolate", ["linear"], ["zoom"], 9, 0.10, 12, 0.32, 15, 0.58],
-          "line-opacity": ["interpolate", ["linear"], ["zoom"], 9, 0.025, 12, 0.08, 15, 0.14],
+          "line-width": ["interpolate", ["linear"], ["zoom"], 10, 0.08, 12, 0.24, 15, 0.48],
+          "line-opacity": ["interpolate", ["linear"], ["zoom"], 10, 0.02, 12, 0.06, 15, 0.11],
         },
       },
       {
@@ -840,10 +840,10 @@ function addPartLayerSourcesAndLayers(map, payload) {
       minzoom: layer.minzoom ?? 5,
       layout: { visibility: "none" },
       paint: {
-        "line-color": "#cbd5e1",
-        "line-width": ["interpolate", ["linear"], ["zoom"], 5, 0.45, 9, 0.85, 12, 1.25],
-        "line-opacity": 0.68,
-        "line-dasharray": [2.5, 2],
+        "line-color": "#94a3b8",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 5, 0.28, 9, 0.48, 12, 0.72],
+        "line-opacity": ["interpolate", ["linear"], ["zoom"], 5, 0.22, 9, 0.32, 12, 0.42],
+        "line-dasharray": [2, 2.5],
       },
     });
     map.addLayer({
