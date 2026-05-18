@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added (2026-05-18) — point-layer range-class visual QA demo
+- Added `scripts/create_point_range_demo.py`, a reusable live demo/smoke helper that posts a synthetic TS with 5 SE territories and hundreds of customer point locations to `get-map-visualization`.
+- Added `examples/point_range_demo.summary.json` to record the first Brian-reviewed point-layer range-class demo session and follow-up UI refinement notes.
+- The demo exercises numeric range classification over `annual_revenue_m`, class visibility rows in the Layer-Legend, point popups/labels metadata, and the `us_zips` part overlay in the same MC session.
+
 ### Added (2026-05-18) — Map Component Layer-Legend and point-layer rendering
 - Added MC render-payload support for TS point layers: `point_layers` metadata summaries and `point_geojson` features now flow to the browser alongside active/reference TAL GeoJSON.
 - Replaced the simple legend with an integrated Layer-Legend UI for active territories, reference alignments, point layers, and part overlays, including visibility toggles, swatches, counts, filter hints, and point-class sub-row toggles.

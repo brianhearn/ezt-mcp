@@ -1,0 +1,28 @@
+{
+  "description": "Synthetic Map Component visual QA fixture for point-layer range classification.",
+  "created_at": "2026-05-18T15:34:14Z",
+  "map_url": "https://expertpack.ai/mcp/maps/session/msess_6DOEE1i24LtnjezOErbbxA/pMyhqdc1PE0q",
+  "expires_at": "2026-05-18T17:34:14.067157Z",
+  "active_tal_id": "tal-demo-range",
+  "territory_count": 5,
+  "point_layer": "customer_locations",
+  "point_count": 330,
+  "classification": {
+    "field": "annual_revenue_m",
+    "method": "range",
+    "unit": "USD millions",
+    "class_counts": {
+      "<$1M": 69,
+      "$1M–$3M": 172,
+      "$3M–$6M": 76,
+      "$6M–$10M": 11,
+      "$10M+": 2
+    }
+  },
+  "part_layers": ["us_zips"],
+  "notes": [
+    "Brian visually approved the first range-class demo as good enough for today; refine later.",
+    "OpenClaw headless Chromium could render the panel/legend but failed WebGL, so real-browser visual QA is still required for canvas rendering.",
+    "Follow-up UI refinements: legend label wrapping/truncation, class-row spacing, request-level custom content plumbing, and real-browser map polish."
+  ]
+}
