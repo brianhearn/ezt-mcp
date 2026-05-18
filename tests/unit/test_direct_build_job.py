@@ -102,3 +102,34 @@ def test_run_direct_build_job_fails_with_structured_error_when_geometry_missing(
     failed = jobs.get(context, job.job_id)
     assert failed.status == "failed"
     assert failed.error["code"] == "UNKNOWN_PART_ID"
+
+
+def test_run_direct_build_job_preserves_cancelled_status_at_checkpoint():
+    context = CustomerContext(customer_id="cust-1")
+    jobs = InMemoryJobRepository()
+    job = jobs.submit(context, tool_name="direct_build")
+    jobs.cancel(context, job.job_id)
+    parts = SyntheticPartsRepository({"A": square(0, 0)})
+    events = []
+    request = {
+        "part_layer": "us_zips",
+        "tal_label": "Test TAL",
+        "assignments": [{"part_id": "A", "territory_path": ["North"]}],
+        "map_session_id": "msess_cancel",
+    }
+
+    result = asyncio.run(
+        run_direct_build_job(
+            context=context,
+            job_id=job.job_id,
+            request=request,
+            parts_repo=parts,
+            jobs_repo=jobs,
+            progress_publisher=lambda *args: events.append(args),
+        )
+    )
+
+    assert result["ok"] is False
+    assert result["error"]["code"] == "JOB_CANCELLED"
+    assert jobs.get(context, job.job_id).status == "cancelled"
+    assert any(event[1] == "cancelled" for event in events)

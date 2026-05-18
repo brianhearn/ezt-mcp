@@ -6,7 +6,7 @@ import asyncio
 import json
 from importlib import resources
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Awaitable, Callable, Mapping
 
 from starlette.requests import Request
 from starlette.responses import (
@@ -29,10 +29,12 @@ class MapVisualizationRoutes:
         *,
         public_base_url: str,
         on_selection_committed: Callable[[Mapping[str, Any]], dict[str, Any] | None] | None = None,
+        on_job_cancel: Callable[[str], Awaitable[dict[str, Any]] | dict[str, Any]] | None = None,
     ):
         self.store = store
         self.public_base_url = public_base_url.rstrip("/")
         self.on_selection_committed = on_selection_committed
+        self.on_job_cancel = on_job_cancel
 
     async def create_visualization(self, request: Request) -> JSONResponse:
         body = await request.json()
@@ -77,6 +79,8 @@ class MapVisualizationRoutes:
         payload: dict[str, Any] = dict(session.render_payload)
         payload["map_session_id"] = session.map_session_id
         payload["expires_at"] = session.expires_at.isoformat().replace("+00:00", "Z")
+        if session.pending_job_reference:
+            payload["pending_job_reference"] = session.pending_job_reference
         return JSONResponse(payload)
 
     async def state(self, request: Request) -> JSONResponse:
@@ -107,6 +111,23 @@ class MapVisualizationRoutes:
         except MapVisualizationError as exc:
             return _error_response(exc, status_code=_status_for_error(exc))
         return JSONResponse({"ok": True, "result": state})
+
+
+    async def cancel_job(self, request: Request) -> JSONResponse:
+        try:
+            await self._session_from_request(request)
+            if self.on_job_cancel is None:
+                raise MapVisualizationError(
+                    "UNSUPPORTED_OPERATION", "Job cancellation is not configured for this server."
+                )
+            job_id = str(request.path_params.get("job_id") or "").strip()
+            if not job_id:
+                raise MapVisualizationError("INVALID_JOB", "job_id is required.")
+            result = await _maybe_await(self.on_job_cancel(job_id))
+        except MapVisualizationError as exc:
+            return _error_response(exc, status_code=_status_for_error(exc))
+        status_code = 200 if isinstance(result, Mapping) and result.get("ok") is True else 400
+        return JSONResponse(result, status_code=status_code)
 
     async def events(self, request: Request) -> StreamingResponse:
         try:

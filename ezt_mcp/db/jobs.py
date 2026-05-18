@@ -325,7 +325,7 @@ class AsyncpgJobRepository:
         if isinstance(inline_payload, dict):
             job.request_payload = inline_payload
             return job
-        payload_handle = request_summary.get("payload_handle") or getattr(job, "payload_handle", None)
+        payload_handle = request_summary.get("payload_handle")
         if not payload_handle:
             return job
         row = await conn.fetchrow(
@@ -543,30 +543,37 @@ class AsyncpgJobRepository:
     ) -> JobRecord:
         now = now or datetime.now(tz=UTC)
         async with self._pool.acquire() as conn:
-            await conn.execute(
-                """
-                update transient.jobs
-                set status = 'failed', phase = 'failed', error = $3::jsonb,
-                    completed_at = $4, last_progress_at = $4
-                where job_id = $1 and customer_id = $2::uuid
-                """,
-                job_id,
-                context.customer_id,
-                json.dumps(dict(error)),
-                now,
-            )
-            await _insert_event(
-                conn,
-                job_id=job_id,
-                customer_id=context.customer_id,
-                event_type="error",
-                phase="failed",
-                progress=None,
-                total=None,
-                message=str(error.get("message") or "Job failed."),
-                details=dict(error),
-                created_at=now,
-            )
+            async with conn.transaction():
+                row = await _fetch_job_for_update(conn, context, job_id)
+                job = _row_to_job(row)
+                if job.status in TERMINAL_STATUSES:
+                    raise InvalidJobTransitionError(
+                        "Terminal jobs cannot be failed again.", job_id=job.job_id, status=job.status
+                    )
+                await conn.execute(
+                    """
+                    update transient.jobs
+                    set status = 'failed', phase = 'failed', error = $3::jsonb,
+                        completed_at = $4, last_progress_at = $4
+                    where job_id = $1 and customer_id = $2::uuid
+                    """,
+                    job_id,
+                    context.customer_id,
+                    json.dumps(dict(error)),
+                    now,
+                )
+                await _insert_event(
+                    conn,
+                    job_id=job_id,
+                    customer_id=context.customer_id,
+                    event_type="error",
+                    phase="failed",
+                    progress=None,
+                    total=None,
+                    message=str(error.get("message") or "Job failed."),
+                    details=dict(error),
+                    created_at=now,
+                )
         return await self.get(context, job_id, now=now)
 
     async def cleanup_expired(self, *, now: datetime | None = None) -> dict[str, int]:
@@ -745,7 +752,6 @@ def _row_to_job(row: Any) -> JobRecord:
         counts=dict(counts),
         poll_interval_ms=int(row["poll_interval_ms"]),
         required_input=dict(required_input) if isinstance(required_input, dict) else None,
-        request_payload=dict(request_payload) if isinstance(request_payload, dict) else None,
         result=result,
         error=_jsonb_to_dict(row["error"]) if row["error"] else None,
         created_at=_as_utc(row["created_at"]),
@@ -756,6 +762,7 @@ def _row_to_job(row: Any) -> JobRecord:
         cancel_requested=bool(row["cancel_requested"]),
         attempt_count=int(_row_get(row, "attempt_count", 0) or 0),
         max_attempts=int(_row_get(row, "max_attempts", 3) or 3),
+        request_payload=dict(request_payload) if isinstance(request_payload, dict) else None,
         leased_by=_row_get(row, "leased_by"),
         lease_expires_at=_as_utc(_row_get(row, "lease_expires_at")),
         next_attempt_at=_as_utc(_row_get(row, "next_attempt_at")),

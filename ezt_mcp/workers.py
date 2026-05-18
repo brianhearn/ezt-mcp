@@ -16,7 +16,7 @@ from ezt_mcp.tools.direct_build_job import run_direct_build_job
 
 logger = logging.getLogger(__name__)
 
-ProgressPublisher = Callable[[str, str, str, int | None], Any]
+ProgressPublisher = Callable[[str, str, str, int | None, str | None], Any]
 
 
 class JobWorker:

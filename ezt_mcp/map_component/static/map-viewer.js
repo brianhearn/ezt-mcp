@@ -3,6 +3,8 @@ const debugEl = document.getElementById("debug");
 const debugMessages = [];
 let currentPayload = null;
 let currentMap = null;
+let activeJobId = null;
+let activeJobCancelInFlight = false;
 let selectedPartIds = new Set();
 const layerState = {
   territories: true,
@@ -1335,6 +1337,7 @@ function sessionUrls() {
     token,
     payload: `${base}/render-payload`,
     activeTal: `${base}/active-tal`,
+    cancelJob: (jobId) => `${base}/jobs/${encodeURIComponent(jobId)}/cancel`,
   };
 }
 
@@ -1372,13 +1375,59 @@ function ensureProgressOverlay() {
   overlay.style.display = "none";
 
   overlay.innerHTML = `
-    <div id="progress-message" style="margin-bottom: 6px; font-weight: 500;"></div>
+    <div id="progress-row">
+      <div id="progress-message" style="margin-bottom: 6px; font-weight: 500;"></div>
+      <button id="progress-cancel" type="button" hidden>Cancel</button>
+    </div>
     <div id="progress-bar-track" style="display: none; margin-top: 6px; height: 3px; border-radius: 999px; background: var(--border-subtle); overflow: hidden;">
       <div id="progress-bar-fill" style="height: 100%; border-radius: 999px; background: var(--brand); transition: width 0.3s ease; width: 0%;"></div>
     </div>
   `;
   document.getElementById("map").appendChild(overlay);
+  const cancelButton = overlay.querySelector("#progress-cancel");
+  if (cancelButton) {
+    cancelButton.addEventListener("click", () => cancelActiveJob().catch((error) => {
+      console.error(error);
+      debugMessage("Cancel failed", errorDetails(error));
+      setStatus(`Cancel failed: ${error.message}`);
+    }));
+  }
   return overlay;
+}
+
+function progressJobId(payload) {
+  if (payload && typeof payload.job_id === "string" && payload.job_id.trim()) return payload.job_id.trim();
+  const ref = currentPayload && currentPayload.pending_job_reference;
+  if (ref && typeof ref.job_id === "string" && ref.job_id.trim()) return ref.job_id.trim();
+  return activeJobId;
+}
+
+async function cancelActiveJob() {
+  const jobId = activeJobId;
+  if (!jobId || activeJobCancelInFlight) return;
+  activeJobCancelInFlight = true;
+  const button = document.getElementById("progress-cancel");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Cancelling…";
+  }
+  const response = await fetch(sessionUrls().cancelJob(jobId), { method: "POST" });
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch (_) {
+    payload = {};
+  }
+  if (!response.ok || !payload.ok) {
+    const message = payload && payload.error && payload.error.message ? payload.error.message : `Cancel failed (${response.status}).`;
+    throw new Error(message);
+  }
+  renderProgress({
+    type: "progress",
+    state: "cancelled",
+    message: "Cancellation requested.",
+    job_id: jobId,
+  });
 }
 
 function renderProgress(payload) {
@@ -1389,13 +1438,21 @@ function renderProgress(payload) {
     return;
   }
   const state = payload.state || "idle";
+  const jobId = progressJobId(payload);
+  if (jobId) activeJobId = jobId;
   const messageEl = document.getElementById("progress-message");
   const trackEl = document.getElementById("progress-bar-track");
   const fillEl = document.getElementById("progress-bar-fill");
+  const cancelEl = document.getElementById("progress-cancel");
   const msg = payload.message || "";
 
-  overlay.classList.remove("progress-done", "progress-error");
+  overlay.classList.remove("progress-done", "progress-error", "progress-cancelled");
   messageEl.textContent = msg;
+  if (cancelEl) {
+    cancelEl.hidden = !(state === "running" && Boolean(activeJobId));
+    cancelEl.disabled = activeJobCancelInFlight;
+    cancelEl.textContent = activeJobCancelInFlight ? "Cancelling…" : "Cancel";
+  }
 
   if (state === "running") {
     overlay.style.display = "block";
@@ -1406,6 +1463,8 @@ function renderProgress(payload) {
       trackEl.style.display = "none";
     }
   } else if (state === "done") {
+    activeJobCancelInFlight = false;
+    activeJobId = null;
     overlay.classList.add("progress-done");
     trackEl.style.display = "none";
     overlay.style.display = "block";
@@ -1414,6 +1473,8 @@ function renderProgress(payload) {
       setTimeout(() => { overlay.style.display = "none"; overlay.style.opacity = "1"; }, 200);
     }, 1500);
   } else if (state === "error") {
+    activeJobCancelInFlight = false;
+    activeJobId = null;
     overlay.classList.add("progress-error");
     trackEl.style.display = "none";
     overlay.style.display = "block";
@@ -1421,6 +1482,16 @@ function renderProgress(payload) {
       overlay.style.opacity = "0";
       setTimeout(() => { overlay.style.display = "none"; overlay.style.opacity = "1"; }, 200);
     }, 3000);
+  } else if (state === "cancelled") {
+    activeJobCancelInFlight = false;
+    activeJobId = null;
+    overlay.classList.add("progress-cancelled");
+    trackEl.style.display = "none";
+    overlay.style.display = "block";
+    setTimeout(() => {
+      overlay.style.opacity = "0";
+      setTimeout(() => { overlay.style.display = "none"; overlay.style.opacity = "1"; }, 200);
+    }, 2500);
   } else {
     overlay.style.display = "none";
   }
@@ -1428,6 +1499,9 @@ function renderProgress(payload) {
 
 function applyPayload(payload, { refit = true } = {}) {
   currentPayload = payload;
+  if (payload && payload.pending_job_reference && payload.pending_job_reference.job_id) {
+    activeJobId = payload.pending_job_reference.job_id;
+  }
   renderPanel(payload);
   renderProgress(payload); // reset progress to idle when new payload lands
   if (currentMap && currentMap.getSource("territories")) {

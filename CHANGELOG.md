@@ -7,6 +7,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-18) — cooperative job cancellation + MC cancel UX
+- Promoted queued-job cancellation to a first-class cooperative outcome: Direct Build now publishes `cancelled` MC progress events, returns `JOB_CANCELLED`, and preserves terminal `cancelled` status instead of overwriting it as `failed`.
+- Added cancellation checkpoints before/after expensive Direct Build stages and chunked large part-geometry fetches so large requests can observe cancellation between chunks.
+- Added pending job references to MC render payloads plus a session-token-scoped browser cancel route and Cancel button in the progress overlay.
+- Hardened in-memory and Postgres job repositories so terminal jobs cannot be failed again after cancellation.
+
 ### Changed (2026-05-18) — basemap visual tuning
 - Reduced visual dominance of non-major roads by fading minor-road color, width, opacity, and raising the minor-road min zoom to z10. Restored PMTiles ZIP/part-layer boundary strokes to the stronger selection-friendly style. Verified basemap tile attributes: many visually local streets are classified as `major_road` with `kind_detail=secondary|tertiary`, so those secondary/tertiary road details are now styled thinner and more faded while highways/primary roads stay prominent.
 

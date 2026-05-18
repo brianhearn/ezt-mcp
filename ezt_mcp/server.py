@@ -458,6 +458,7 @@ def build_app(config: ServerConfig) -> Starlette:
         state.map_sessions,
         public_base_url=config.map_visualization.public_base_url,
         on_selection_committed=lambda selection: _commit_part_selection_from_map(state, selection),
+        on_job_cancel=lambda job_id: _cancel_job_for_map(state, job_id),
     )
     dissolve_options = DissolveOptions(
         simplify_tolerance=config.dissolve.simplify_tolerance,
@@ -505,8 +506,8 @@ def build_app(config: ServerConfig) -> Starlette:
                 jobs_repo=state.jobs_repo,
                 parts_repo=state.parts_repo,
                 dissolve_options=dissolve_options,
-                progress_publisher=lambda map_session_id, event_state, message, percent: _publish_map_progress(
-                    state, map_session_id, event_state, message, percent
+                progress_publisher=lambda map_session_id, event_state, message, percent, job_id=None: _publish_map_progress(
+                    state, map_session_id, event_state, message, percent, job_id=job_id
                 ),
             )
             state.job_worker_task = asyncio.create_task(state.job_worker.run())
@@ -732,6 +733,11 @@ def build_app(config: ServerConfig) -> Starlette:
         ),
         Route("/maps/session/{map_session_id}/{token}/events", map_routes.events),
         Route(
+            "/maps/session/{map_session_id}/{token}/jobs/{job_id}/cancel",
+            map_routes.cancel_job,
+            methods=["POST"],
+        ),
+        Route(
             "/maps/session/{map_session_id}/{token}/selection",
             map_routes.commit_selection,
             methods=["POST"],
@@ -745,6 +751,11 @@ def build_app(config: ServerConfig) -> Starlette:
             methods=["POST"],
         ),
         Route("/maps/session/{map_session_id}/events", map_routes.events),
+        Route(
+            "/maps/session/{map_session_id}/jobs/{job_id}/cancel",
+            map_routes.cancel_job,
+            methods=["POST"],
+        ),
         Route("/static/{asset_name}", map_routes.static_asset),
         Route("/assets/tiles/us-basemap.pmtiles", map_routes.pmtiles_asset),
         Route("/assets/tiles/parts/{part_layer}.pmtiles", map_routes.part_pmtiles_asset),
@@ -766,6 +777,14 @@ def _require_parts_repo(state: AppState) -> AsyncpgPartsRepository:
     if state.parts_repo is None:
         raise RuntimeError("Database repository is not configured")
     return state.parts_repo
+
+
+async def _cancel_job_for_map(state: AppState, job_id: str) -> dict[str, Any]:
+    try:
+        job = await _maybe_await(_require_jobs_repo(state).cancel(_default_customer_context(), job_id))
+    except JobAccessError as exc:
+        return _job_error_payload(exc.code, str(exc), job_id=job_id)
+    return {"ok": True, "result": job.status_resource()}
 
 
 def _create_map_visualization_tool_result(
@@ -910,6 +929,14 @@ async def _submit_and_run_direct_build(
                 request_payload=request,
             )
         )
+        if request.get("map_session_id"):
+            with suppress(Exception):
+                await _maybe_await(
+                    state.map_sessions.set_state(
+                        str(request["map_session_id"]),
+                        pending_job_reference=job.reference(),
+                    )
+                )
         # A startup JobWorker claims queued jobs from shared transient storage.
         # This keeps submissions durable across request completion and avoids
         # process-local per-request asyncio.create_task execution.
@@ -1039,7 +1066,13 @@ def _default_customer_context() -> CustomerContext:
 
 
 def _publish_map_progress(
-    state: AppState, map_session_id: str, event_state: str, message: str, percent: int | None
+    state: AppState,
+    map_session_id: str,
+    event_state: str,
+    message: str,
+    percent: int | None,
+    *,
+    job_id: str | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "map_session_id": map_session_id,
@@ -1048,6 +1081,8 @@ def _publish_map_progress(
     }
     if percent is not None:
         payload["percent"] = percent
+    if job_id:
+        payload["job_id"] = job_id
     return _set_map_progress(state, payload)
 
 
@@ -1115,12 +1150,12 @@ def _set_map_progress(state: AppState, payload: dict[str, Any]) -> dict[str, Any
                 },
             }
         state_val = payload.get("state")
-        if state_val not in {"running", "done", "error", "idle"}:
+        if state_val not in {"running", "done", "error", "idle", "cancelled"}:
             return {
                 "ok": False,
                 "error": {
                     "code": "INVALID_PROGRESS_STATE",
-                    "message": f"Invalid state: {state_val}. Must be one of running, done, error, idle.",
+                    "message": f"Invalid state: {state_val}. Must be one of running, done, error, idle, cancelled.",
                 },
             }
         percent = payload.get("percent")
@@ -1143,20 +1178,24 @@ def _set_map_progress(state: AppState, payload: dict[str, Any]) -> dict[str, Any
                 },
             }
 
+        job_id = payload.get("job_id")
         event = {
             "type": "progress",
             "map_session_id": map_session_id,
             "state": state_val,
             "message": message,
             "percent": percent,
+            "job_id": job_id if isinstance(job_id, str) and job_id.strip() else None,
             "created_at": datetime.now(tz=UTC).isoformat().replace("+00:00", "Z"),
         }
+        event = {key: value for key, value in event.items() if value is not None}
         state.map_sessions.publish_event(map_session_id, event)
         return {
             "ok": True,
             "map_session_id": map_session_id,
             "state": state_val,
             "message": message,
+            "job_id": job_id if isinstance(job_id, str) and job_id.strip() else None,
         }
     except MapVisualizationError as exc:
         return {"ok": False, "error": exc.to_error()}

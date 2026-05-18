@@ -137,6 +137,9 @@ def test_cancel_marks_terminal_cancelled():
     assert cancelled.cancel_requested is True
     assert cancelled.status_resource()["phase"] == "cancelled"
 
+    with pytest.raises(InvalidJobTransitionError):
+        repo.fail(context, job.job_id, error={"code": "SHOULD_NOT_OVERWRITE"})
+
 
 def test_in_memory_job_repo_enforces_active_limit():
     repo = InMemoryJobRepository(max_active_jobs_per_customer=1)

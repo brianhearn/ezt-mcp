@@ -119,3 +119,22 @@ def test_set_state_can_switch_active_tal_and_publish_tal_update():
     ]
     events = [queue.get_nowait()["type"], queue.get_nowait()["type"]]
     assert events == ["connected", "tal_updated"]
+
+
+def test_render_payload_includes_pending_job_reference_for_browser_cancel():
+    store = InMemoryMapSessionStore()
+    created = store.create_or_update_session(
+        {"ts": sample_ts(), "mode": "view", "active_tal_id": "tal-current"},
+        public_base_url="https://expertpack.ai/mcp",
+        user_id="monica",
+    )
+    store.set_state(
+        created.session.map_session_id,
+        pending_job_reference={"job_id": "job_1", "status": "running"},
+    )
+
+    payload = dict(created.session.render_payload)
+    if created.session.pending_job_reference:
+        payload["pending_job_reference"] = created.session.pending_job_reference
+
+    assert payload["pending_job_reference"] == {"job_id": "job_1", "status": "running"}

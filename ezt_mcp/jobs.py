@@ -324,6 +324,10 @@ class InMemoryJobRepository:
         now: datetime | None = None,
     ) -> JobRecord:
         job = self.get(context, job_id, now=now)
+        if job.status in TERMINAL_STATUSES:
+            raise InvalidJobTransitionError(
+                "Terminal jobs cannot be failed again.", job_id=job.job_id, status=job.status
+            )
         now = now or datetime.now(tz=UTC)
         job.status = "failed"
         job.phase = "failed"

@@ -3,6 +3,7 @@ from __future__ import annotations
 from starlette.testclient import TestClient
 
 from ezt_mcp.config import ServerConfig
+from ezt_mcp.jobs import CustomerContext
 from ezt_mcp.server import build_app
 from tests.unit.test_map_visualization import sample_ts
 
@@ -90,3 +91,45 @@ def test_render_payload_route_includes_point_layer_contract_for_browser():
     assert payload["point_layers"][0]["point_layer"] == "accounts"
     assert payload["point_layers"][0]["classification"]["classes"][0]["label"] == "A"
     assert payload["point_geojson"]["features"][0]["properties"]["account_id"] == "acct-1"
+
+
+def test_render_payload_route_includes_pending_job_reference_for_browser_cancel():
+    app = build_app(ServerConfig(map_visualization={"public_base_url": "https://expertpack.ai/mcp"}))
+    state = app.state.ezt_state
+    created = state.map_sessions.create_or_update_session(
+        {"ts": sample_ts(), "mode": "view", "active_tal_id": "tal-current"},
+        public_base_url="https://expertpack.ai/mcp",
+        user_id="monica",
+    )
+    session = created.session
+    state.map_sessions.set_state(
+        session.map_session_id,
+        pending_job_reference={"job_id": "job_1", "status": "running"},
+    )
+
+    with TestClient(app) as client:
+        response = client.get(f"/maps/session/{session.map_session_id}/{session.token}/render-payload")
+
+    assert response.status_code == 200
+    assert response.json()["pending_job_reference"] == {"job_id": "job_1", "status": "running"}
+
+
+def test_browser_session_cancel_route_uses_session_token_and_cancels_job():
+    app = build_app(ServerConfig(map_visualization={"public_base_url": "https://expertpack.ai/mcp"}))
+    state = app.state.ezt_state
+    created = state.map_sessions.create_or_update_session(
+        {"ts": sample_ts(), "mode": "view", "active_tal_id": "tal-current"},
+        public_base_url="https://expertpack.ai/mcp",
+        user_id="monica",
+    )
+    session = created.session
+    context = CustomerContext(customer_id="00000000-0000-0000-0000-000000000001")
+    job = state.jobs_repo.submit(context, tool_name="direct_build")
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/maps/session/{session.map_session_id}/{session.token}/jobs/{job.job_id}/cancel"
+        )
+
+    assert response.status_code == 200
+    assert response.json()["result"]["status"] == "cancelled"

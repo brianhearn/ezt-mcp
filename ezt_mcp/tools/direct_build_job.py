@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from collections.abc import Callable
 from typing import Any, Protocol
 
-from ezt_mcp.jobs import CustomerContext
+from ezt_mcp.jobs import CustomerContext, InvalidJobTransitionError
 from ezt_mcp.observability import timed_async_operation
 from ezt_mcp.resources.part_layers import UnknownPartLayerError
 from ezt_mcp.territory.dissolve import (
@@ -54,7 +54,7 @@ async def run_direct_build_job(
     jobs_repo: DirectBuildJobRepository,
     backend: GeometryDissolveBackend | None = None,
     dissolve_options: DissolveOptions | None = None,
-    progress_publisher: Callable[[str, str, str, int | None], Any] | None = None,
+    progress_publisher: Callable[[str, str, str, int | None, str | None], Any] | None = None,
 ) -> dict[str, Any]:
     """Run Direct Build and persist progress/result into the job repository.
 
@@ -76,8 +76,15 @@ async def run_direct_build_job(
         unique_part_count=len(part_ids),
     ):
         try:
+            await _checkpoint_not_cancelled(
+                jobs_repo,
+                context,
+                job_id,
+                map_session_id=map_session_id,
+                progress_publisher=progress_publisher,
+            )
             await _publish_progress(
-                progress_publisher, map_session_id, "running", "Fetching part geometries.", 10
+                progress_publisher, map_session_id, "running", "Fetching part geometries.", 10, job_id
             )
             await _maybe_await(
                 jobs_repo.update_progress(
@@ -91,7 +98,13 @@ async def run_direct_build_job(
                     counts={"assignment_count": len(assignments), "unique_part_count": len(part_ids)},
                 )
             )
-            _raise_if_cancelled(await _maybe_await(jobs_repo.get(context, job_id)), job_id=job_id)
+            await _checkpoint_not_cancelled(
+                jobs_repo,
+                context,
+                job_id,
+                map_session_id=map_session_id,
+                progress_publisher=progress_publisher,
+            )
 
             async with timed_async_operation(
                 logger,
@@ -100,10 +113,26 @@ async def run_direct_build_job(
                 part_layer=part_layer,
                 requested_part_count=len(part_ids),
             ):
-                part_geometries = await parts_repo.fetch_part_geometries(part_layer, part_ids)
+                part_geometries = await _fetch_part_geometries_cooperatively(
+                    parts_repo,
+                    part_layer,
+                    part_ids,
+                    jobs_repo=jobs_repo,
+                    context=context,
+                    job_id=job_id,
+                    map_session_id=map_session_id,
+                    progress_publisher=progress_publisher,
+                )
 
+            await _checkpoint_not_cancelled(
+                jobs_repo,
+                context,
+                job_id,
+                map_session_id=map_session_id,
+                progress_publisher=progress_publisher,
+            )
             await _publish_progress(
-                progress_publisher, map_session_id, "running", "Dissolving territory geometries.", 45
+                progress_publisher, map_session_id, "running", "Dissolving territory geometries.", 45, job_id
             )
             await _maybe_await(
                 jobs_repo.update_progress(
@@ -119,7 +148,13 @@ async def run_direct_build_job(
                     },
                 )
             )
-            _raise_if_cancelled(await _maybe_await(jobs_repo.get(context, job_id)), job_id=job_id)
+            await _checkpoint_not_cancelled(
+                jobs_repo,
+                context,
+                job_id,
+                map_session_id=map_session_id,
+                progress_publisher=progress_publisher,
+            )
 
             result_payload = build_direct_tal(
                 request,
@@ -128,8 +163,15 @@ async def run_direct_build_job(
                 dissolve_options=dissolve_options,
             )
 
+            await _checkpoint_not_cancelled(
+                jobs_repo,
+                context,
+                job_id,
+                map_session_id=map_session_id,
+                progress_publisher=progress_publisher,
+            )
             await _publish_progress(
-                progress_publisher, map_session_id, "running", "Serializing Territory Solution result.", 90
+                progress_publisher, map_session_id, "running", "Serializing Territory Solution result.", 90, job_id
             )
             await _maybe_await(
                 jobs_repo.update_progress(
@@ -146,15 +188,35 @@ async def run_direct_build_job(
                     },
                 )
             )
+            await _checkpoint_not_cancelled(
+                jobs_repo,
+                context,
+                job_id,
+                map_session_id=map_session_id,
+                progress_publisher=progress_publisher,
+            )
             await _maybe_await(jobs_repo.complete(context, job_id, result=result_payload))
             await _publish_progress(
-                progress_publisher, map_session_id, "done", "Territory build complete.", 100
+                progress_publisher, map_session_id, "done", "Territory build complete.", 100, job_id
             )
             return result_payload
+        except JobCancelledError as exc:
+            await _publish_progress(
+                progress_publisher, map_session_id, "cancelled", str(exc), None, job_id
+            )
+            return {"ok": False, "error": exc.to_error()}
+        except InvalidJobTransitionError as exc:
+            if exc.status == "cancelled":
+                cancelled = JobCancelledError(job_id)
+                await _publish_progress(
+                    progress_publisher, map_session_id, "cancelled", str(cancelled), None, job_id
+                )
+                return {"ok": False, "error": cancelled.to_error()}
+            raise
         except (HierarchyValidationError, DissolveValidationError, QueryPartsError, ValueError) as exc:
             error = _structured_error(exc)
-            await _maybe_await(jobs_repo.fail(context, job_id, error=error))
-            await _publish_progress(progress_publisher, map_session_id, "error", str(error.get("message") or "Territory build failed."), None)
+            await _fail_if_not_terminal(jobs_repo, context, job_id, error=error)
+            await _publish_progress(progress_publisher, map_session_id, "error", str(error.get("message") or "Territory build failed."), None, job_id)
             return {"ok": False, "error": error}
         except UnknownPartLayerError as exc:
             error = {
@@ -164,8 +226,8 @@ async def run_direct_build_job(
                 "retryable": False,
                 "user_action_required": True,
             }
-            await _maybe_await(jobs_repo.fail(context, job_id, error=error))
-            await _publish_progress(progress_publisher, map_session_id, "error", str(error.get("message") or "Territory build failed."), None)
+            await _fail_if_not_terminal(jobs_repo, context, job_id, error=error)
+            await _publish_progress(progress_publisher, map_session_id, "error", str(error.get("message") or "Territory build failed."), None, job_id)
             return {"ok": False, "error": error}
         except Exception as exc:  # noqa: BLE001
             logger.exception("Direct Build job failed")
@@ -176,24 +238,121 @@ async def run_direct_build_job(
                 "retryable": False,
                 "user_action_required": False,
             }
-            await _maybe_await(jobs_repo.fail(context, job_id, error=error))
-            await _publish_progress(progress_publisher, map_session_id, "error", error["message"], None)
+            await _fail_if_not_terminal(jobs_repo, context, job_id, error=error)
+            await _publish_progress(progress_publisher, map_session_id, "error", error["message"], None, job_id)
             return {"ok": False, "error": error}
 
 
 async def _publish_progress(
-    publisher: Callable[[str, str, str, int | None], Any] | None,
+    publisher: Callable[[str, str, str, int | None, str | None], Any] | None,
     map_session_id: str,
     state: str,
     message: str,
     percent: int | None,
+    job_id: str | None = None,
 ) -> None:
     if not publisher or not map_session_id:
         return
     try:
-        await _maybe_await(publisher(map_session_id, state, message, percent))
+        await _maybe_await(publisher(map_session_id, state, message, percent, job_id))
     except Exception:  # noqa: BLE001
         logger.debug("Map progress publish failed", exc_info=True)
+
+
+class JobCancelledError(RuntimeError):
+    """Raised at cooperative cancellation checkpoints."""
+
+    code = "JOB_CANCELLED"
+
+    def __init__(self, job_id: str):
+        super().__init__(f"Direct Build job {job_id} was cancelled.")
+        self.job_id = job_id
+
+    def to_error(self) -> dict[str, Any]:
+        return {
+            "code": self.code,
+            "message": str(self),
+            "details": {"job_id": self.job_id},
+            "retryable": False,
+            "user_action_required": False,
+        }
+
+
+async def _fetch_part_geometries_cooperatively(
+    parts_repo: DirectBuildPartsRepository,
+    part_layer: str,
+    part_ids: list[str],
+    *,
+    jobs_repo: DirectBuildJobRepository,
+    context: CustomerContext,
+    job_id: str,
+    map_session_id: str,
+    progress_publisher: Callable[[str, str, str, int | None, str | None], Any] | None,
+) -> dict[str, dict[str, Any]]:
+    chunk_size = 500
+    if len(part_ids) <= chunk_size:
+        return await parts_repo.fetch_part_geometries(part_layer, part_ids)
+
+    merged: dict[str, dict[str, Any]] = {}
+    total = len(part_ids)
+    for offset in range(0, total, chunk_size):
+        await _checkpoint_not_cancelled(
+            jobs_repo,
+            context,
+            job_id,
+            map_session_id=map_session_id,
+            progress_publisher=progress_publisher,
+        )
+        chunk = part_ids[offset : offset + chunk_size]
+        merged.update(await parts_repo.fetch_part_geometries(part_layer, chunk))
+        fetched = min(offset + len(chunk), total)
+        percent = 10 + int(25 * fetched / max(total, 1))
+        message = f"Fetching part geometries ({fetched}/{total})."
+        await _publish_progress(progress_publisher, map_session_id, "running", message, percent, job_id)
+        await _maybe_await(
+            jobs_repo.update_progress(
+                context,
+                job_id,
+                status="running",
+                phase="fetch_part_geometries",
+                progress=percent,
+                total=100,
+                status_message=message,
+                counts={"unique_part_count": total, "fetched_geometry_count": len(merged)},
+            )
+        )
+    return merged
+
+
+async def _checkpoint_not_cancelled(
+    jobs_repo: DirectBuildJobRepository,
+    context: CustomerContext,
+    job_id: str,
+    *,
+    map_session_id: str,
+    progress_publisher: Callable[[str, str, str, int | None, str | None], Any] | None,
+) -> None:
+    job = await _maybe_await(jobs_repo.get(context, job_id))
+    if getattr(job, "cancel_requested", False) or getattr(job, "status", None) == "cancelled":
+        await _publish_progress(
+            progress_publisher, map_session_id, "cancelled", "Territory build cancelled.", None, job_id
+        )
+        raise JobCancelledError(job_id)
+
+
+async def _fail_if_not_terminal(
+    jobs_repo: DirectBuildJobRepository,
+    context: CustomerContext,
+    job_id: str,
+    *,
+    error: dict[str, Any],
+) -> None:
+    try:
+        await _maybe_await(jobs_repo.fail(context, job_id, error=error))
+    except InvalidJobTransitionError as exc:
+        if exc.status == "cancelled":
+            return
+        raise
 
 
 def _assignment_part_ids(assignments: list[Any]) -> list[str]:
@@ -204,11 +363,6 @@ def _assignment_part_ids(assignments: list[Any]) -> list[str]:
             if part_id:
                 part_ids.append(part_id)
     return list(dict.fromkeys(part_ids))
-
-
-def _raise_if_cancelled(job: Any, *, job_id: str) -> None:
-    if getattr(job, "cancel_requested", False) or getattr(job, "status", None) == "cancelled":
-        raise ValueError(f"Direct Build job {job_id} was cancelled.")
 
 
 def _structured_error(exc: Exception) -> dict[str, Any]:

@@ -289,6 +289,8 @@ def test_asyncpg_job_repo_customer_isolation_and_terminal_guard():
     asyncio.run(repo.cancel(cust_a, job.job_id))
     with pytest.raises(InvalidJobTransitionError):
         asyncio.run(repo.update_progress(cust_a, job.job_id, phase="too_late"))
+    with pytest.raises(InvalidJobTransitionError):
+        asyncio.run(repo.fail(cust_a, job.job_id, error={"code": "SHOULD_NOT_OVERWRITE"}))
 
 
 def test_asyncpg_job_repo_expiry_on_access():
