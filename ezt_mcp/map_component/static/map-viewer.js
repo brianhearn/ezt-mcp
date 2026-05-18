@@ -604,7 +604,7 @@ const BASEMAP_PAINTS = {
     landuse:        "#15202a",
     water:          "#172b3a",
     boundary:       "#3b4858",
-    roadMinor:      "#8f8356",
+    roadMinor:      "#5f604f",
     roadMajor:      "#c8b96f",
     building:       "#2d3844",
     buildingOutline:"#465566",
@@ -625,7 +625,7 @@ const BASEMAP_PAINTS = {
     landuse:        "#e5eae8",
     water:          "#b3d4e8",
     boundary:       "#b0bec5",
-    roadMinor:      "#cfd8dc",
+    roadMinor:      "#d8dee2",
     roadMajor:      "#b0bec5",
     building:       "#dde2e6",
     buildingOutline:"#c0c9cf",
@@ -713,8 +713,8 @@ function baseStyle(payload) {
         filter: ["!in", "kind", "highway", "major_road"],
         paint: {
           "line-color": p.roadMinor,
-          "line-width": ["interpolate", ["linear"], ["zoom"], 8, 0.25, 12, 0.8, 15, 1.4],
-          "line-opacity": ["interpolate", ["linear"], ["zoom"], 8, 0.22, 12, 0.48],
+          "line-width": ["interpolate", ["linear"], ["zoom"], 8, 0.18, 12, 0.55, 15, 0.95],
+          "line-opacity": ["interpolate", ["linear"], ["zoom"], 8, 0.08, 12, 0.20, 15, 0.28],
         },
       },
       {
