@@ -726,11 +726,33 @@ function baseStyle(payload) {
         paint: {
           "line-color": p.roadMajor,
           "line-width": [
-            "match",
-            ["get", "kind_detail"],
-            ["secondary", "secondary_link", "tertiary", "tertiary_link"],
-            ["interpolate", ["linear"], ["zoom"], 3, 0.28, 8, 0.62, 12, 1.15],
-            ["interpolate", ["linear"], ["zoom"], 3, 0.45, 8, 1.1, 12, 2.4],
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            3,
+            [
+              "match",
+              ["get", "kind_detail"],
+              ["secondary", "secondary_link", "tertiary", "tertiary_link"],
+              0.28,
+              0.45,
+            ],
+            8,
+            [
+              "match",
+              ["get", "kind_detail"],
+              ["secondary", "secondary_link", "tertiary", "tertiary_link"],
+              0.62,
+              1.1,
+            ],
+            12,
+            [
+              "match",
+              ["get", "kind_detail"],
+              ["secondary", "secondary_link", "tertiary", "tertiary_link"],
+              1.15,
+              2.4,
+            ],
           ],
           "line-opacity": [
             "match",
