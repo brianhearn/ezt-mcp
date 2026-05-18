@@ -359,7 +359,7 @@ The immediate next phase is implementation hardening around the now-working Dire
 - treat the current `us_zips.pmtiles` archive as a first working overlay artifact, not the final production tiling pipeline. It proves PostGIS → PMTiles → MC overlay plumbing at z5-z8; next hardening should produce z9+ Designer-quality tiles with a proper operational pipeline (tippecanoe/Planetiler-style or an optimized builder);
 - keep transient queue details in `TECHNICAL_SPEC.md`, not in Functional Spec unless caller-visible behavior changes;
 - keep migration/operator status in `CHANGELOG.md` and memory/session-state, not scattered across core docs;
-- treat the pre-migration job schema compatibility path as temporary scaffolding only. After Matt/admin applies `migrations/003_job_payloads_limits.sql`, verify the schema, run health + MC/Direct Build smokes, then remove the compatibility fallback instead of keeping it as a permanent mode.
+- migration 003 (`migrations/003_job_payloads_limits.sql`) is **live** as of 2026-05-18. The pre-migration compatibility fallback has been removed (`33781bd`). The hardened `transient.job_payloads` + attempt/backoff path is now the only implementation. No further migration scaffolding exists to clean up.
 
 External contracts to preserve:
 

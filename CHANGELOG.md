@@ -7,6 +7,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed (2026-05-18) — migration 003 landed; compatibility fallback removed
+- Confirmed `migrations/003_job_payloads_limits.sql` applied to staging DB by Matt Root (all 5 schema capability checks returned `true`).
+- Removed pre-migration compatibility fallback from `ezt_mcp/db/jobs.py`: deleted `_detect_schema_capabilities`, `schema_capabilities()`, `_schema_capabilities_for_conn()`, the `_schema_capabilities` cache field, and all pre-migration branch paths in `submit`, `claim_next`, and `cleanup_expired`.
+- Hardened `transient.job_payloads` + attempt/backoff path is now the only implementation.
+- 115 tests pass; Direct Build smoke confirmed `completed` after deploy.
+
 ### Added (2026-05-17) — US ZIP PMTiles part overlay
 - Added session-scoped Map Component part-layer metadata, a US ZIP PMTiles manifest, browser overlay control, and MapLibre PMTiles layers for mutually-exclusive part overlays.
 - Added `scripts/build_part_layer_pmtiles.py` to generate `us_zips.pmtiles` from canonical PostGIS `geo.us_postal` geometry.
