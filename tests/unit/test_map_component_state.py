@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from ezt_mcp.map_component.sessions import InMemoryMapSessionStore
+import pytest
+
+from ezt_mcp.map_component.sessions import InMemoryMapSessionStore, MapVisualizationError
 from tests.unit.test_map_visualization import sample_ts
 
 
@@ -37,7 +39,13 @@ def test_map_session_is_idempotent_per_user_and_publishes_state_events():
 def test_set_state_and_commit_selection_are_explicit_primitives():
     store = InMemoryMapSessionStore()
     created = store.create_or_update_session(
-        {"ts": sample_ts(), "mode": "view", "active_tal_id": "tal-current"},
+        {
+            "ts": sample_ts(),
+            "mode": "view",
+            "active_tal_id": "tal-current",
+            "part_layers": ["us_zips"],
+            "active_part_layer": "us_zips",
+        },
         public_base_url="https://expertpack.ai/mcp",
         user_id="monica",
     )
@@ -61,8 +69,31 @@ def test_set_state_and_commit_selection_are_explicit_primitives():
         "job_id": "job_1",
         "status": "awaiting_user_selection",
     }
+    assert selection["part_layer"] == "us_zips"
     assert selection["part_ids"] == ["32301", "32303"]
     assert store.get_selection(created.session.map_session_id) == selection
+
+
+def test_commit_selection_rejects_mismatched_active_part_layer():
+    store = InMemoryMapSessionStore()
+    created = store.create_or_update_session(
+        {
+            "ts": sample_ts(),
+            "mode": "select",
+            "active_tal_id": "tal-current",
+            "part_layers": ["us_zips"],
+            "active_part_layer": "us_zips",
+        },
+        public_base_url="https://expertpack.ai/mcp",
+        user_id="monica",
+    )
+
+    with pytest.raises(MapVisualizationError) as exc:
+        store.commit_selection(
+            created.session.map_session_id,
+            {"part_layer": "us_counties", "part_ids": ["12073"]},
+        )
+    assert exc.value.code == "INVALID_SELECTION"
 
 
 def test_set_state_can_switch_active_tal_and_publish_tal_update():

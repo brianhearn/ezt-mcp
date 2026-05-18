@@ -31,6 +31,9 @@ def test_request_part_selection_creates_task_and_points_session_to_task_resource
     state_payload = state.map_sessions.get_state(result["map_session_id"])
     assert state_payload["mode"] == "select"
     assert state_payload["active_selection_task_id"] == result["selection_task_id"]
+    session = state.map_sessions.get_session(result["map_session_id"])
+    assert session.render_payload["active_part_layer"] == "us_zips"
+    assert session.render_payload["part_layers"][0]["part_layer"] == "us_zips"
 
 
 def test_request_part_selection_reuses_persistent_user_session():

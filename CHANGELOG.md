@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added (2026-05-18) — part-layer click selection MVP
+- Added Map Component select-mode click behavior for active PMTiles part layers: clicking a ZIP/part toggles its `part_id`, selected parts are highlighted, the panel selected count updates, and Commit/Clear controls manage the selected IDs. Enter remains a keyboard shortcut for commit.
+- Hardened selection commits so browser payloads include `part_layer` plus de-duplicated `part_ids`, and mismatched commits are rejected when they do not match the active map part layer or first-class selection task.
+
 ### Added (2026-05-18) — production US ZIP PMTiles builder
 - Added `scripts/build_part_layer_pmtiles_tippecanoe.py`, the preferred operational builder for z9+ part-layer overlays. It exports canonical PostGIS part geometry to GeoJSONSeq, runs `tippecanoe`, converts MBTiles to PMTiles, and verifies the archive.
 - Built and deployed a `us_zips.pmtiles` z5–z12 archive on `expertpack.ai` from 33,715 canonical ZIP features. The deployed PMTiles is 116,524,452 bytes, serves HTTP Range requests, and replaced the earlier z5–z8 proof artifact.

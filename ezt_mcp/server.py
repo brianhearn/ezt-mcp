@@ -820,6 +820,7 @@ async def _request_part_selection_tool_result_async(
     public_base_url: str,
 ) -> dict[str, Any]:
     try:
+        request = {**request, "part_layers": [part_layer], "active_part_layer": part_layer}
         map_result = await _create_map_visualization_tool_result_async(
             state, request, public_base_url=public_base_url
         )
@@ -839,7 +840,7 @@ async def _request_part_selection_tool_result_async(
         )
         await _maybe_await(
             state.map_sessions.set_active_selection_task(
-                map_payload["map_session_id"], task.selection_task_id
+                map_payload["map_session_id"], task.selection_task_id, part_layer=part_layer
             )
         )
     except (MapVisualizationError, InvalidPartSelectionError) as exc:
@@ -976,6 +977,7 @@ def _request_part_selection_tool_result(
     public_base_url: str,
 ) -> dict[str, Any]:
     try:
+        request = {**request, "part_layers": [part_layer], "active_part_layer": part_layer}
         map_result = _create_map_visualization_tool_result(
             state, request, public_base_url=public_base_url
         )
@@ -995,7 +997,7 @@ def _request_part_selection_tool_result(
             ttl_seconds=int(request.get("expiry_seconds") or 3600),
         )
         state.map_sessions.set_active_selection_task(
-            task.map_session_id, task.selection_task_id
+            task.map_session_id, task.selection_task_id, part_layer=part_layer
         )
     except (MapVisualizationError, InvalidPartSelectionError) as exc:
         if isinstance(exc, MapVisualizationError):

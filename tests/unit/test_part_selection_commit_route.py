@@ -35,7 +35,9 @@ def test_map_commit_updates_first_class_part_selection_task():
     assert response.status_code == 200
     payload = response.json()
     assert payload["result"]["selection_task_id"] == result["selection_task_id"]
+    assert payload["result"]["part_layer"] == "us_zips"
     assert payload["part_selection"]["status"] == "committed"
+    assert payload["part_selection"]["selection"]["part_layer"] == "us_zips"
     assert payload["part_selection"]["selection"]["part_ids"] == ["32301", "32303"]
 
     task = state.part_selections.get(
@@ -43,3 +45,28 @@ def test_map_commit_updates_first_class_part_selection_task():
         result["selection_task_id"],
     )
     assert task.resource()["status"] == "committed"
+
+
+def test_map_commit_rejects_wrong_part_layer_for_active_selection_task():
+    app = build_app(ServerConfig(map_visualization={"public_base_url": "https://expertpack.ai/mcp"}))
+    state = app.state.ezt_state
+    requested = _request_part_selection_tool_result(
+        state,
+        {"ts": sample_ts(), "mode": "select", "user_id": "monica"},
+        part_layer="us_zips",
+        purpose="return_list",
+        prompt="Pick ZIPs.",
+        public_base_url="https://expertpack.ai/mcp",
+    )
+    session = state.map_sessions.get_session(requested["result"]["map_session_id"])
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/maps/session/{session.map_session_id}/{session.token}/selection",
+            json={"part_layer": "us_counties", "part_ids": ["12073"]},
+        )
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "INVALID_SELECTION"
+    assert error["details"]["expected_part_layer"] == "us_zips"

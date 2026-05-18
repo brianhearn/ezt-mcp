@@ -3,6 +3,7 @@ const debugEl = document.getElementById("debug");
 const debugMessages = [];
 let currentPayload = null;
 let currentMap = null;
+let selectedPartIds = new Set();
 const layerState = {
   territories: true,
   referenceTals: true,
@@ -95,6 +96,7 @@ function renderPanel(payload) {
     summaryEl.append(dt, dd);
   }
   renderCustomContent(payload);
+  renderSelectionControls(payload);
   renderLayerLegend(payload);
   if (debugEl) debugEl.hidden = !debugEnabled(payload);
 }
@@ -165,6 +167,7 @@ function panelSummaryItems(payload) {
   if (Array.isArray(panel.summary_items)) return panel.summary_items.map(normalizeSummaryItem);
 
   const template = presentation.panel_template || "executive_review";
+  const selectionCount = selectedPartIds.size;
   const featureCount = payload.geojson && payload.geojson.features ? payload.geojson.features.length : 0;
   const partCount = totalPartCount(payload.geojson);
   const base = [
@@ -183,8 +186,8 @@ function panelSummaryItems(payload) {
   if (template === "selection") {
     return [
       ...base,
-      { label: "Selected", value: "0" },
-      { label: "Layer", value: presentation.part_layer || "—" },
+      { label: "Selected", value: String(selectionCount) },
+      { label: "Layer", value: activePartLayerLabel(payload) },
       { label: "Expires", value: new Date(payload.expires_at || Date.now()).toLocaleString() },
     ];
   }
@@ -198,6 +201,77 @@ function panelSummaryItems(payload) {
 function normalizeSummaryItem(item) {
   if (Array.isArray(item)) return { label: String(item[0] || ""), value: String(item[1] ?? "") };
   return { label: String(item.label || item.name || ""), value: String(item.value ?? "") };
+}
+
+function activePartLayer(payload) {
+  return String((payload && payload.active_part_layer) || "").trim();
+}
+
+function activePartLayerConfig(payload) {
+  const id = activePartLayer(payload);
+  if (!id) return null;
+  return (payload.part_layers || []).find((layer) => layer.part_layer === id) || null;
+}
+
+function activePartLayerLabel(payload) {
+  const layer = activePartLayerConfig(payload);
+  return (layer && (layer.label || layer.part_layer)) || activePartLayer(payload) || "—";
+}
+
+function renderSelectionControls(payload) {
+  const controls = ensureSelectionControls();
+  if (!controls) return;
+  const isSelectMode = payload && payload.mode === "select";
+  controls.wrapper.hidden = !isSelectMode;
+  if (!isSelectMode) return;
+  const count = selectedPartIds.size;
+  controls.commit.disabled = count === 0;
+  controls.clear.disabled = count === 0;
+  controls.commit.textContent = count > 0 ? `Commit ${count} selected` : "Commit selection";
+  controls.clear.textContent = "Clear";
+}
+
+function ensureSelectionControls() {
+  let wrapper = byId("selection-actions");
+  if (wrapper) {
+    return {
+      wrapper,
+      commit: byId("selection-commit"),
+      clear: byId("selection-clear"),
+    };
+  }
+  const summaryEl = byId("summary");
+  if (!summaryEl || !summaryEl.parentElement) return null;
+  wrapper = document.createElement("div");
+  wrapper.id = "selection-actions";
+  wrapper.className = "selection-actions";
+  wrapper.hidden = true;
+
+  const commit = document.createElement("button");
+  commit.id = "selection-commit";
+  commit.type = "button";
+  commit.className = "selection-action selection-action-primary";
+  commit.textContent = "Commit selection";
+  commit.disabled = true;
+  commit.addEventListener("click", () => {
+    commitSelectedParts().catch((error) => {
+      console.error(error);
+      debugMessage("Selection commit failed", errorDetails(error));
+      setStatus(error.message);
+    });
+  });
+
+  const clear = document.createElement("button");
+  clear.id = "selection-clear";
+  clear.type = "button";
+  clear.className = "selection-action";
+  clear.textContent = "Clear";
+  clear.disabled = true;
+  clear.addEventListener("click", () => clearSelectedParts());
+
+  wrapper.append(commit, clear);
+  summaryEl.insertAdjacentElement("afterend", wrapper);
+  return { wrapper, commit, clear };
 }
 
 function totalPartCount(geojson) {
@@ -469,6 +543,7 @@ function toggleLayer(rowDef, visible) {
   if (rowDef.kind === "referenceTals") layerState.referenceTals = visible;
   if (rowDef.kind === "pointLayer") layerState.pointLayers[rowDef.id] = visible;
   if (rowDef.kind === "partLayer") {
+    const previousPartLayer = currentPayload.active_part_layer;
     const layer = (currentPayload.part_layers || []).find((item) => item.part_layer === rowDef.id);
     const group = layer && layer.mutually_exclusive_group;
     if (group) {
@@ -478,6 +553,7 @@ function toggleLayer(rowDef, visible) {
       layerState.partLayers[rowDef.id] = visible;
       currentPayload.active_part_layer = visible ? rowDef.id : null;
     }
+    if (previousPartLayer !== currentPayload.active_part_layer) selectedPartIds = new Set();
   }
   applyLayerVisibility(currentMap, currentPayload);
   renderLayerLegend(currentPayload);
@@ -732,6 +808,19 @@ function addPartLayerSourcesAndLayers(map, payload) {
       url: `pmtiles://${layer.url}`,
     });
     map.addLayer({
+      id: selectedPartLayerFillId(layer.part_layer),
+      type: "fill",
+      source: sourceId,
+      "source-layer": layer.source_layer || "parts",
+      minzoom: layer.minzoom ?? 5,
+      layout: { visibility: "none" },
+      paint: {
+        "fill-color": "#00d4aa",
+        "fill-opacity": 0.34,
+      },
+      filter: selectedPartFilter(layer),
+    });
+    map.addLayer({
       id: boundaryId,
       type: "line",
       source: sourceId,
@@ -771,10 +860,11 @@ function updatePartLayerVisibility(map, payload) {
   const layers = Array.isArray(payload.part_layers) ? payload.part_layers : [];
   for (const layer of layers) {
     const visible = layer.part_layer === payload.active_part_layer ? "visible" : "none";
-    for (const layerId of [partLayerBoundaryId(layer.part_layer), partLayerLabelId(layer.part_layer)]) {
+    for (const layerId of [selectedPartLayerFillId(layer.part_layer), partLayerBoundaryId(layer.part_layer), partLayerLabelId(layer.part_layer)]) {
       if (map.getLayer(layerId)) map.setLayoutProperty(layerId, "visibility", visible);
     }
   }
+  updateSelectedPartLayer(map, payload);
 }
 
 function applyLayerVisibility(map, payload) {
@@ -789,9 +879,24 @@ function applyLayerVisibility(map, payload) {
   renderLayerLegend(payload);
 }
 
+function selectedPartLayerFillId(partLayerId) { return `part-layer-${partLayerId}-selected-fill`; }
 function partLayerSourceId(partLayerId) { return `part-layer-${partLayerId}`; }
 function partLayerBoundaryId(partLayerId) { return `part-layer-${partLayerId}-boundary`; }
 function partLayerLabelId(partLayerId) { return `part-layer-${partLayerId}-labels`; }
+
+function selectedPartFilter(layer) {
+  const property = (layer && layer.part_id_property) || "part_id";
+  const ids = Array.from(selectedPartIds);
+  if (!ids.length) return ["==", ["get", property], "__none__"];
+  return ["in", ["get", property], ["literal", ids]];
+}
+
+function updateSelectedPartLayer(map, payload) {
+  const layer = activePartLayerConfig(payload);
+  if (!layer) return;
+  const fillId = selectedPartLayerFillId(layer.part_layer);
+  if (map.getLayer(fillId)) map.setFilter(fillId, selectedPartFilter(layer));
+}
 
 function addPointLayerSourcesAndLayers(map, payload) {
   const layers = Array.isArray(payload.point_layers) ? payload.point_layers : [];
@@ -945,6 +1050,80 @@ function pointRadiusExpression(layer) {
   return ["interpolate", ["linear"], ["zoom"], 3, 3, 9, 5, 13, 7];
 }
 
+function clearSelectedParts() {
+  selectedPartIds = new Set();
+  if (currentMap && currentPayload) updateSelectedPartLayer(currentMap, currentPayload);
+  if (currentPayload) renderPanel(currentPayload);
+  setStatus("Selection cleared.");
+}
+
+async function commitSelectedParts() {
+  if (!currentPayload) return;
+  const partLayer = activePartLayer(currentPayload);
+  if (!partLayer) {
+    setStatus("No active part layer is available for selection.");
+    return;
+  }
+  const partIds = Array.from(selectedPartIds);
+  if (!partIds.length) {
+    setStatus("Select at least one part before committing.");
+    return;
+  }
+  const { sessionId, token } = sessionParts();
+  const url = `${appBaseUrl()}/maps/session/${encodeURIComponent(sessionId)}/${encodeURIComponent(token)}/selection`;
+  setStatus(`Committing ${partIds.length} selected ${activePartLayerLabel(currentPayload)} part${partIds.length === 1 ? "" : "s"}…`);
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      part_layer: partLayer,
+      part_ids: partIds,
+      selection_method: "map_click",
+    }),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Selection commit failed (${response.status}): ${text}`);
+  }
+  setStatus(`Selection committed: ${partIds.length} ${partIds.length === 1 ? "part" : "parts"}.`);
+  renderPanel(currentPayload);
+}
+
+function togglePartSelection(map, event, layer) {
+  if (!currentPayload || currentPayload.mode !== "select") return;
+  if (!layer || layer.selectable === false) return;
+  const feature = event.features && event.features[0];
+  if (!feature) return;
+  const props = feature.properties || {};
+  const property = layer.part_id_property || "part_id";
+  const rawPartId = props[property] ?? props.part_id ?? props.partcode;
+  const partId = String(rawPartId || "").trim();
+  if (!partId) {
+    setStatus("Clicked part has no part_id.");
+    return;
+  }
+  if (selectedPartIds.has(partId)) selectedPartIds.delete(partId);
+  else selectedPartIds.add(partId);
+  updateSelectedPartLayer(map, currentPayload);
+  renderPanel(currentPayload);
+  const count = selectedPartIds.size;
+  setStatus(`${count} ${activePartLayerLabel(currentPayload)} part${count === 1 ? "" : "s"} selected. Click Commit selection or press Enter.`);
+}
+
+function addPartLayerSelectionHandlers(map, payload) {
+  for (const layer of Array.isArray(payload.part_layers) ? payload.part_layers : []) {
+    const boundaryId = partLayerBoundaryId(layer.part_layer);
+    if (!map.getLayer(boundaryId)) continue;
+    map.on("click", boundaryId, (event) => togglePartSelection(map, event, layer));
+    map.on("mouseenter", boundaryId, () => {
+      if (currentPayload && currentPayload.mode === "select" && layer.part_layer === currentPayload.active_part_layer) {
+        map.getCanvas().style.cursor = "pointer";
+      }
+    });
+    map.on("mouseleave", boundaryId, () => { map.getCanvas().style.cursor = ""; });
+  }
+}
+
 function addTerritoryLayers(map, payload) {
   try {
     addPartLayerSourcesAndLayers(map, payload);
@@ -1016,6 +1195,7 @@ function addTerritoryLayers(map, payload) {
   }
 
   applyLayerVisibility(map, payload);
+  addPartLayerSelectionHandlers(map, payload);
 
   for (const layer of Array.isArray(payload.point_layers) ? payload.point_layers : []) {
     const layerId = pointLayerId(layer.point_layer);
@@ -1239,6 +1419,16 @@ async function main() {
   applyPayload(payload, { refit: false });
 
   attachTalSelectHandler(byId("tal-select"));
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && currentPayload && currentPayload.mode === "select") {
+      event.preventDefault();
+      commitSelectedParts().catch((error) => {
+        console.error(error);
+        debugMessage("Selection commit failed", errorDetails(error));
+        setStatus(error.message);
+      });
+    }
+  });
 
   const protocol = new pmtiles.Protocol();
   maplibregl.addProtocol("pmtiles", protocol.tile);
@@ -1304,7 +1494,7 @@ async function main() {
     } else if (type === "tal_updated" || type === "mode_changed") {
       loadPayload().then(applyPayload).catch(console.error);
     } else if (type === "selection_prompt") {
-      setStatus("Select parts on the map to continue.");
+      setStatus("Select parts on the map, then click Commit selection.");
     } else if (type === "part_selection_committed") {
       setStatus("Selection committed. Processing…");
     }

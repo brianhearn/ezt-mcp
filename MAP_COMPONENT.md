@@ -31,7 +31,7 @@ Agent → (sends updated TS) → Map Component re-renders
 
 The communication contract is simple:
 - **Input:** a Territory Solution (TS) — renders one active TAL, dimmed sibling TALs when present, and all point layers
-- **Output:** mode-dependent. In `view` mode, no mutation or selection output is emitted. In `select` mode, the component emits an array of `part_ids` the user has chosen.
+- **Output:** mode-dependent. In `view` mode, no mutation or selection output is emitted. In `select` mode, the component emits the active `part_layer` plus the array of `part_ids` the user has chosen.
 
 When a TS contains multiple TALs, the MC must always have exactly one active TAL. The active TAL is selected by `active_tal_id` or TS metadata. Other TALs remain visible as dimmed reference context behind the active TAL; they are not hidden unless a future explicit layer-visibility control says so. In v1, the MC exposes a customer-facing active-alignment selector when multiple TALs are available. Switching alignments updates the map-session state through a browser-safe endpoint and re-renders active/dimmed overlays without requiring the agent to issue a new `get_map_visualization` call. Internal APIs may keep `tal_*` field names, but product chrome must not require customers to understand the acronym “TAL”.
 
@@ -52,8 +52,8 @@ Recommended flow:
 Agent → EZT MCP: create map session for TS + active TAL + mode=select
 EZT MCP → Agent: map_url + map_session_id + selection resource URI
 Agent subscribes to selection resource and opens/embeds map_url
-Monica selects parts and clicks Done
-Map Component → EZT MCP web endpoint: selection.committed(part_ids[])
+Monica selects parts and commits
+Map Component → EZT MCP web endpoint: selection.committed(part_layer, part_ids[])
 EZT MCP → Agent via MCP resource notification: selection resource changed
 Agent calls Analyze / Realign as appropriate
 EZT MCP → Map Component live channel: TS updated / refresh needed
@@ -111,7 +111,9 @@ The same component serves sharing and assisted design. Capabilities are enabled 
 Used for upper management, Brian/developer verification, QA, and testing. Users can pan, zoom, inspect territories, toggle point layers, view metrics/labels, and read summaries. No selections or edits are emitted. This is analogous to a read-only EZT Designer user: the TS is visible and explorable, but not modifiable.
 
 ### `select` mode — agent-assisted spatial selection
-Used by Monica or another territory designer during an agent workflow. Includes all `view` capabilities plus part selection primitives. The component emits selected `part_ids[]` to the agent, and the agent decides what MCP tool call to make. Select mode can be used with an existing TS/TAL for realign/analyze workflows, or with only a part layer for manual territory construction and list-return workflows.
+Used by Monica or another territory designer during an agent workflow. Includes all `view` capabilities plus part selection primitives. The component emits the selected `part_layer` and `part_ids[]` to the agent, and the agent decides what MCP tool call to make. Select mode can be used with an existing TS/TAL for realign/analyze workflows, or with only a part layer for manual territory construction and list-return workflows.
+
+Current MVP: clicking an active PMTiles part (for example a ZIP) toggles its `part_id`, highlights the selected feature, updates the selected count, and Commit/Clear controls manage the local selection. Commit emits `{part_layer, part_ids, selection_method}` to the browser-safe selection endpoint; Enter remains a keyboard shortcut. Box/lasso remain planned follow-ups.
 
 ### Future `edit` mode — richer direct manipulation
 Potential future mode for richer map interactions, still mediated by the agent and MCP tools. Not required for v1.

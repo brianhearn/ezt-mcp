@@ -465,6 +465,7 @@ class AsyncpgMapSessionStore:
         map_session_id: str,
         selection_task_id: str,
         *,
+        part_layer: str | None = None,
         now: datetime | None = None,
     ) -> dict[str, Any]:
         now = now or datetime.now(tz=UTC)
@@ -472,6 +473,11 @@ class AsyncpgMapSessionStore:
         session.active_selection_task_id = selection_task_id
         session.mode = "select"
         session.render_payload["mode"] = "select"
+        if part_layer:
+            session.render_payload["active_part_layer"] = part_layer
+            presentation = session.render_payload.setdefault("presentation", {})
+            if isinstance(presentation, dict):
+                presentation["part_layer"] = part_layer
         session.selection_resource_uri = f"ezt://part-selections/{selection_task_id}"
         session.updated_at = now
 
@@ -513,9 +519,29 @@ class AsyncpgMapSessionStore:
                 "INVALID_SELECTION",
                 "Selection commit requires a non-empty part_ids array of strings.",
             )
+        part_layer = str(
+            selection.get("part_layer") or session.render_payload.get("active_part_layer") or ""
+        ).strip()
+        if not part_layer:
+            raise MapVisualizationError(
+                "INVALID_SELECTION",
+                "Selection commit requires part_layer when no active part layer is set.",
+                {"map_session_id": map_session_id},
+            )
+        active_part_layer = session.render_payload.get("active_part_layer")
+        if active_part_layer and part_layer != active_part_layer:
+            raise MapVisualizationError(
+                "INVALID_SELECTION",
+                "Selection part_layer must match the active map part layer.",
+                {
+                    "map_session_id": map_session_id,
+                    "expected_part_layer": active_part_layer,
+                    "actual_part_layer": part_layer,
+                },
+            )
         payload = {
             "type": "map_selection",
-            "part_layer": selection.get("part_layer"),
+            "part_layer": part_layer,
             "part_ids": list(dict.fromkeys(part_ids)),
             "committed_at": _isoformat_z(now),
             "job_id": selection.get("job_id"),

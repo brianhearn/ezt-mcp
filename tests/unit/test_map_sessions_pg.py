@@ -181,6 +181,49 @@ def test_set_state_updates(mock_pool, store):
     conn.execute.assert_called()
 
 
+def test_asyncpg_commit_selection_requires_active_part_layer_match(mock_pool, store):
+    _, conn = mock_pool
+    ts = sample_ts()
+    ts["properties"]["part_layers"] = ["us_zips"]
+    conn.fetchrow.return_value = session_row(
+        mode="select",
+        ts=ts,
+    )
+
+    with pytest.raises(MapVisualizationError) as exc_info:
+        asyncio.run(
+            store.commit_selection(
+                "msess-123", {"part_layer": "us_counties", "part_ids": ["12073"]}
+            )
+        )
+
+    assert exc_info.value.code == "INVALID_SELECTION"
+    assert exc_info.value.details["expected_part_layer"] == "us_zips"
+    conn.execute.assert_not_called()
+
+
+def test_asyncpg_commit_selection_persists_part_layer_and_deduped_ids(mock_pool, store):
+    _, conn = mock_pool
+    ts = sample_ts()
+    ts["properties"]["part_layers"] = ["us_zips"]
+    session = session_row(
+        mode="select",
+        ts=ts,
+    )
+    conn.fetchrow.return_value = session
+
+    selection = asyncio.run(
+        store.commit_selection(
+            "msess-123",
+            {"part_layer": "us_zips", "part_ids": ["32301", "32301", "32303"]},
+        )
+    )
+
+    assert selection["part_layer"] == "us_zips"
+    assert selection["part_ids"] == ["32301", "32303"]
+    conn.execute.assert_called()
+
+
 def test_subscribe_validates_async_session_and_queues_connected_event(mock_pool, store):
     _, conn = mock_pool
     conn.fetchrow.return_value = session_row()
