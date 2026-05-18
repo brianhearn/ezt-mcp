@@ -329,8 +329,8 @@ const BASEMAP_PAINTS = {
     landuse:        "#15202a",
     water:          "#172b3a",
     boundary:       "#3b4858",
-    roadMinor:      "#334252",
-    roadMajor:      "#4d6176",
+    roadMinor:      "#8f8356",
+    roadMajor:      "#c8b96f",
     building:       "#2d3844",
     buildingOutline:"#465566",
     textPlace:      "#9dafc3",
@@ -439,7 +439,7 @@ function baseStyle(payload) {
         paint: {
           "line-color": p.roadMinor,
           "line-width": ["interpolate", ["linear"], ["zoom"], 8, 0.25, 12, 0.8, 15, 1.4],
-          "line-opacity": ["interpolate", ["linear"], ["zoom"], 8, 0.25, 12, 0.65],
+          "line-opacity": ["interpolate", ["linear"], ["zoom"], 8, 0.22, 12, 0.48],
         },
       },
       {
@@ -451,7 +451,7 @@ function baseStyle(payload) {
         paint: {
           "line-color": p.roadMajor,
           "line-width": ["interpolate", ["linear"], ["zoom"], 3, 0.45, 8, 1.1, 12, 2.4],
-          "line-opacity": 0.72,
+          "line-opacity": 0.56,
         },
       },
       {
@@ -540,9 +540,10 @@ function addPartLayerSourcesAndLayers(map, payload) {
       minzoom: layer.minzoom ?? 5,
       layout: { visibility: "none" },
       paint: {
-        "line-color": "#f8fafc",
-        "line-width": ["interpolate", ["linear"], ["zoom"], 5, 0.35, 9, 0.75, 12, 1.1],
-        "line-opacity": 0.72,
+        "line-color": "#cbd5e1",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 5, 0.45, 9, 0.85, 12, 1.25],
+        "line-opacity": 0.68,
+        "line-dasharray": [2.5, 2],
       },
     });
     map.addLayer({

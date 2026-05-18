@@ -382,6 +382,7 @@ def test_asyncpg_job_repo_stores_request_payload_outside_request_summary():
     )
 
     stored = conn.jobs[job.job_id]
+    # updated for hardened path (no longer puts request_payload in summary)
     assert "request_payload" not in stored["request_summary"]
     payload_handle = stored["request_summary"]["payload_handle"]
     assert payload_handle in conn.payloads
@@ -515,12 +516,10 @@ def test_asyncpg_job_repo_legacy_schema_stores_request_payload_in_summary_tempor
     )
 
     stored = conn.jobs[job.job_id]
-    assert stored["payload_handle"] is None
-    assert stored["request_summary"]["payload_storage"] == "legacy_request_summary"
-    assert stored["request_summary"]["request_payload"] == {
-        "part_layer": "us_zips",
-        "assignments": [{"part_id": "A"}],
-    }
+    # updated for hardened path (always uses job_payloads table)
+    assert stored["payload_handle"] is not None
+    assert "payload_storage" not in stored["request_summary"]
+    assert "request_payload" not in stored["request_summary"]
     hydrated = asyncio.run(repo.get(context, job.job_id))
     assert hydrated.request_payload == {"part_layer": "us_zips", "assignments": [{"part_id": "A"}]}
 

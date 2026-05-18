@@ -157,6 +157,33 @@ V1 styling capabilities:
 - Simple classification: categorical unique values, manual breaks, equal interval, quantile
 - Legend generation from active style
 
+### Layer-Legend Pattern
+
+When this document refers to Benton's EasyTerritory AI app, it means the `mapsjs/EasyTerritoryAI` repository. The relevant implementation pattern is `easyterritory-portal/src/components/maps/MapLayersPanel.tsx` plus its `LayerClassificationPanel.tsx`, `FiltersPanel.tsx`, and supporting `business-data-layer` / classification utilities.
+
+The MC should follow that app's **Layer-Legend** pattern rather than treating layer visibility and legends as separate UI. One compact panel should show every renderable overlay with its visibility state, symbol/line/fill swatch, label, active/selected row state, and optional expansion for classification entries.
+
+Conceptually, each row is both a layer toggle and its legend entry:
+
+- Visibility checkbox/toggle controls whether the layer renders.
+- Icon or swatch previews the effective symbolization for that layer.
+- Layer label identifies the overlay: active TAL, reference TALs, point location layers, part overlays, basemap overlays, and future user/custom layers.
+- Classification expander appears only when the layer has classified styling.
+- Classification sub-rows show class symbol, class label/range, optional filter expression/description, and per-class visibility.
+- Data-point and roster-style layers can render inline legends under their layer rows, as Benton’s app does for color and size classification.
+- Search can be presented as a layer-panel affordance for business/point layers when searchable fields exist, but search is an exploration/navigation aid, not a TS mutation.
+- Settings/edit affordances are not part of MC v1 unless a future spec explicitly adds them; MC can show resolved style state, but should not become a full Designer symbology editor.
+
+This is especially important for point location layers carried in the TS. A TS may contain one or more point layers, each with its own visibility, symbol styling, classification, labels, and simple filter state. The Layer-Legend should make those layers understandable and independently togglable without hiding the territory/alignment context.
+
+Filtering and classification support should be deliberately smaller than Designer but structurally compatible with it:
+
+- Supported v1 classification methods remain categorical unique values, manual breaks, equal interval, and quantile. Benton’s app currently models numeric color and numeric size classes with `quantile` and `equalInterval`, categorical color maps, default/unclassified color, opacity, min zoom, and optional clustering.
+- Supported v1 filter state should be simple and declarative: `eq`, `neq`, `in`, `nin`, `lt`, `lte`, `gt`, `gte`, and `between` over point-layer columns, plus visible class toggles. Complex ad hoc query builders are out of scope for MC v1.
+- Classification entries may be toggled visible/hidden from the legend. This is a map presentation/filter action, not a TS data mutation.
+- Legend class counts/statistics are useful when already present in TS presentation metadata, but MC should not be required to compute heavy statistics client-side.
+- Out-of-scale or unavailable layers should remain listed but visually disabled/dimmed rather than disappearing, so users understand why the map changed.
+
 The component should also be able to apply EZT MCP-provided style templates when a TS does not already contain presentation metadata or when the agent asks for a specific context such as `executive_review`, `balance_diagnostic`, or `qa_verification`.
 
 Initial template registry:
@@ -167,7 +194,7 @@ Initial template registry:
 
 The upper-left panel is a context panel selected/configured by the resolved presentation template. The agent can provide context (title, subtitle, summary items, legend hints, debug flag) through TS presentation metadata or request-time presentation overrides, but the MC owns layout, typography, and product chrome.
 
-Out of scope for v1 unless later specs add them: full symbology editor, complex filter builder, hotspots, clustering, print layouts, and Designer-level layer administration.
+Out of scope for v1 unless later specs add them: full symbology editor, complex filter builder, hotspots, clustering, print layouts, and Designer-level layer administration. These Designer capabilities may still inform TS presentation metadata shape, but MC v1 should only expose resolved layer visibility, simple filters/class visibility, classification legend rows, and point/territory/part overlay toggles.
 
 ---
 

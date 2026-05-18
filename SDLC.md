@@ -1,7 +1,7 @@
 # SDLC.md — EZT MCP Documentation Model
 
-**Version:** 0.1.4
-**Date:** 2026-05-16
+**Version:** 0.1.5
+**Date:** 2026-05-17
 **Status:** Draft — documentation governance
 
 This document defines the repository's SDLC documents and their boundaries. The goal is to keep each document useful, current, and non-redundant. When adding or editing docs, put information in the one document that owns it and link to that document from elsewhere instead of copying details.
@@ -131,6 +131,7 @@ This document defines the repository's SDLC documents and their boundaries. The 
 - errors, validation, permissions, and edge-case behavior
 - lifecycle/state-machine behavior for live sessions
 - visual verification behavior for geometry-producing workflows
+- accepted layer-legend behavior from a caller/user perspective: layer visibility, classification toggles, simple filter state, legend semantics, and how point location layers in the TS are exposed in MC sessions
 - examples sufficient for client/agent implementers
 - acceptance criteria at behavior level
 
@@ -186,6 +187,7 @@ This document defines the repository's SDLC documents and their boundaries. The 
 - embedding targets
 - browser communication model at conceptual level
 - product/UX open questions
+- layer-legend UX requirements at the conceptual level: integrated layer visibility plus legend rows, point-layer filtering/classification expectations, and which Designer patterns should inform MC behavior before contracts are finalized
 
 **Does not own:**
 - final MCP resource schemas or event payloads once Functional Spec exists
@@ -210,10 +212,12 @@ This document defines the repository's SDLC documents and their boundaries. The 
 - buttons, panels, legends, empty/error/loading states
 - map callouts and UI patterns
 - Map Component chrome variants and map-specific visual states
+- Layer-Legend visual pattern: compact rows, icons/swatches, visibility affordances, classification sub-rows, disabled/out-of-scale states, and spacing/color treatment
 - design rationale and constraints
 
 **Does not own:**
 - TS presentation metadata schema except design guidance
+- layer/filter/classification behavior contracts
 - workflow behavior
 - MCP contracts
 - product scope

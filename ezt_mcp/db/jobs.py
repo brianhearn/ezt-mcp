@@ -39,20 +39,6 @@ class AsyncpgJobRepository:
         self.max_active_jobs_per_customer = max(1, int(max_active_jobs_per_customer))
         self.default_max_attempts = max(1, int(default_max_attempts))
         self.retry_backoff_seconds = max(0, int(retry_backoff_seconds))
-        self._schema_capabilities: dict[str, bool] | None = None
-
-    async def schema_capabilities(self) -> dict[str, bool]:
-        """Return which optional transient-job schema features are available.
-
-        This lets staging run migration-003-era code against the pre-migration DB
-        while Matt applies DDL separately. Once the table/columns appear, the
-        repository automatically uses the hardened payload/reclaim path.
-        """
-        if self._schema_capabilities is not None:
-            return dict(self._schema_capabilities)
-        async with self._pool.acquire() as conn:
-            self._schema_capabilities = await _detect_schema_capabilities(conn)
-        return dict(self._schema_capabilities)
 
     async def submit(
         self,
@@ -77,7 +63,6 @@ class AsyncpgJobRepository:
             request_summary["required_input"] = dict(required_input)
         async with self._pool.acquire() as conn:
             async with conn.transaction():
-                capabilities = await self._schema_capabilities_for_conn(conn)
                 await self._enforce_customer_limits(conn, context, tool_name=tool_name)
                 payload_handle = None
                 payload_bytes = 0
@@ -85,69 +70,38 @@ class AsyncpgJobRepository:
                 if request_payload:
                     payload = json.dumps(dict(request_payload)).encode("utf-8")
                     payload_bytes = len(payload)
-                    if capabilities["job_payloads"]:
-                        payload_handle = f"jpay_{secrets.token_urlsafe(18)}"
-                        request_summary["payload_handle"] = payload_handle
-                        request_summary["payload_bytes"] = payload_bytes
-                    else:
-                        request_summary["request_payload"] = dict(request_payload)
-                        request_summary["payload_storage"] = "legacy_request_summary"
-                        request_summary["payload_bytes"] = payload_bytes
-                if capabilities["jobs_payload_handle"] and capabilities["jobs_max_attempts"]:
-                    await conn.execute(
-                        """
-                        insert into transient.jobs (
-                          job_id, customer_id, key_id, tool_name, status, phase,
-                          status_message, progress, total, poll_interval_ms,
-                          request_summary, created_at, last_progress_at, expires_at,
-                          max_attempts, payload_handle
-                        ) values (
-                          $1, $2::uuid, $3::uuid, $4, $5, $6,
-                          $7, 0, null, $8,
-                          $9::jsonb, $10, $10, $11,
-                          $12, $13
-                        )
-                        """,
-                        job_id,
-                        context.customer_id,
-                        context.key_id,
-                        tool_name,
-                        status,
-                        phase,
-                        status_message,
-                        DEFAULT_POLL_INTERVAL_MS,
-                        json.dumps(request_summary),
-                        now,
-                        expires_at,
-                        max_attempts_value,
-                        payload_handle,
+                    payload_handle = f"jpay_{secrets.token_urlsafe(18)}"
+                    request_summary["payload_handle"] = payload_handle
+                    request_summary["payload_bytes"] = payload_bytes
+                await conn.execute(
+                    """
+                    insert into transient.jobs (
+                      job_id, customer_id, key_id, tool_name, status, phase,
+                      status_message, progress, total, poll_interval_ms,
+                      request_summary, created_at, last_progress_at, expires_at,
+                      max_attempts, payload_handle
+                    ) values (
+                      $1, $2::uuid, $3::uuid, $4, $5, $6,
+                      $7, 0, null, $8,
+                      $9::jsonb, $10, $10, $11,
+                      $12, $13
                     )
-                else:
-                    await conn.execute(
-                        """
-                        insert into transient.jobs (
-                          job_id, customer_id, key_id, tool_name, status, phase,
-                          status_message, progress, total, poll_interval_ms,
-                          request_summary, created_at, last_progress_at, expires_at
-                        ) values (
-                          $1, $2::uuid, $3::uuid, $4, $5, $6,
-                          $7, 0, null, $8,
-                          $9::jsonb, $10, $10, $11
-                        )
-                        """,
-                        job_id,
-                        context.customer_id,
-                        context.key_id,
-                        tool_name,
-                        status,
-                        phase,
-                        status_message,
-                        DEFAULT_POLL_INTERVAL_MS,
-                        json.dumps(request_summary),
-                        now,
-                        expires_at,
-                    )
-                if payload_handle and payload is not None and capabilities["job_payloads"]:
+                    """,
+                    job_id,
+                    context.customer_id,
+                    context.key_id,
+                    tool_name,
+                    status,
+                    phase,
+                    status_message,
+                    DEFAULT_POLL_INTERVAL_MS,
+                    json.dumps(request_summary),
+                    now,
+                    expires_at,
+                    max_attempts_value,
+                    payload_handle,
+                )
+                if payload_handle and payload is not None:
                     await conn.execute(
                         """
                         insert into transient.job_payloads (
@@ -242,49 +196,30 @@ class AsyncpgJobRepository:
         lease_expires_at = now + timedelta(seconds=max(30, int(lease_seconds)))
         async with self._pool.acquire() as conn:
             async with conn.transaction():
-                capabilities = await self._schema_capabilities_for_conn(conn)
-                if capabilities["jobs_next_attempt_at"] and capabilities["jobs_attempt_count"]:
-                    row = await conn.fetchrow(
-                        """
-                        select *
-                        from transient.jobs
-                        where customer_id = $1::uuid
-                          and (
-                            status = 'queued'
-                            or (
-                              status = 'running'
-                              and lease_expires_at is not null
-                              and lease_expires_at <= $2
-                              and (next_attempt_at is null or next_attempt_at <= $2)
-                            )
-                          )
-                          and expires_at > $2
-                          and ($3::text[] is null or tool_name = any($3::text[]))
-                        order by priority asc, coalesce(next_attempt_at, created_at) asc, created_at asc
-                        for update skip locked
-                        limit 1
-                        """,
-                        context.customer_id,
-                        now,
-                        tool_names,
-                    )
-                else:
-                    row = await conn.fetchrow(
-                        """
-                        select *
-                        from transient.jobs
-                        where customer_id = $1::uuid
-                          and status = 'queued'
-                          and expires_at > $2
-                          and ($3::text[] is null or tool_name = any($3::text[]))
-                        order by priority asc, created_at asc
-                        for update skip locked
-                        limit 1
-                        """,
-                        context.customer_id,
-                        now,
-                        tool_names,
-                    )
+                row = await conn.fetchrow(
+                    """
+                    select *
+                    from transient.jobs
+                    where customer_id = $1::uuid
+                      and (
+                        status = 'queued'
+                        or (
+                          status = 'running'
+                          and lease_expires_at is not null
+                          and lease_expires_at <= $2
+                          and (next_attempt_at is null or next_attempt_at <= $2)
+                        )
+                      )
+                      and expires_at > $2
+                      and ($3::text[] is null or tool_name = any($3::text[]))
+                    order by priority asc, coalesce(next_attempt_at, created_at) asc, created_at asc
+                    for update skip locked
+                    limit 1
+                    """,
+                    context.customer_id,
+                    now,
+                    tool_names,
+                )
                 if row is None:
                     return None
                 job = _row_to_job(row)
@@ -302,38 +237,23 @@ class AsyncpgJobRepository:
                     if is_reclaim
                     else "Job claimed by worker."
                 )
-                if capabilities["jobs_attempt_count"] and capabilities["jobs_next_attempt_at"]:
-                    await conn.execute(
-                        """
-                        update transient.jobs
-                        set status = 'running', phase = case when status = 'queued' then phase else 'reclaimed' end,
-                            leased_by = $3, lease_expires_at = $4, started_at = coalesce(started_at, $5),
-                            last_progress_at = $5,
-                            attempt_count = case when status = 'running' then attempt_count + 1 else attempt_count end,
-                            next_attempt_at = $6
-                        where job_id = $1 and customer_id = $2::uuid
-                        """,
-                        job.job_id,
-                        context.customer_id,
-                        worker_id,
-                        lease_expires_at,
-                        now,
-                        next_attempt,
-                    )
-                else:
-                    await conn.execute(
-                        """
-                        update transient.jobs
-                        set status = 'running', leased_by = $3, lease_expires_at = $4,
-                            started_at = coalesce(started_at, $5), last_progress_at = $5
-                        where job_id = $1 and customer_id = $2::uuid
-                        """,
-                        job.job_id,
-                        context.customer_id,
-                        worker_id,
-                        lease_expires_at,
-                        now,
-                    )
+                await conn.execute(
+                    """
+                    update transient.jobs
+                    set status = 'running', phase = case when status = 'queued' then phase else 'reclaimed' end,
+                        leased_by = $3, lease_expires_at = $4, started_at = coalesce(started_at, $5),
+                        last_progress_at = $5,
+                        attempt_count = case when status = 'running' then attempt_count + 1 else attempt_count end,
+                        next_attempt_at = $6
+                    where job_id = $1 and customer_id = $2::uuid
+                    """,
+                    job.job_id,
+                    context.customer_id,
+                    worker_id,
+                    lease_expires_at,
+                    now,
+                    next_attempt,
+                )
                 await _insert_event(
                     conn,
                     job_id=job.job_id,
@@ -670,18 +590,14 @@ class AsyncpgJobRepository:
                     """,
                     now,
                 )
-                capabilities = await self._schema_capabilities_for_conn(conn)
-                if capabilities["job_payloads"]:
-                    deleted_payloads = await _execute_deleted_count(
-                        conn,
-                        """
-                        delete from transient.job_payloads
-                        where expires_at < $1
-                        """,
-                        now,
-                    )
-                else:
-                    deleted_payloads = 0
+                deleted_payloads = await _execute_deleted_count(
+                    conn,
+                    """
+                    delete from transient.job_payloads
+                    where expires_at < $1
+                    """,
+                    now,
+                )
                 deleted_results = await _execute_deleted_count(
                     conn,
                     """
@@ -704,11 +620,6 @@ class AsyncpgJobRepository:
             "deleted_job_results": deleted_results,
             "deleted_jobs": deleted_jobs,
         }
-
-    async def _schema_capabilities_for_conn(self, conn: Any) -> dict[str, bool]:
-        if self._schema_capabilities is None:
-            self._schema_capabilities = await _detect_schema_capabilities(conn)
-        return dict(self._schema_capabilities)
 
     async def cancel(
         self, context: CustomerContext, job_id: str, *, now: datetime | None = None
@@ -744,33 +655,6 @@ class AsyncpgJobRepository:
                     created_at=now,
                 )
         return await self.get(context, job_id, now=now)
-
-
-async def _detect_schema_capabilities(conn: Any) -> dict[str, bool]:
-    row = await conn.fetchrow(
-        """
-        select
-          exists(select 1 from information_schema.tables where table_schema=$1 and table_name=$2) as job_payloads,
-          exists(select 1 from information_schema.columns where table_schema=$1 and table_name=$3 and column_name=$4) as jobs_attempt_count,
-          exists(select 1 from information_schema.columns where table_schema=$1 and table_name=$3 and column_name=$5) as jobs_max_attempts,
-          exists(select 1 from information_schema.columns where table_schema=$1 and table_name=$3 and column_name=$6) as jobs_next_attempt_at,
-          exists(select 1 from information_schema.columns where table_schema=$1 and table_name=$3 and column_name=$7) as jobs_payload_handle
-        """,
-        "transient",
-        "job_payloads",
-        "jobs",
-        "attempt_count",
-        "max_attempts",
-        "next_attempt_at",
-        "payload_handle",
-    )
-    return {
-        "job_payloads": bool(_row_get(row, "job_payloads")),
-        "jobs_attempt_count": bool(_row_get(row, "jobs_attempt_count")),
-        "jobs_max_attempts": bool(_row_get(row, "jobs_max_attempts")),
-        "jobs_next_attempt_at": bool(_row_get(row, "jobs_next_attempt_at")),
-        "jobs_payload_handle": bool(_row_get(row, "jobs_payload_handle")),
-    }
 
 
 async def _execute_deleted_count(conn: Any, sql: str, *args: Any) -> int:

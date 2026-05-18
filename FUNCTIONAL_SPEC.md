@@ -611,8 +611,9 @@ The tool accepts:
 7. In `select` mode, allow local transient selection and committed selection events.
 8. Expose subscribable selection and state resources.
 9. Support live refresh events after successful Realign when connected.
-10. Resolve presentation context from built-in template defaults, TS presentation metadata, and request-time overrides. The MC must use this context to populate its panel/legend/debug behavior while preserving product chrome ownership. MC chrome labels must be supplied through a small label map (`chrome_labels`) in the resolved presentation payload so customer deployments can internationalize visible strings without rewriting viewer code.
-11. Expire sessions predictably and report expiration through state/resource behavior.
+10. Resolve presentation context from built-in template defaults, TS presentation metadata, and request-time overrides. The MC must use this context to populate its panel/layer-legend/debug behavior while preserving product chrome ownership. MC chrome labels must be supplied through a small label map (`chrome_labels`) in the resolved presentation payload so customer deployments can internationalize visible strings without rewriting viewer code.
+11. Render an integrated Layer-Legend for all visible/available TS layers and overlays, following the pattern in Benton's `mapsjs/EasyTerritoryAI` app. Each row combines layer visibility and legend semantics. Point location layers must support resolved visibility, symbol style, labels, simple classification entries, and simple declarative filter/class visibility state when supplied by TS presentation metadata. Supported point-layer filter operators should align with Benton's app (`eq`, `neq`, `in`, `nin`, `lt`, `lte`, `gt`, `gte`, `between`) unless a later schema narrows them. Part layers and TAL/reference TAL overlays should participate in the same layer list instead of using one-off controls.
+12. Expire sessions predictably and report expiration through state/resource behavior.
 
 ### 11.4 Functional output
 

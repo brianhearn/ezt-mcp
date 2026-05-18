@@ -285,6 +285,9 @@ tokens:
    embedded: 'no border/background, fills the docked column'
    header: 'text-[10px] font-semibold uppercase tracking-wide text-text_muted'
    count: 'text-[11px] font-mono text-text_muted'
+   layer_legend_row: 'compact row combining visibility toggle, 24px symbol/swatch, layer label, optional expander; selected row gets subtle brand_primary/10 background'
+   classification_row: 'indented child row with 18px class symbol, class label, optional filter label in text_muted; class visibility toggles from icon/checkbox'
+   disabled_layer: 'opacity 25-35%, controls disabled, keep row visible for out-of-scale/unavailable layers'
   z_index:
    map_header: 10
    map_control_bar: 50
