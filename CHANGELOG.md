@@ -8,7 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Changed (2026-05-18) — basemap visual tuning
-- Reduced visual dominance of non-major roads by fading minor-road color, width, opacity, and raising the minor-road min zoom to z10 while leaving major roads/highways unchanged. Also softened PMTiles part-layer boundary strokes because ZIP boundaries can visually read as minor roads.
+- Reduced visual dominance of non-major roads by fading minor-road color, width, opacity, and raising the minor-road min zoom to z10. Restored PMTiles ZIP/part-layer boundary strokes to the stronger selection-friendly style. Verified basemap tile attributes: many visually local streets are classified as `major_road` with `kind_detail=secondary|tertiary`, so those secondary/tertiary road details are now styled thinner and more faded while highways/primary roads stay prominent.
 
 ### Added (2026-05-18) — part-layer click selection MVP
 - Added Map Component select-mode click behavior for active PMTiles part layers: clicking inside a ZIP/part toggles its `part_id` via a transparent polygon hit layer, selected parts are highlighted, the panel selected count updates, and Commit/Clear controls manage the selected IDs. Enter remains a keyboard shortcut for commit.
