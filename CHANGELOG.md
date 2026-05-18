@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added (2026-05-18) — production US ZIP PMTiles builder
+- Added `scripts/build_part_layer_pmtiles_tippecanoe.py`, the preferred operational builder for z9+ part-layer overlays. It exports canonical PostGIS part geometry to GeoJSONSeq, runs `tippecanoe`, converts MBTiles to PMTiles, and verifies the archive.
+- Built and deployed a `us_zips.pmtiles` z5–z12 archive on `expertpack.ai` from 33,715 canonical ZIP features. The deployed PMTiles is 116,524,452 bytes, serves HTTP Range requests, and replaced the earlier z5–z8 proof artifact.
+- Installed Ubuntu `tippecanoe` package on the live ExpertPack droplet for operational tile builds.
+
 ### Added (2026-05-18) — point-layer range-class visual QA demo
 - Added `scripts/create_point_range_demo.py`, a reusable live demo/smoke helper that posts a synthetic TS with 5 SE territories and hundreds of customer point locations to `get-map-visualization`.
 - Added `examples/point_range_demo.summary.json` to record the first Brian-reviewed point-layer range-class demo session and follow-up UI refinement notes.
